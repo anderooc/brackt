@@ -41,6 +41,10 @@ import {
   type TeamDeletionTeam,
 } from "@/lib/teams/team-deletion";
 import {
+  bulkImportTeamRosterInternal,
+  type BulkImportRowInput,
+} from "@/lib/api/queries/roster-bulk-import";
+import {
   JERSEY_NUMBER_RANGE_ERROR,
   jerseyCollisionError,
   parseJerseyNumber,
@@ -581,3 +585,17 @@ export async function updateTeamMemberVolleyballPosition(
   }
   return { success: true };
 }
+
+export async function bulkImportTeamRosterAction(
+  teamId: string,
+  rows: BulkImportRowInput[]
+) {
+  const user = await requireUser();
+  const result = await bulkImportTeamRosterInternal(teamId, user, rows);
+  if (result.success && result.targetSlug) {
+    revalidatePath(`/teams/${result.targetSlug}`);
+    revalidatePath("/notifications");
+  }
+  return result;
+}
+

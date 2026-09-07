@@ -34,6 +34,10 @@ import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { slugify, uniqueSlug } from "@/lib/utils/slug";
 import { parseVolleyballPositionInput } from "@/lib/profile/volleyball-position";
 import {
+  bulkImportSchoolRosterInternal,
+  type BulkImportRowInput,
+} from "@/lib/api/queries/roster-bulk-import";
+import {
   addSchoolMemberSchema,
   createSchoolSchema,
   updateSchoolSchema,
@@ -964,3 +968,17 @@ export async function detachTeamFromSchool(teamId: string) {
   revalidatePath("/teams");
   return { success: true as const };
 }
+
+export async function bulkImportSchoolRosterAction(
+  schoolId: string,
+  rows: BulkImportRowInput[]
+) {
+  const user = await requireUser();
+  const result = await bulkImportSchoolRosterInternal(schoolId, user, rows);
+  if (result.success && result.targetSlug) {
+    revalidatePath(`/schools/${result.targetSlug}`);
+    revalidatePath("/notifications");
+  }
+  return result;
+}
+
