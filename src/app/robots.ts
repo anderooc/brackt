@@ -25,6 +25,7 @@ export default function robots(): MetadataRoute.Robots {
         "/privacy",
         "/signup",
         "/terms",
+        "/offline",
       ],
       disallow: [
         "/admin",
