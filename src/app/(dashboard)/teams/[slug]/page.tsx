@@ -230,6 +230,7 @@ export default async function TeamDetailPage({ params }: Props) {
               <Separator className="my-2" />
               <AddMemberForm
                 teamId={id}
+                teamName={team.name}
                 schoolRosterCandidates={
                   schoolRow ? schoolRosterCandidates : undefined
                 }

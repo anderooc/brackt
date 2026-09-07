@@ -344,6 +344,7 @@ export default async function SchoolDetailPage({ params, searchParams }: Props) 
             ) : null}
             <SchoolRoster
               schoolId={school.id}
+              schoolName={school.name}
               members={memberRows.map((m) => ({
                 membershipId: m.membershipId,
                 userId: m.userId,

@@ -38,15 +38,17 @@ import {
 } from "@/lib/constants/school";
 import {
   addSchoolMember,
+  bulkImportSchoolRosterAction,
   removeSchoolMember,
   transferPresidency,
   updateSchoolMemberRole,
   updateSchoolMemberVolleyballPosition,
 } from "../actions";
-import { Crown, Star, UserPlus, X } from "lucide-react";
+import { Crown, FileSpreadsheet, Star, UserPlus, X } from "lucide-react";
 import type { SchoolMemberRole, VolleyballPosition } from "@/types";
 import { JerseyNumberField } from "@/app/(dashboard)/teams/[slug]/jersey-number-field";
 import { VolleyballPositionField } from "@/components/roster/volleyball-position-field";
+import { RosterBulkImportDialog } from "@/components/roster/roster-bulk-import-dialog";
 
 type RosterMember = {
   membershipId: string;
@@ -61,11 +63,13 @@ type RosterMember = {
 
 export function SchoolRoster({
   schoolId,
+  schoolName,
   members,
   canManage,
   canTransferPresidencyAction,
 }: {
   schoolId: string;
+  schoolName?: string;
   members: RosterMember[];
   canManage: boolean;
   canTransferPresidencyAction: boolean;
@@ -76,6 +80,7 @@ export function SchoolRoster({
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addRole, setAddRole] = useState<SchoolMemberRole>("member");
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   async function handleAdd(formData: FormData) {
     setError(null);
@@ -246,10 +251,22 @@ export function SchoolRoster({
 
       {canManage && (
         <div className="rounded-xl border bg-muted/30 p-4 sm:p-5">
-          <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-semibold">
-            <UserPlus className="h-4 w-4" />
-            Add roster member
-          </h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="inline-flex items-center gap-2 text-sm font-semibold">
+              <UserPlus className="h-4 w-4" />
+              Add roster member
+            </h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDialogOpen(true)}
+              className="h-8 text-xs font-medium"
+            >
+              <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-primary" />
+              Bulk import roster
+            </Button>
+          </div>
           <form action={handleAdd} className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2 lg:col-span-1">
               <Label htmlFor="email">School email</Label>
@@ -303,6 +320,17 @@ export function SchoolRoster({
             </p>
           ) : null}
         </div>
+      )}
+
+      {canManage && (
+        <RosterBulkImportDialog
+          open={bulkDialogOpen}
+          onOpenChange={setBulkDialogOpen}
+          context="school"
+          targetId={schoolId}
+          targetName={schoolName ?? "School Roster"}
+          onImport={bulkImportSchoolRosterAction}
+        />
       )}
     </div>
   );

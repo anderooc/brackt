@@ -36,10 +36,12 @@ import {
 import { ViewportSplit } from "@/components/layout/viewport-split";
 import { cn } from "@/lib/utils";
 import { SCHOOL_MEMBER_ROLE_LABELS } from "@/lib/constants/school";
-import { addTeamMember } from "../actions";
+import { FileSpreadsheet } from "lucide-react";
+import { addTeamMember, bulkImportTeamRosterAction } from "../actions";
 import { VolleyballPositionLabel } from "@/components/roster/volleyball-position-field";
 import { volleyballPositionSearchHaystack } from "@/lib/profile/volleyball-position";
 import type { SchoolMemberRole, VolleyballPosition } from "@/types";
+import { RosterBulkImportDialog } from "@/components/roster/roster-bulk-import-dialog";
 
 export type SchoolRosterCandidate = {
   userId: string;
@@ -61,12 +63,14 @@ const GROUPS: {
 
 export function AddMemberForm({
   teamId,
+  teamName,
   schoolRosterCandidates,
   schoolHref,
   schoolName,
   description,
 }: {
   teamId: string;
+  teamName?: string;
   schoolRosterCandidates?: SchoolRosterCandidate[];
   schoolHref?: string;
   schoolName?: string;
@@ -76,6 +80,7 @@ export function AddMemberForm({
     return (
       <SchoolRosterAddForm
         teamId={teamId}
+        teamName={teamName}
         candidates={schoolRosterCandidates}
         schoolHref={schoolHref}
         schoolName={schoolName}
@@ -84,14 +89,21 @@ export function AddMemberForm({
     );
   }
 
-  return <EmailAddForm teamId={teamId} />;
+  return <EmailAddForm teamId={teamId} teamName={teamName} />;
 }
 
-function EmailAddForm({ teamId }: { teamId: string }) {
+function EmailAddForm({
+  teamId,
+  teamName,
+}: {
+  teamId: string;
+  teamName?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [invited, setInvited] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   async function handleSubmit(formData: FormData) {
     setLoading(true);
@@ -110,7 +122,19 @@ function EmailAddForm({ teamId }: { teamId: string }) {
 
   return (
     <div className="rounded-xl border bg-muted/30 p-4 sm:p-5">
-      <h3 className="mb-4 text-sm font-semibold">Add player</h3>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Add player</h3>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setBulkDialogOpen(true)}
+          className="h-8 text-xs font-medium"
+        >
+          <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-primary" />
+          Bulk import players
+        </Button>
+      </div>
       <form
         action={handleSubmit}
         className="grid gap-4 sm:grid-cols-[1fr_6.5rem_auto]"
@@ -155,18 +179,29 @@ function EmailAddForm({ teamId }: { teamId: string }) {
             : "Player added!"}
         </p>
       ) : null}
+
+      <RosterBulkImportDialog
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        context="team"
+        targetId={teamId}
+        targetName={teamName ?? "Team Roster"}
+        onImport={bulkImportTeamRosterAction}
+      />
     </div>
   );
 }
 
 function SchoolRosterAddForm({
   teamId,
+  teamName,
   candidates,
   schoolHref,
   schoolName,
   description,
 }: {
   teamId: string;
+  teamName?: string;
   candidates: SchoolRosterCandidate[];
   schoolHref?: string;
   schoolName?: string;
@@ -179,6 +214,7 @@ function SchoolRosterAddForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -266,31 +302,43 @@ function SchoolRosterAddForm({
 
   return (
     <div className="rounded-xl border bg-muted/30 p-4 sm:p-5">
-      <div className="mb-4 space-y-1">
-        <h3 className="text-sm font-semibold">Add from school roster</h3>
-        <p className="text-sm text-muted-foreground">
-          {description ?? (
-            <>
-              Select players from the school roster
-              {schoolName ? (
-                <>
-                  {" "}
-                  {schoolHref ? (
-                    <Link
-                      href={schoolHref}
-                      className="underline underline-offset-4"
-                    >
-                      {schoolName}
-                    </Link>
-                  ) : (
-                    schoolName
-                  )}
-                </>
-              ) : null}
-              . New people must be added there first.
-            </>
-          )}
-        </p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Add from school roster</h3>
+          <p className="text-sm text-muted-foreground">
+            {description ?? (
+              <>
+                Select players from the school roster
+                {schoolName ? (
+                  <>
+                    {" "}
+                    {schoolHref ? (
+                      <Link
+                        href={schoolHref}
+                        className="underline underline-offset-4"
+                      >
+                        {schoolName}
+                      </Link>
+                    ) : (
+                      schoolName
+                    )}
+                  </>
+                ) : null}
+                . New people must be added there first.
+              </>
+            )}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setBulkDialogOpen(true)}
+          className="h-8 text-xs font-medium shrink-0"
+        >
+          <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5 text-primary" />
+          Bulk import players
+        </Button>
       </div>
 
       {candidates.length === 0 ? (
@@ -575,6 +623,15 @@ function SchoolRosterAddForm({
             : `${addedCount} players added!`}
         </p>
       ) : null}
+
+      <RosterBulkImportDialog
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        context="team"
+        targetId={teamId}
+        targetName={teamName ?? "Team Roster"}
+        onImport={bulkImportTeamRosterAction}
+      />
     </div>
   );
 }
