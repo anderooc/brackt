@@ -17,7 +17,9 @@
  */
 
 import type { InferSelectModel } from "drizzle-orm";
-import { tournaments } from "@/lib/db/schema";
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { courts, tournaments } from "@/lib/db/schema";
 import {
   resolveIsTournamentOrganizer,
   type UserForPermissions,
@@ -35,9 +37,18 @@ export async function TournamentMatchesPanel({
   user: UserForPermissions;
 }) {
   const isOrganizer = await resolveIsTournamentOrganizer(tournament, user);
-  const divisionPlayData = await getDivisionPlayData(tournament.id, {
-    forOrganizer: isOrganizer,
-  });
+  const [divisionPlayData, courtRows] = await Promise.all([
+    getDivisionPlayData(tournament.id, {
+      forOrganizer: isOrganizer,
+    }),
+    isOrganizer
+      ? db
+          .select({ id: courts.id, name: courts.name })
+          .from(courts)
+          .where(eq(courts.tournamentId, tournament.id))
+          .orderBy(asc(courts.name))
+      : Promise.resolve([]),
+  ]);
 
   const scheduleGroups = isOrganizer
     ? scheduleGroupsFromPlayData(divisionPlayData, "all")
@@ -54,7 +65,10 @@ export async function TournamentMatchesPanel({
       )}
       <MatchBoard
         slug={tournament.slug}
+        tournamentId={tournament.id}
         divisions={divisionPlayData}
+        courts={courtRows}
+        isOrganizer={isOrganizer}
         settings={{
           format: tournament.matchFormat,
           targetScore: tournament.setTargetScore,
