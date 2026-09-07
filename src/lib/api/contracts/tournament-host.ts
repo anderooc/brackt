@@ -314,3 +314,30 @@ export interface TournamentHostScheduleFillResultContract {
   updated: number;
   schedule: TournamentHostScheduleContract;
 }
+
+export type TournamentHostBulkMatchAction =
+  | "reassign_court"
+  | "shift_time"
+  | "reassign_ref"
+  | "clear_schedule";
+
+export interface TournamentHostBulkMatchesRequestContract {
+  action: TournamentHostBulkMatchAction;
+  matchIds?: string[];
+  courtId?: string | null;
+  minutes?: number;
+  afterIso?: string | null;
+  refTeamId?: string | null;
+  clearTime?: boolean;
+  clearCourt?: boolean;
+}
+
+export interface TournamentHostBulkMatchesResultContract {
+  success: true;
+  action: TournamentHostBulkMatchAction;
+  updatedCount: number;
+  skippedCount: number;
+  message: string;
+  schedule: TournamentHostScheduleContract;
+}
+
