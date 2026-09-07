@@ -6,8 +6,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { WifiOff } from "lucide-react";
 import type { TournamentMatchContract } from "@/lib/api/contracts/tournament";
 import { formatMatchTime, formatSetLine } from "@/lib/tournament-public/format";
+import {
+  getTournamentSnapshot,
+  saveTournamentSnapshot,
+} from "@/lib/offline/offline-storage";
 import { cn } from "@/lib/utils";
 
 const ROTATE_MS = 12_000;
@@ -24,6 +29,7 @@ export function KioskScoreboard({
 }) {
   const [matches, setMatches] = useState(initialMatches);
   const [page, setPage] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
 
   const liveMatches = useMemo(
     () => matches.filter((match) => match.status === "in_progress"),
@@ -38,18 +44,46 @@ export function KioskScoreboard({
   const pages = Math.max(1, Math.ceil(displayMatches.length / 4));
   const visible = displayMatches.slice(page * 4, page * 4 + 4);
 
+  useEffect(() => {
+    if (initialMatches && initialMatches.length > 0) {
+      saveTournamentSnapshot(slug, {
+        name: tournamentName,
+        matches: initialMatches,
+      });
+    } else {
+      const cached = getTournamentSnapshot<{
+        matches: TournamentMatchContract[];
+      }>(slug);
+      if (cached?.data?.matches && cached.data.matches.length > 0) {
+        setMatches(cached.data.matches);
+        setIsOffline(true);
+      }
+    }
+  }, [slug, tournamentName, initialMatches]);
+
   const refresh = useCallback(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setIsOffline(true);
+      return;
+    }
     try {
       const response = await fetch(`/api/v1/tournaments/${slug}/matches`);
       if (!response.ok) return;
       const payload = (await response.json()) as {
         data?: { matches: TournamentMatchContract[] };
       };
-      if (payload.data?.matches) setMatches(payload.data.matches);
+      if (payload.data?.matches) {
+        setMatches(payload.data.matches);
+        setIsOffline(false);
+        saveTournamentSnapshot(slug, {
+          name: tournamentName,
+          matches: payload.data.matches,
+        });
+      }
     } catch {
-      // Best-effort.
+      setIsOffline(true);
     }
-  }, [slug]);
+  }, [slug, tournamentName]);
 
   useEffect(() => {
     const poll = window.setInterval(() => void refresh(), POLL_MS);
@@ -66,13 +100,21 @@ export function KioskScoreboard({
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="border-b border-border px-6 py-4">
-        <p className="text-sm font-medium uppercase tracking-widest text-primary">
-          Live scores
-        </p>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          {tournamentName}
-        </h1>
+      <header className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div>
+          <p className="text-sm font-medium uppercase tracking-widest text-primary">
+            Live scores
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            {tournamentName}
+          </h1>
+        </div>
+        {isOffline && (
+          <div className="flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-500">
+            <WifiOff className="h-3.5 w-3.5" />
+            <span>Gym offline mode</span>
+          </div>
+        )}
       </header>
 
       <main className="flex flex-1 flex-col justify-center gap-4 p-6">
