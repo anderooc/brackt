@@ -55,6 +55,7 @@ export type DivisionPlayData = {
       status: string;
       scheduledTime: Date | null;
       courtId: string | null;
+      courtName?: string | null;
       teamA: { id: string; name: string } | null;
       teamB: { id: string; name: string } | null;
       ref: { id: string; name: string } | null;
@@ -204,15 +205,16 @@ export async function getDivisionPlayData(
         .filter((v): v is string => Boolean(v))
     ),
   ];
-  const bracketCourtIds = [
+  const allCourtIds = [
     ...new Set(
-      bracketMatchRows
-        .map((m) => m.courtId)
-        .filter((v): v is string => Boolean(v))
+      [
+        ...poolMatchRows.map((m) => m.courtId),
+        ...bracketMatchRows.map((m) => m.courtId),
+      ].filter((v): v is string => Boolean(v))
     ),
   ];
 
-  const [setRows, bracketTeamRows, bracketCourtRows] = await Promise.all([
+  const [setRows, bracketTeamRows, courtRows] = await Promise.all([
     setMatchIds.length
       ? db
           .select()
@@ -226,11 +228,11 @@ export async function getDivisionPlayData(
           .from(teams)
           .where(inArray(teams.id, bracketTeamIds))
       : Promise.resolve([]),
-    bracketCourtIds.length
+    allCourtIds.length
       ? db
           .select({ id: courts.id, name: courts.name })
           .from(courts)
-          .where(inArray(courts.id, bracketCourtIds))
+          .where(inArray(courts.id, allCourtIds))
       : Promise.resolve([]),
   ]);
 
@@ -291,8 +293,8 @@ export async function getDivisionPlayData(
 
   const bracketTeamName = new Map<string, string>();
   for (const t of bracketTeamRows) bracketTeamName.set(t.id, t.name);
-  const bracketCourtName = new Map<string, string>();
-  for (const c of bracketCourtRows) bracketCourtName.set(c.id, c.name);
+  const courtNameById = new Map<string, string>();
+  for (const c of courtRows) courtNameById.set(c.id, c.name);
 
   const rows: DivisionPlayData[] = [];
   for (const div of tournamentDivisions) {
@@ -335,6 +337,7 @@ export async function getDivisionPlayData(
           status: m.status,
           scheduledTime: m.scheduledTime,
           courtId: m.courtId,
+          courtName: m.courtId ? (courtNameById.get(m.courtId) ?? null) : null,
           sets: setsByMatch.get(m.id) ?? [],
           teamA: teamA ? { id: teamA.id, name: teamA.name } : null,
           teamB: teamB ? { id: teamB.id, name: teamB.name } : null,
@@ -382,7 +385,7 @@ export async function getDivisionPlayData(
           ? { id: m.refTeamId, name: bracketTeamName.get(m.refTeamId) ?? "Team" }
           : null,
         courtName: m.courtId
-          ? (bracketCourtName.get(m.courtId) ?? null)
+          ? (courtNameById.get(m.courtId) ?? null)
           : null,
         sets: setsByMatch.get(m.id) ?? [],
       })),
