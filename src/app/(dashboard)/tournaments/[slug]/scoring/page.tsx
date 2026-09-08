@@ -17,6 +17,7 @@
  */
 
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
@@ -28,12 +29,15 @@ import {
 import { asc, inArray } from "drizzle-orm";
 import { BackLink } from "@/components/layout/back-link";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Radio, Clock, CheckCircle2 } from "lucide-react";
+import { Radio, Clock, CheckCircle2, ExternalLink } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScoringCard } from "./scoring-card";
 import { LiveScoreViewer } from "./live-score-viewer";
+import { ShareScoreboardDialog } from "@/components/tournament-public/share-scoreboard-dialog";
 import { setStartingScoreForMatch } from "@/lib/tournaments/match-format";
 import { getTournamentBySlugIfVisible } from "@/lib/tournaments/access";
+import { cn } from "@/lib/utils";
 import {
   canScoreMatches,
   resolveIsTournamentOrganizer,
@@ -63,7 +67,9 @@ export async function generateMetadata({
 export default async function ScoringPage({ params }: Props) {
   const { slug } = await params;
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
+  if (!user) {
+    redirect(`/explore/tournaments/${slug}/scores`);
+  }
 
   const tournament = await getTournamentBySlugIfVisible(slug, user);
   if (!tournament) notFound();
@@ -166,14 +172,33 @@ export default async function ScoringPage({ params }: Props) {
   return (
     <div className="space-y-6">
       <BackLink href={`/tournaments/${slug}`}>Back to tournament</BackLink>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Live Scoring</h1>
-        <p className="text-muted-foreground">{tournament.name}</p>
-        {isOrganizer && !canScore && (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Set the tournament status to In progress to enter scores.
-          </p>
-        )}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Live Scoring</h1>
+          <p className="text-muted-foreground">{tournament.name}</p>
+          {isOrganizer && !canScore && (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Set the tournament status to In progress to enter scores.
+            </p>
+          )}
+          {!isOrganizer && !canScore && (
+            <p className="mt-2 text-xs text-muted-foreground bg-muted/40 px-2.5 py-1 rounded inline-block">
+              Viewing as spectator. Score entry is reserved for assigned referees and tournament organizers.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <ShareScoreboardDialog slug={slug} tournamentName={tournament.name} />
+          <Link
+            href={`/explore/tournaments/${slug}/scores`}
+            target="_blank"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-xs gap-1.5")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Fan scoreboard</span>
+          </Link>
+        </div>
       </div>
 
       <Tabs defaultValue="live">

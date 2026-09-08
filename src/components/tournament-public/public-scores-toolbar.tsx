@@ -7,10 +7,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, Copy, Monitor, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button";
+import { Check, Copy, Monitor, QrCode as QrIcon } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ShareScoreboardDialog } from "./share-scoreboard-dialog";
 
 export function PublicScoresToolbar({
   slug,
@@ -38,28 +38,53 @@ export function PublicScoresToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={() => void copyLink()}>
-        {copied ? (
-          <Check className="mr-1.5 h-3.5 w-3.5" />
-        ) : (
-          <Share2 className="mr-1.5 h-3.5 w-3.5" />
+      {/* Share dialog with QR code and mobile share */}
+      <ShareScoreboardDialog
+        slug={slug}
+        tournamentName={tournamentName}
+        trigger={({ onClick }) => (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClick}
+            className="h-8 gap-1.5 text-xs"
+          >
+            <QrIcon className="h-3.5 w-3.5 text-primary" />
+            <span>Share & QR</span>
+          </Button>
         )}
-        {copied ? "Copied" : "Copy link"}
+      />
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => void copyLink()}
+        className="h-8 gap-1.5 text-xs"
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-success" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+        {copied ? "Copied link" : "Copy link"}
       </Button>
+
       <Link
         href={kioskUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 gap-1.5 text-xs")}
         title={`Open kiosk display for ${tournamentName}`}
       >
-        <Monitor className="mr-1.5 h-3.5 w-3.5" />
-        Kiosk mode
+        <Monitor className="h-3.5 w-3.5" />
+        <span>Kiosk mode</span>
       </Link>
+
       <span className="sr-only">
         Shareable scoreboard at {shareUrl}. Kiosk at {kioskUrl}.
       </span>
-      <Copy className="sr-only" aria-hidden />
     </div>
   );
 }
