@@ -310,6 +310,26 @@
   }
 }
 
+/*
+ * Marketing scroll reveals. Content is visible by default (no-JS / reduced
+ * motion). Motion-safe clients only hide off-screen items after mount via
+ * [data-reveal-ready], then ease them in once with [data-revealed].
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .marketing-reveal[data-reveal-ready] {
+    opacity: 0;
+    transform: translate3d(0, 1.1rem, 0);
+  }
+
+  .marketing-reveal[data-revealed] {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    transition:
+      opacity 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms),
+      transform 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay, 0ms);
+  }
+}
+
 @keyframes ui-fade-in {
   from {
     opacity: 0;

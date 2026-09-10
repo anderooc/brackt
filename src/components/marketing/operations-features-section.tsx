@@ -1,3 +1,5 @@
+"use client";
+
 /*
  * brackt - Collegiate club volleyball tournament hub
  * Copyright (C) 2026 Andrew Chang
@@ -22,6 +24,7 @@ import {
   MessageSquare,
   ScrollText,
 } from "lucide-react";
+import { ScrollReveal } from "@/components/marketing/scroll-reveal";
 
 const OPERATIONS_FEATURES = [
   {
@@ -50,7 +53,7 @@ export function OperationsFeaturesSection() {
   return (
     <section className="border-t" aria-labelledby="operations-heading">
       <div className="container mx-auto px-4 py-20">
-        <div className="max-w-2xl">
+        <ScrollReveal className="max-w-2xl">
           <h2
             id="operations-heading"
             className="text-balance text-3xl font-bold tracking-tight sm:text-4xl"
@@ -61,13 +64,18 @@ export function OperationsFeaturesSection() {
             Waivers, payments, comms, and packets live here too. The admin work
             around a tournament, not just game day.
           </p>
-        </div>
+        </ScrollReveal>
 
         <ul className="mt-10 grid gap-8 sm:grid-cols-2 sm:gap-x-12 sm:gap-y-10 lg:max-w-4xl">
-          {OPERATIONS_FEATURES.map((feature) => (
-            <li key={feature.title} className="flex gap-4">
+          {OPERATIONS_FEATURES.map((feature, index) => (
+            <ScrollReveal
+              key={feature.title}
+              as="li"
+              delayMs={(index % 2) * 90}
+              className="group flex gap-4"
+            >
               <feature.icon
-                className="mt-0.5 h-5 w-5 shrink-0 text-primary"
+                className="mt-0.5 h-5 w-5 shrink-0 text-primary transition-transform duration-500 ease-out group-data-[revealed]:scale-110"
                 aria-hidden
               />
               <div className="min-w-0">
@@ -78,7 +86,7 @@ export function OperationsFeaturesSection() {
                   {feature.desc}
                 </p>
               </div>
-            </li>
+            </ScrollReveal>
           ))}
         </ul>
       </div>
