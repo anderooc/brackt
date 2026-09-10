@@ -157,13 +157,16 @@ export function ScheduleMatchList({
                       <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
                         <div className="flex items-start justify-between gap-3 sm:contents">
                           {scheduledTime ? (
-                            <div className="flex shrink-0 flex-col sm:w-[4.5rem] sm:items-end">
-                              <span className="text-sm font-medium tabular-nums text-foreground sm:text-muted-foreground">
+                            <div className="flex shrink-0 flex-col gap-0.5 sm:w-[7rem]">
+                              <time
+                                dateTime={scheduledTime.toISOString()}
+                                className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground sm:text-muted-foreground"
+                              >
                                 {format(scheduledTime, "h:mm a")}
-                              </span>
+                              </time>
                               {warmupStart ? (
-                                <span className="text-[10px] font-normal uppercase tracking-wide text-muted-foreground/70">
-                                  Warmup {format(warmupStart, "h:mm")}
+                                <span className="whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
+                                  Warmup {format(warmupStart, "h:mm a")}
                                 </span>
                               ) : null}
                             </div>
