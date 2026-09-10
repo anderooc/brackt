@@ -312,7 +312,7 @@ export function DateScrollWheel({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       className={cn(
-        "flex min-h-0 w-full flex-1 touch-none select-none flex-col justify-center overflow-hidden overscroll-y-none",
+        "flex h-[180px] w-full touch-none select-none flex-col justify-center overflow-hidden overscroll-y-none",
         "transition-opacity duration-300 ease-out",
         isDragging ? "cursor-grabbing" : "cursor-grab",
         isShown ? "opacity-100" : "pointer-events-none opacity-0",
