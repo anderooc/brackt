@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 const LINE_HEIGHT_PX = 36;
 const VISIBLE_RADIUS = 2;
 const WHEEL_HEIGHT_PX = LINE_HEIGHT_PX * (VISIBLE_RADIUS * 2 + 1);
-const WHEEL_DELTA_PER_DATE = 120;
+const WHEEL_DELTA_PER_DATE = 160;
 const FADE_IDLE_MS = 1100;
 const DRAG_STEP_PX = 36;
 const CLICK_SLOP_PX = 6;

@@ -23,6 +23,8 @@ import { parseISODate } from "@/lib/date-iso";
 import { cn } from "@/lib/utils";
 
 const CLICK_SLOP_PX = 6;
+/** Wheel delta that must accumulate before the selection advances one day. */
+const WHEEL_DELTA_PER_DATE = 160;
 
 function formatRailParts(iso: string, today: string) {
   const d = parseISODate(iso);
@@ -43,8 +45,8 @@ function formatRailParts(iso: string, today: string) {
  * on desktop so date navigation stays anchored to content instead of floating
  * in a tall empty column.
  *
- * Supports native overflow scroll, pointer drag-to-pan, and vertical-wheel
- * mapped to horizontal scroll so trackpads and mice can skim the rail.
+ * Supports native overflow scroll, pointer drag-to-pan, horizontal-wheel pan,
+ * and vertical-wheel date stepping with resistance so trackpads don't skip.
  */
 export function DateRail({
   dates,
@@ -74,6 +76,13 @@ export function DateRail({
   });
   const [isDragging, setIsDragging] = useState(false);
   const suppressClickRef = useRef(false);
+  const wheelAccumulatorRef = useRef(0);
+  const datesRef = useRef(dates);
+  const selectedDateRef = useRef(selectedDate);
+  const onSelectRef = useRef(onSelect);
+  datesRef.current = dates;
+  selectedDateRef.current = selectedDate;
+  onSelectRef.current = onSelect;
 
   // Keep the selected chip centered when the selection changes externally
   // (calendar, keyboard). Skip smooth motion while the user is mid-drag.
@@ -103,8 +112,8 @@ export function DateRail({
     });
   }, [selectedDate, dates]);
 
-  // Non-passive wheel listener so we can map vertical delta → horizontal pan
-  // without also scrolling the page.
+  // Non-passive wheel: vertical steps the selected date (with resistance);
+  // horizontal pans the chip strip when it overflows.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -112,27 +121,69 @@ export function DateRail({
     function onWheel(e: WheelEvent) {
       const target = el;
       if (!target) return;
-      const canScroll = target.scrollWidth > target.clientWidth + 1;
-      if (!canScroll) return;
 
       const dominantX = Math.abs(e.deltaX) >= Math.abs(e.deltaY);
-      const delta = dominantX ? e.deltaX : e.deltaY;
-      if (Math.abs(delta) < 1) return;
 
-      const atStart = target.scrollLeft <= 0;
-      const atEnd =
-        target.scrollLeft + target.clientWidth >= target.scrollWidth - 1;
-      const towardEdge = delta > 0 ? atEnd : atStart;
-      if (towardEdge && !dominantX) return;
+      if (dominantX) {
+        const canScroll = target.scrollWidth > target.clientWidth + 1;
+        if (!canScroll) return;
+        if (Math.abs(e.deltaX) < 1) return;
+
+        const atStart = target.scrollLeft <= 0;
+        const atEnd =
+          target.scrollLeft + target.clientWidth >= target.scrollWidth - 1;
+        const towardEdge = e.deltaX > 0 ? atEnd : atStart;
+        if (towardEdge) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        target.scrollLeft += e.deltaX;
+        return;
+      }
+
+      if (Math.abs(e.deltaY) < 1) return;
+
+      const list = datesRef.current;
+      if (list.length === 0) return;
+
+      const i = list.indexOf(selectedDateRef.current);
+      const safeI = i === -1 ? 0 : i;
+
+      wheelAccumulatorRef.current += e.deltaY;
+
+      let steps = 0;
+      while (wheelAccumulatorRef.current >= WHEEL_DELTA_PER_DATE) {
+        steps += 1;
+        wheelAccumulatorRef.current -= WHEEL_DELTA_PER_DATE;
+      }
+      while (wheelAccumulatorRef.current <= -WHEEL_DELTA_PER_DATE) {
+        steps -= 1;
+        wheelAccumulatorRef.current += WHEEL_DELTA_PER_DATE;
+      }
+
+      if (steps === 0) {
+        // Consume the gesture while building resistance so the page doesn't
+        // scroll under the cursor mid-intent.
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      const next = Math.max(0, Math.min(list.length - 1, safeI + steps));
+      if (next === safeI) {
+        wheelAccumulatorRef.current = 0;
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
-      target.scrollLeft += delta;
+      const nextDate = list[next];
+      if (nextDate) onSelectRef.current(nextDate);
     }
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [dates.length]);
+  }, []);
 
   const endDrag = useCallback((pointerId: number) => {
     const s = dragRef.current;

@@ -97,7 +97,7 @@ const ROW_ENTER_ANIMATION =
  * Accumulated wheel deltaY (px) required before moving to the next/previous
  * date. Higher = more scrolling per date, easier to land on adjacent days.
  */
-const WHEEL_DELTA_PER_DATE = 120;
+const WHEEL_DELTA_PER_DATE = 160;
 
 interface Tournament {
   id?: string;
