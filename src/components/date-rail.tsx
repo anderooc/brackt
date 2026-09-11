@@ -80,9 +80,12 @@ export function DateRail({
   const datesRef = useRef(dates);
   const selectedDateRef = useRef(selectedDate);
   const onSelectRef = useRef(onSelect);
-  datesRef.current = dates;
-  selectedDateRef.current = selectedDate;
-  onSelectRef.current = onSelect;
+
+  useEffect(() => {
+    datesRef.current = dates;
+    selectedDateRef.current = selectedDate;
+    onSelectRef.current = onSelect;
+  }, [dates, selectedDate, onSelect]);
 
   // Keep the selected chip centered when the selection changes externally
   // (calendar, keyboard). Skip smooth motion while the user is mid-drag.
