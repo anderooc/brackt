@@ -93,12 +93,6 @@ const MOBILE_WHEEL_H = "h-[11.25rem]";
 const ROW_ENTER_ANIMATION =
   "ui-enter-soft 420ms cubic-bezier(0.22, 1, 0.36, 1) both";
 
-/**
- * Accumulated wheel deltaY (px) required before moving to the next/previous
- * date. Higher = more scrolling per date, easier to land on adjacent days.
- */
-const WHEEL_DELTA_PER_DATE = 160;
-
 interface Tournament {
   id?: string;
   slug: string;
@@ -431,8 +425,6 @@ function ChronologicalSchedule({
     return grouped;
   }, [tournaments, today, selectedDate]);
 
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const wheelAccumulatorRef = useRef(0);
   const [wheelActivity, setWheelActivity] = useState(0);
   const registerWheelActivity = useCallback(() => {
     setWheelActivity((n) => n + 1);
@@ -444,71 +436,6 @@ function ChronologicalSchedule({
     if (groups.some((g) => g.date === selectedDate)) return selectedDate;
     return today;
   }, [groups, selectedDate, today]);
-
-  // Mouse/trackpad wheel cycles dates. Touch scrolling is left to the page;
-  // the date rail / mobile wheel are the primary gesture surfaces.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    function advance(delta: number) {
-      if (delta === 0) return;
-      registerWheelActivity();
-      const i = groups.findIndex((g) => g.date === selectedDate);
-      const safeI =
-        i === -1 ? groups.findIndex((g) => g.date === today) : i;
-      const next = Math.max(
-        0,
-        Math.min(groups.length - 1, safeI + delta)
-      );
-      const nextDate = groups[next]?.date;
-      if (nextDate) onSelectedDateChange(nextDate);
-    }
-
-    function onWheel(e: WheelEvent) {
-      // An overflowing selected-day list owns the gesture until it reaches the
-      // edge it's being scrolled toward; then dates resume cycling.
-      const target = e.target as HTMLElement | null;
-      const dayScroll = target?.closest<HTMLElement>("[data-day-scroll]");
-      if (dayScroll && dayScroll.scrollHeight > dayScroll.clientHeight + 1) {
-        const atTop = dayScroll.scrollTop <= 0;
-        const atBottom =
-          dayScroll.scrollTop + dayScroll.clientHeight >=
-          dayScroll.scrollHeight - 1;
-        const towardEdge = e.deltaY > 0 ? atBottom : atTop;
-        if (!towardEdge) {
-          wheelAccumulatorRef.current = 0;
-          return;
-        }
-      }
-
-      // Horizontal rail owns its own scroll; don't steal trackpad swipes there.
-      if (target?.closest('[aria-orientation="horizontal"]')) {
-        return;
-      }
-
-      e.preventDefault();
-      if (Math.abs(e.deltaY) < 1) return;
-      wheelAccumulatorRef.current += e.deltaY;
-
-      let steps = 0;
-      while (wheelAccumulatorRef.current >= WHEEL_DELTA_PER_DATE) {
-        steps += 1;
-        wheelAccumulatorRef.current -= WHEEL_DELTA_PER_DATE;
-      }
-      while (wheelAccumulatorRef.current <= -WHEEL_DELTA_PER_DATE) {
-        steps -= 1;
-        wheelAccumulatorRef.current += WHEEL_DELTA_PER_DATE;
-      }
-      advance(steps);
-    }
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-
-    return () => {
-      el.removeEventListener("wheel", onWheel);
-    };
-  }, [groups, today, selectedDate, onSelectedDateChange, registerWheelActivity]);
 
   // Arrow keys move the selected date by one. Ignored while typing.
   useEffect(() => {
@@ -613,11 +540,7 @@ function ChronologicalSchedule({
           </div>
         }
         desktop={
-          <div
-            ref={containerRef}
-            className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-x-hidden outline-none"
-            aria-roledescription="date cycler"
-          >
+          <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col gap-4 overflow-x-hidden outline-none">
             <DateRail
               dates={scheduleDates}
               selectedDate={effectiveSelectedDate}

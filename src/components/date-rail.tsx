@@ -23,8 +23,10 @@ import { parseISODate } from "@/lib/date-iso";
 import { cn } from "@/lib/utils";
 
 const CLICK_SLOP_PX = 6;
-/** Wheel delta that must accumulate before the selection advances one day. */
+/** Horizontal wheel delta that must accumulate before selection advances. */
 const WHEEL_DELTA_PER_DATE = 160;
+/** Pointer drag distance that must accumulate before selection advances. */
+const DRAG_STEP_PX = 48;
 
 function formatRailParts(iso: string, today: string) {
   const d = parseISODate(iso);
@@ -41,12 +43,9 @@ function formatRailParts(iso: string, today: string) {
 }
 
 /**
- * Horizontal date strip for wide viewports. Replaces the vertical side wheel
- * on desktop so date navigation stays anchored to content instead of floating
- * in a tall empty column.
- *
- * Supports native overflow scroll, pointer drag-to-pan, horizontal-wheel pan,
- * and vertical-wheel date stepping with resistance so trackpads don't skip.
+ * Horizontal date strip for wide viewports. Side-scroll (wheel or drag)
+ * steps the selected date with resistance; the strip recenters on the
+ * selection instead of acting as a free-panning overflow scroller.
  */
 export function DateRail({
   dates,
@@ -66,14 +65,13 @@ export function DateRail({
   const dragRef = useRef<{
     pointerId: number | null;
     startX: number;
-    startScrollLeft: number;
     dragged: boolean;
   }>({
     pointerId: null,
     startX: 0,
-    startScrollLeft: 0,
     dragged: false,
   });
+  const stepAccumulatorRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const suppressClickRef = useRef(false);
   const wheelAccumulatorRef = useRef(0);
@@ -87,8 +85,19 @@ export function DateRail({
     onSelectRef.current = onSelect;
   }, [dates, selectedDate, onSelect]);
 
-  // Keep the selected chip centered when the selection changes externally
-  // (calendar, keyboard). Skip smooth motion while the user is mid-drag.
+  const advance = useCallback((delta: number) => {
+    if (delta === 0) return;
+    const list = datesRef.current;
+    if (list.length === 0) return;
+    const i = list.indexOf(selectedDateRef.current);
+    const safeI = i === -1 ? 0 : i;
+    const next = Math.max(0, Math.min(list.length - 1, safeI + delta));
+    if (next === safeI) return;
+    const nextDate = list[next];
+    if (nextDate) onSelectRef.current(nextDate);
+  }, []);
+
+  // Keep the selected chip centered when the selection changes.
   useEffect(() => {
     const scroller = scrollerRef.current;
     const selected = selectedRef.current;
@@ -115,36 +124,20 @@ export function DateRail({
     });
   }, [selectedDate, dates]);
 
-  // Non-passive wheel: vertical steps the selected date (with resistance);
-  // horizontal pans the chip strip when it overflows.
+  // Horizontal wheel / shift+wheel steps dates. Vertical is left alone so the
+  // day list and page can scroll normally.
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
 
     function onWheel(e: WheelEvent) {
-      const target = el;
-      if (!target) return;
-
       const dominantX = Math.abs(e.deltaX) >= Math.abs(e.deltaY);
-
-      if (dominantX) {
-        const canScroll = target.scrollWidth > target.clientWidth + 1;
-        if (!canScroll) return;
-        if (Math.abs(e.deltaX) < 1) return;
-
-        const atStart = target.scrollLeft <= 0;
-        const atEnd =
-          target.scrollLeft + target.clientWidth >= target.scrollWidth - 1;
-        const towardEdge = e.deltaX > 0 ? atEnd : atStart;
-        if (towardEdge) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-        target.scrollLeft += e.deltaX;
-        return;
-      }
-
-      if (Math.abs(e.deltaY) < 1) return;
+      const delta = dominantX
+        ? e.deltaX
+        : e.shiftKey
+          ? e.deltaY
+          : 0;
+      if (Math.abs(delta) < 1) return;
 
       const list = datesRef.current;
       if (list.length === 0) return;
@@ -152,7 +145,7 @@ export function DateRail({
       const i = list.indexOf(selectedDateRef.current);
       const safeI = i === -1 ? 0 : i;
 
-      wheelAccumulatorRef.current += e.deltaY;
+      wheelAccumulatorRef.current += delta;
 
       let steps = 0;
       while (wheelAccumulatorRef.current >= WHEEL_DELTA_PER_DATE) {
@@ -165,8 +158,6 @@ export function DateRail({
       }
 
       if (steps === 0) {
-        // Consume the gesture while building resistance so the page doesn't
-        // scroll under the cursor mid-intent.
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -194,7 +185,6 @@ export function DateRail({
 
     if (s.dragged) {
       suppressClickRef.current = true;
-      // Clear on next tick so the synthetic click from pointerup is ignored.
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
@@ -203,9 +193,9 @@ export function DateRail({
     dragRef.current = {
       pointerId: null,
       startX: 0,
-      startScrollLeft: 0,
       dragged: false,
     };
+    stepAccumulatorRef.current = 0;
     setIsDragging(false);
     scrollerRef.current?.releasePointerCapture(pointerId);
   }, []);
@@ -213,17 +203,13 @@ export function DateRail({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
-      const el = scrollerRef.current;
-      if (!el) return;
-      if (el.scrollWidth <= el.clientWidth + 1) return;
-
       dragRef.current = {
         pointerId: e.pointerId,
         startX: e.clientX,
-        startScrollLeft: el.scrollLeft,
         dragged: false,
       };
-      el.setPointerCapture(e.pointerId);
+      stepAccumulatorRef.current = 0;
+      scrollerRef.current?.setPointerCapture(e.pointerId);
     },
     []
   );
@@ -232,20 +218,36 @@ export function DateRail({
     (e: React.PointerEvent<HTMLDivElement>) => {
       const s = dragRef.current;
       if (s.pointerId !== e.pointerId) return;
-      const el = scrollerRef.current;
-      if (!el) return;
 
       const dx = e.clientX - s.startX;
       if (!s.dragged && Math.abs(dx) > CLICK_SLOP_PX) {
         s.dragged = true;
         setIsDragging(true);
+        // Anchor from current position so the first step feels immediate.
+        s.startX = e.clientX;
+        stepAccumulatorRef.current = 0;
+        return;
       }
       if (!s.dragged) return;
 
-      el.scrollLeft = s.startScrollLeft - dx;
+      const stepDx = e.clientX - s.startX;
+      s.startX = e.clientX;
+      // Drag right → earlier dates (content moves with the finger).
+      stepAccumulatorRef.current += -stepDx;
+
+      let steps = 0;
+      while (stepAccumulatorRef.current >= DRAG_STEP_PX) {
+        steps += 1;
+        stepAccumulatorRef.current -= DRAG_STEP_PX;
+      }
+      while (stepAccumulatorRef.current <= -DRAG_STEP_PX) {
+        steps -= 1;
+        stepAccumulatorRef.current += DRAG_STEP_PX;
+      }
+      advance(steps);
       e.preventDefault();
     },
-    []
+    [advance]
   );
 
   const handlePointerUp = useCallback(
@@ -276,8 +278,8 @@ export function DateRail({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       className={cn(
-        "flex gap-1.5 overflow-x-auto overscroll-x-contain touch-pan-x pb-1 [scrollbar-width:thin]",
-        "select-none [mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
+        "flex gap-1.5 overflow-x-auto overscroll-x-none pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "touch-pan-y select-none [mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]",
         isDragging ? "cursor-grabbing" : "cursor-grab",
         className
       )}
@@ -297,8 +299,6 @@ export function DateRail({
             className={cn(
               "flex min-w-[5.25rem] shrink-0 flex-col items-center justify-center rounded-xl px-3.5 py-2.5 text-center transition-[background-color,color,box-shadow] duration-150",
               "outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              // Avoid the browser treating a drag-start on a button as text
-              // selection / native image drag.
               "touch-manipulation",
               isSelected
                 ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
