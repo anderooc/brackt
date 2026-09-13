@@ -16,9 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { CalendarPlus } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { loadPersonalScheduleForViewer } from "@/lib/api/queries/personal-schedule";
 import { PageHeader } from "@/components/layout/page-header";
+import { buttonVariants } from "@/components/ui/button";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { PersonalScheduleMatchList } from "./personal-schedule-match-list";
@@ -38,6 +40,20 @@ export default async function MySchedulePage() {
       <PageHeader
         title="My schedule"
         description="Upcoming matches for your teams, reffing assignments, and officiating roles."
+        actions={
+          schedule.matches.length > 0 ? (
+            <a
+              href="/api/v1/me/schedule.ics"
+              className={buttonVariants({
+                variant: "outline",
+                className: "w-full sm:w-auto",
+              })}
+            >
+              <CalendarPlus className="mr-2 h-4 w-4" />
+              Add to calendar
+            </a>
+          ) : null
+        }
       />
 
       <PersonalScheduleMatchList matches={schedule.matches} />
