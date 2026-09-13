@@ -73,6 +73,9 @@ export type TeamMemberRole = "captain" | "player";
 
 export type SchoolMemberRole = "president" | "officer" | "member";
 
+/** Tournament co-host / staff roles (resource-scoped host helpers). */
+export type TournamentStaffRole = "co_host" | "staff";
+
 export type SchoolVerificationStatus = "pending" | "verified" | "rejected";
 
 /** Standalone teams (no parent school) use the same review states as schools. */

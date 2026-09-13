@@ -21,49 +21,69 @@ import {
   courts,
   courtDivisions,
   divisions,
+  tournamentStaff,
   tournaments,
+  users,
 } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { CourtManager } from "../court-manager";
 import { PoolManager } from "../pool-manager";
 import { RegistrationAvailabilityForm } from "../waitlist-controls";
+import { TournamentStaffPanel } from "../tournament-staff-panel";
+import type { TournamentStaffRole } from "@/types";
 
 export async function TournamentSetupPanel({
   tournamentId,
   canEditSetup,
+  canManageStaff = false,
 }: {
   tournamentId: string;
   canEditSetup: boolean;
+  canManageStaff?: boolean;
 }) {
-  const [tournamentRow, tournamentDivisions, courtJoinRows] = await Promise.all([
-    db
-      .select({
-        playFormat: tournaments.playFormat,
-        registrationCapacity: tournaments.registrationCapacity,
-        registrationDeadline: tournaments.registrationDeadline,
-      })
-      .from(tournaments)
-      .where(eq(tournaments.id, tournamentId))
-      .limit(1)
-      .then((rows) => rows[0]),
-    db
-      .select()
-      .from(divisions)
-      .where(eq(divisions.tournamentId, tournamentId))
-      .orderBy(asc(divisions.name), asc(divisions.id)),
-    db
-      .select({
-        courtId: courts.id,
-        courtName: courts.name,
-        divisionId: divisions.id,
-        divisionName: divisions.name,
-      })
-      .from(courts)
-      .leftJoin(courtDivisions, eq(courtDivisions.courtId, courts.id))
-      .leftJoin(divisions, eq(courtDivisions.divisionId, divisions.id))
-      .where(eq(courts.tournamentId, tournamentId))
-      .orderBy(asc(courts.name), asc(courts.id)),
-  ]);
+  const [tournamentRow, tournamentDivisions, courtJoinRows, staffRows] =
+    await Promise.all([
+      db
+        .select({
+          playFormat: tournaments.playFormat,
+          registrationCapacity: tournaments.registrationCapacity,
+          registrationDeadline: tournaments.registrationDeadline,
+        })
+        .from(tournaments)
+        .where(eq(tournaments.id, tournamentId))
+        .limit(1)
+        .then((rows) => rows[0]),
+      db
+        .select()
+        .from(divisions)
+        .where(eq(divisions.tournamentId, tournamentId))
+        .orderBy(asc(divisions.name), asc(divisions.id)),
+      db
+        .select({
+          courtId: courts.id,
+          courtName: courts.name,
+          divisionId: divisions.id,
+          divisionName: divisions.name,
+        })
+        .from(courts)
+        .leftJoin(courtDivisions, eq(courtDivisions.courtId, courts.id))
+        .leftJoin(divisions, eq(courtDivisions.divisionId, divisions.id))
+        .where(eq(courts.tournamentId, tournamentId))
+        .orderBy(asc(courts.name), asc(courts.id)),
+      canManageStaff || canEditSetup
+        ? db
+            .select({
+              userId: tournamentStaff.userId,
+              role: tournamentStaff.role,
+              fullName: users.fullName,
+              email: users.email,
+            })
+            .from(tournamentStaff)
+            .innerJoin(users, eq(users.id, tournamentStaff.userId))
+            .where(eq(tournamentStaff.tournamentId, tournamentId))
+            .orderBy(asc(users.fullName), asc(users.email))
+        : Promise.resolve([]),
+    ]);
 
   type CourtDivPair = { divisionId: string; divisionName: string };
   const courtOrder: string[] = [];
@@ -109,6 +129,18 @@ export async function TournamentSetupPanel({
         }
         canEdit={canEditSetup}
       />
+      {(canManageStaff || staffRows.length > 0) && (
+        <TournamentStaffPanel
+          tournamentId={tournamentId}
+          canManage={canManageStaff}
+          initialStaff={staffRows.map((row) => ({
+            userId: row.userId,
+            fullName: row.fullName,
+            email: row.email,
+            role: row.role as TournamentStaffRole,
+          }))}
+        />
+      )}
       <section className={emptySetup ? "space-y-1.5" : "space-y-3"}>
         <h2
           className={

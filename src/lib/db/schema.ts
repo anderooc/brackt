@@ -736,6 +736,40 @@ export const tournamentWaivers = pgTable(
   ]
 );
 
+/** Co-hosts and staff who share host ops with the tournament organizer. */
+export const tournamentStaff = pgTable(
+  "tournament_staff",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tournamentId: uuid("tournament_id")
+      .references(() => tournaments.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    role: text("role").$type<"co_host" | "staff">().default("co_host").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (t) => [
+    uniqueIndex("tournament_staff_tournament_user_unique").on(
+      t.tournamentId,
+      t.userId
+    ),
+    index("tournament_staff_tournament_id_idx").on(t.tournamentId),
+    index("tournament_staff_user_id_idx").on(t.userId),
+    index("tournament_staff_created_by_user_id_idx").on(t.createdByUserId),
+    check(
+      "tournament_staff_role_check",
+      sql`${t.role} IN ('co_host', 'staff')`
+    ),
+  ]
+);
+
 export const waiverCompletions = pgTable(
   "waiver_completions",
   {
@@ -816,6 +850,7 @@ export const userPushTokens = pgTable(
     index("user_push_tokens_user_id_idx").on(t.userId),
   ]
 );
+
 
 export const userNotificationPreferences = pgTable(
   "user_notification_preferences",
@@ -1126,6 +1161,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   teamMembers: many(teamMembers),
   schoolMemberships: many(schoolMembers),
   organizedTournaments: many(tournaments),
+  tournamentStaffMemberships: many(tournamentStaff),
   notifications: many(userNotifications),
   pushTokens: many(userPushTokens),
   notificationPreferences: many(userNotificationPreferences),
@@ -1209,11 +1245,28 @@ export const tournamentsRelations = relations(tournaments, ({ one, many }) => ({
   registrations: many(registrations),
   courts: many(courts),
   waivers: many(tournamentWaivers),
+  staff: many(tournamentStaff),
   emailSends: many(tournamentEmailSends),
   chatChannels: many(tournamentChatChannels),
   chatMessages: many(tournamentChatMessages),
   notifications: many(userNotifications),
   postingAnnouncements: many(tournamentPostingAnnouncements),
+}));
+
+export const tournamentStaffRelations = relations(tournamentStaff, ({ one }) => ({
+  tournament: one(tournaments, {
+    fields: [tournamentStaff.tournamentId],
+    references: [tournaments.id],
+  }),
+  user: one(users, {
+    fields: [tournamentStaff.userId],
+    references: [users.id],
+  }),
+  createdBy: one(users, {
+    fields: [tournamentStaff.createdByUserId],
+    references: [users.id],
+    relationName: "tournamentStaffCreatedBy",
+  }),
 }));
 
 export const tournamentWaiversRelations = relations(
@@ -1284,13 +1337,6 @@ export const userPushTokensRelations = relations(userPushTokens, ({ one }) => ({
   }),
 }));
 
-export const userNotificationPreferencesRelations = relations(
-  userNotificationPreferences,
-  ({ one }) => ({
-    user: one(users, {
-      fields: [userNotificationPreferences.userId],
-      references: [users.id],
-    }),
   })
 );
 

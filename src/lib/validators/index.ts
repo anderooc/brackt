@@ -164,6 +164,13 @@ export const addSchoolMemberSchema = z.object({
     .transform((v) => (v && v.trim().length > 0 ? v.trim() : null)),
 });
 
+export const addTournamentStaffSchema = z.object({
+  email: z.email("Enter a valid email"),
+  role: z.enum(["co_host", "staff"], {
+    message: "Choose co-host or staff",
+  }),
+});
+
 export const createTournamentSchema = z.object({
   hostSchoolId: z.string().uuid("Select the hosting school"),
   name: z.string().min(1, "Tournament name is required"),
@@ -272,3 +279,4 @@ export type UpdateMatchFormatInput = z.infer<typeof updateMatchFormatSchema>;
 export type CreateSchoolInput = z.infer<typeof createSchoolSchema>;
 export type UpdateSchoolInput = z.infer<typeof updateSchoolSchema>;
 export type AddSchoolMemberInput = z.infer<typeof addSchoolMemberSchema>;
+export type AddTournamentStaffInput = z.infer<typeof addTournamentStaffSchema>;

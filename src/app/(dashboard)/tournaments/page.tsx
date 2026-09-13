@@ -26,6 +26,7 @@ import { TournamentGrid } from "@/components/tournament-grid";
 import {
   filterVisibleTournaments,
   getUserSchoolIds,
+  getUserStaffTournamentIds,
 } from "@/lib/tournaments/access";
 import { loadTournamentGridList } from "@/lib/tournaments/public-list-loader";
 import { pageMetadata } from "@/lib/metadata";
@@ -38,15 +39,17 @@ export default async function TournamentsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [allTournaments, userSchoolIds] = await Promise.all([
+  const [allTournaments, userSchoolIds, staffTournamentIds] = await Promise.all([
     loadTournamentGridList(),
     getUserSchoolIds(user.id),
+    getUserStaffTournamentIds(user.id),
   ]);
 
   const visibleTournaments = filterVisibleTournaments(
     allTournaments,
     user,
-    userSchoolIds
+    userSchoolIds,
+    staffTournamentIds
   );
 
   return (

@@ -12,6 +12,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   schoolMembers,
+  tournamentStaff,
   tournaments,
   users,
 } from "@/lib/db/schema";
@@ -48,6 +49,20 @@ export async function loadLockedTournamentForOrganizer(
   if (tournament.organizerId === actorUserId || actor.role === "admin") {
     return tournament;
   }
+
+  const [staff] = await executor
+    .select({ id: tournamentStaff.id })
+    .from(tournamentStaff)
+    .where(
+      and(
+        eq(tournamentStaff.tournamentId, tournamentId),
+        eq(tournamentStaff.userId, actorUserId)
+      )
+    )
+    .for("share")
+    .limit(1);
+  if (staff) return tournament;
+
   if (!tournament.hostSchoolId) return null;
 
   const [officer] = await executor

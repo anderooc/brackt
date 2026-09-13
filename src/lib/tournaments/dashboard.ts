@@ -23,6 +23,7 @@ import {
   schoolMembers,
   teamMembers,
   teams,
+  tournamentStaff,
   tournaments,
 } from "@/lib/db/schema";
 import type { DashboardTournamentRelation } from "@/lib/labels/dashboard-relation";
@@ -88,7 +89,8 @@ function resolveRelation(args: {
 
 /**
  * Tournaments the user is connected to via team registration, organizing,
- * or membership in the host school. Upcoming / in-progress first, then past.
+ * co-host/staff assignment, or membership in the host school.
+ * Upcoming / in-progress first, then past.
  */
 export async function getDashboardTournaments(
   userId: string,
@@ -111,57 +113,79 @@ export async function getDashboardTournaments(
   const teamIds = memberTeams.map((r) => r.teamId);
   const schoolIds = schoolRows.map((r) => r.schoolId);
 
-  const [registrationRows, organizedRows, hostSchoolRows] = await Promise.all([
-    teamIds.length === 0
-      ? Promise.resolve([])
-      : db
-          .select({
-            tournamentId: tournaments.id,
-            slug: tournaments.slug,
-            name: tournaments.name,
-            date: tournaments.date,
-            location: tournaments.location,
-            status: tournaments.status,
-            registrationStatus: registrations.status,
-            registeredAt: registrations.registeredAt,
-            teamName: teams.name,
-            divisionName: divisions.name,
-          })
-          .from(registrations)
-          .innerJoin(tournaments, eq(registrations.tournamentId, tournaments.id))
-          .innerJoin(teams, eq(registrations.teamId, teams.id))
-          .leftJoin(divisions, eq(registrations.divisionId, divisions.id))
-          .where(inArray(registrations.teamId, teamIds))
-          .orderBy(desc(registrations.registeredAt)),
-    db
-      .select({
-        tournamentId: tournaments.id,
-        slug: tournaments.slug,
-        name: tournaments.name,
-        date: tournaments.date,
-        location: tournaments.location,
-        status: tournaments.status,
-      })
-      .from(tournaments)
-      .where(eq(tournaments.organizerId, userId)),
-    schoolIds.length === 0
-      ? Promise.resolve([])
-      : db
-          .select({
-            tournamentId: tournaments.id,
-            slug: tournaments.slug,
-            name: tournaments.name,
-            date: tournaments.date,
-            location: tournaments.location,
-            status: tournaments.status,
-          })
-          .from(tournaments)
-          .where(inArray(tournaments.hostSchoolId, schoolIds)),
-  ]);
+  const [registrationRows, organizedRows, staffRows, hostSchoolRows] =
+    await Promise.all([
+      teamIds.length === 0
+        ? Promise.resolve([])
+        : db
+            .select({
+              tournamentId: tournaments.id,
+              slug: tournaments.slug,
+              name: tournaments.name,
+              date: tournaments.date,
+              location: tournaments.location,
+              status: tournaments.status,
+              registrationStatus: registrations.status,
+              registeredAt: registrations.registeredAt,
+              teamName: teams.name,
+              divisionName: divisions.name,
+            })
+            .from(registrations)
+            .innerJoin(
+              tournaments,
+              eq(registrations.tournamentId, tournaments.id)
+            )
+            .innerJoin(teams, eq(registrations.teamId, teams.id))
+            .leftJoin(divisions, eq(registrations.divisionId, divisions.id))
+            .where(inArray(registrations.teamId, teamIds))
+            .orderBy(desc(registrations.registeredAt)),
+      db
+        .select({
+          tournamentId: tournaments.id,
+          slug: tournaments.slug,
+          name: tournaments.name,
+          date: tournaments.date,
+          location: tournaments.location,
+          status: tournaments.status,
+        })
+        .from(tournaments)
+        .where(eq(tournaments.organizerId, userId)),
+      db
+        .select({
+          tournamentId: tournaments.id,
+          slug: tournaments.slug,
+          name: tournaments.name,
+          date: tournaments.date,
+          location: tournaments.location,
+          status: tournaments.status,
+        })
+        .from(tournamentStaff)
+        .innerJoin(
+          tournaments,
+          eq(tournamentStaff.tournamentId, tournaments.id)
+        )
+        .where(eq(tournamentStaff.userId, userId)),
+      schoolIds.length === 0
+        ? Promise.resolve([])
+        : db
+            .select({
+              tournamentId: tournaments.id,
+              slug: tournaments.slug,
+              name: tournaments.name,
+              date: tournaments.date,
+              location: tournaments.location,
+              status: tournaments.status,
+            })
+            .from(tournaments)
+            .where(inArray(tournaments.hostSchoolId, schoolIds)),
+    ]);
 
-  // Host-school drafts stay organizer-only; other school members see published
-  // host events (registration open and beyond).
-  const organizedIds = new Set(organizedRows.map((o) => o.tournamentId));
+  // Host-school drafts stay organizer/staff-only; other school members see
+  // published host events (registration open and beyond).
+  const organizedIds = new Set([
+    ...organizedRows.map((o) => o.tournamentId),
+    ...staffRows.map((o) => o.tournamentId),
+  ]);
   const hostVisible = hostSchoolRows.filter(
     (row) => row.status !== "draft" || organizedIds.has(row.tournamentId)
   );
@@ -212,6 +236,11 @@ export async function getDashboardTournaments(
   }
 
   for (const row of organizedRows) {
+    const acc = upsertBase(row);
+    acc.isOrganizer = true;
+  }
+
+  for (const row of staffRows) {
     const acc = upsertBase(row);
     acc.isOrganizer = true;
   }

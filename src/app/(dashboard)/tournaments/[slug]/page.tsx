@@ -38,6 +38,7 @@ import { TournamentHostSchoolLink } from "@/components/tournament-host-school-li
 import { TournamentHeaderMeta } from "@/components/tournament-header-meta";
 import {
   canEditTournamentSetup,
+  canManageTournamentStaff,
   canRegisterTeams,
   hostChecklistSteps,
   resolveIsTournamentOrganizer,
@@ -116,7 +117,8 @@ export default async function TournamentDetailPage({
   const id = tournament.id;
   const isOrganizer = await resolveIsTournamentOrganizer(tournament, user);
   const canEditSetup =
-    isOrganizer && await canEditTournamentSetup(tournament, user);
+    isOrganizer && (await canEditTournamentSetup(tournament, user));
+  const canManageStaff = canManageTournamentStaff(tournament, user);
   const preparationLockedReason = isOrganizer
     ? tournamentPreparationLockedReason(tournament)
     : null;
@@ -434,6 +436,7 @@ export default async function TournamentDetailPage({
             tournament={tournament}
             user={user}
             canEditSetup={canEditSetup}
+            canManageStaff={canManageStaff}
             preparationLockedReason={preparationLockedReason}
             myTeamIds={myTeamIds}
             captainTeamIds={captainTeamIds}

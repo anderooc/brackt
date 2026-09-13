@@ -30,8 +30,10 @@ import {
   matches,
   pools,
   brackets,
+  tournamentStaff,
+  users,
 } from "@/lib/db/schema";
-import { eq, and, ne, inArray, or, count } from "drizzle-orm";
+import { eq, and, ne, inArray, or, count, asc } from "drizzle-orm";
 import { requireUser } from "@/lib/auth";
 import { notifyTeamCaptainsOfRegistrationUpdate } from "@/lib/notifications/tournament-events";
 import {
@@ -39,6 +41,7 @@ import {
   createDivisionSchema,
   registrationAvailabilitySchema,
   updateMatchFormatSchema,
+  addTournamentStaffSchema,
 } from "@/lib/validators";
 import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { createTournamentWithHostLocks } from "@/lib/tournaments/tournament-creation";
@@ -48,6 +51,7 @@ import {
   canCheckInRegistrations,
   canEditRegistrations,
   canEditTournamentSetup,
+  canManageTournamentStaff,
   resolveIsTournamentOrganizer,
   tournamentPreparationLockedReason,
 } from "@/lib/tournaments/permissions";
@@ -80,7 +84,7 @@ import {
 } from "@/lib/tournaments/waitlist-operations";
 import { isCreatablePlayFormat } from "@/lib/labels/play-format";
 import { invalidatePublicTournamentCachesByIds } from "@/lib/tournaments/public-cache-invalidation";
-import type { TournamentStatus } from "@/types";
+import type { TournamentStaffRole, TournamentStatus } from "@/types";
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -612,6 +616,134 @@ export async function deleteTournament(
   revalidatePath("/tournaments/[slug]/register", "page");
 
   return { success: true as const };
+}
+
+export async function addTournamentStaff(
+  tournamentId: string,
+  formData: FormData
+) {
+  const user = await requireUser();
+
+  const [tournament] = await db
+    .select()
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId))
+    .limit(1);
+
+  if (!tournament || !canManageTournamentStaff(tournament, user)) {
+    return {
+      error: "Only the tournament owner or an admin can manage staff.",
+    };
+  }
+
+  const parsed = addTournamentStaffSchema.safeParse({
+    email: formData.get("email"),
+    role: formData.get("role") || "co_host",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const [target] = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+    })
+    .from(users)
+    .where(eq(users.email, parsed.data.email.toLowerCase().trim()))
+    .limit(1);
+
+  if (!target) {
+    return {
+      error:
+        "No account found for that email. They need to sign up on brackt first.",
+    };
+  }
+
+  if (target.id === tournament.organizerId) {
+    return { error: "The tournament owner is already the organizer." };
+  }
+
+  const [existing] = await db
+    .select({ id: tournamentStaff.id })
+    .from(tournamentStaff)
+    .where(
+      and(
+        eq(tournamentStaff.tournamentId, tournamentId),
+        eq(tournamentStaff.userId, target.id)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    return { error: "That user is already on this tournament's staff." };
+  }
+
+  await db.insert(tournamentStaff).values({
+    tournamentId,
+    userId: target.id,
+    role: parsed.data.role as TournamentStaffRole,
+    createdByUserId: user.id,
+  });
+
+  revalidatePath("/tournaments/[slug]", "page");
+  return {
+    success: true as const,
+    member: {
+      id: target.id,
+      fullName: target.fullName,
+      email: target.email,
+      role: parsed.data.role as TournamentStaffRole,
+    },
+  };
+}
+
+export async function removeTournamentStaff(
+  tournamentId: string,
+  staffUserId: string
+) {
+  const user = await requireUser();
+
+  const [tournament] = await db
+    .select()
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId))
+    .limit(1);
+
+  if (!tournament || !canManageTournamentStaff(tournament, user)) {
+    return {
+      error: "Only the tournament owner or an admin can manage staff.",
+    };
+  }
+
+  await db
+    .delete(tournamentStaff)
+    .where(
+      and(
+        eq(tournamentStaff.tournamentId, tournamentId),
+        eq(tournamentStaff.userId, staffUserId)
+      )
+    );
+
+  revalidatePath("/tournaments/[slug]", "page");
+  return { success: true as const };
+}
+
+export async function listTournamentStaff(tournamentId: string) {
+  return db
+    .select({
+      id: tournamentStaff.id,
+      userId: tournamentStaff.userId,
+      role: tournamentStaff.role,
+      fullName: users.fullName,
+      email: users.email,
+      createdAt: tournamentStaff.createdAt,
+    })
+    .from(tournamentStaff)
+    .innerJoin(users, eq(users.id, tournamentStaff.userId))
+    .where(eq(tournamentStaff.tournamentId, tournamentId))
+    .orderBy(asc(users.fullName), asc(users.email));
 }
 
 export async function updateTournamentStatus(

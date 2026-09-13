@@ -28,6 +28,7 @@ type TournamentActivePanelProps = {
   tournament: Tournament;
   user: User;
   canEditSetup: boolean;
+  canManageStaff?: boolean;
   preparationLockedReason: string | null;
   myTeamIds: string[];
   captainTeamIds: Set<string>;
@@ -51,6 +52,7 @@ export async function TournamentActivePanel({
   tournament,
   user,
   canEditSetup,
+  canManageStaff = false,
   preparationLockedReason,
   myTeamIds,
   captainTeamIds,
@@ -74,6 +76,7 @@ export async function TournamentActivePanel({
         <TournamentSetupPanel
           tournamentId={tournament.id}
           canEditSetup={canEditSetup}
+          canManageStaff={canManageStaff}
         />
       );
     }

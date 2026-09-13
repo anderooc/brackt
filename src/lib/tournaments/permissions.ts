@@ -17,8 +17,11 @@
  */
 
 import { cache } from "react";
+import { and, eq } from "drizzle-orm";
 import { TEAM_GENDER_LABELS } from "@/lib/constants/team";
 import { isAdmin } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { tournamentStaff } from "@/lib/db/schema";
 import { getHostingSchoolForUser } from "@/lib/schools/hosting";
 import { isTournamentArchived } from "@/lib/tournament-status";
 import type { PlayFormat } from "@/lib/labels/play-format";
@@ -36,6 +39,7 @@ import type { TeamGender, UserRole } from "@/types";
 
 /** Fields required for permission checks across server and client. */
 export type TournamentForPermissions = {
+  id: string;
   organizerId: string;
   /** Metadata from hosting school at create. */
   hostSchoolId: string | null;
@@ -74,33 +78,64 @@ export const resolveHostSchoolOfficer = cache(
 );
 
 /**
- * Sync host check. Pass `isHostSchoolOfficer` when already resolved
- * (prefer `resolveIsTournamentOrganizer` on the server).
+ * Sync host check. Pass `isHostSchoolOfficer` / `isTournamentStaff` when already
+ * resolved (prefer `resolveIsTournamentOrganizer` on the server).
  */
 export function isTournamentOrganizer(
   tournament: Pick<TournamentForPermissions, "organizerId">,
   user: UserForPermissions,
-  isHostSchoolOfficer = false
+  isHostSchoolOfficer = false,
+  isTournamentStaff = false
 ): boolean {
   return (
     tournament.organizerId === user.id ||
     isAdmin(user) ||
-    isHostSchoolOfficer
+    isHostSchoolOfficer ||
+    isTournamentStaff
   );
 }
 
-/** Creator, admin, or president/officer of the hosting school. */
+/** True when the user is listed as co-host or staff on the tournament. */
+export const resolveIsTournamentStaff = cache(
+  async (tournamentId: string, userId: string): Promise<boolean> => {
+    const [row] = await db
+      .select({ id: tournamentStaff.id })
+      .from(tournamentStaff)
+      .where(
+        and(
+          eq(tournamentStaff.tournamentId, tournamentId),
+          eq(tournamentStaff.userId, userId)
+        )
+      )
+      .limit(1);
+    return row != null;
+  }
+);
+
+/** Creator, admin, host-school officer, or tournament co-host/staff. */
 export async function resolveIsTournamentOrganizer(
-  tournament: Pick<TournamentForPermissions, "organizerId" | "hostSchoolId">,
+  tournament: Pick<TournamentForPermissions, "id" | "organizerId" | "hostSchoolId">,
   user: UserForPermissions
 ): Promise<boolean> {
   if (tournament.organizerId === user.id || isAdmin(user)) return true;
+  if (await resolveIsTournamentStaff(tournament.id, user.id)) return true;
   return resolveHostSchoolOfficer(tournament.hostSchoolId, user.id);
+}
+
+/** Owner (`organizerId`) or platform admin may manage the staff roster. */
+export function canManageTournamentStaff(
+  tournament: Pick<TournamentForPermissions, "organizerId">,
+  user: UserForPermissions
+): boolean {
+  return tournament.organizerId === user.id || isAdmin(user);
 }
 
 /** Pool standings, matches, and brackets are host-only until released. */
 export async function canViewDivisionPoolPlay(
-  tournament: Pick<TournamentForPermissions, "organizerId" | "hostSchoolId">,
+  tournament: Pick<
+    TournamentForPermissions,
+    "id" | "organizerId" | "hostSchoolId"
+  >,
   user: UserForPermissions,
   poolsReleasedAt: Date | string | null
 ): Promise<boolean> {
@@ -108,19 +143,22 @@ export async function canViewDivisionPoolPlay(
   return poolsReleasedAt != null;
 }
 
-/** Draft tournaments are hidden from everyone except the organizer, admins, and
- *  members of the hosting school. Non-draft tournaments are visible to all
- *  authenticated users on the dashboard. */
+/** Draft tournaments are hidden from everyone except the organizer, admins,
+ *  host-school members, and tournament staff. Non-draft tournaments are visible
+ *  to all authenticated users on the dashboard. */
 export function canViewTournament(
   tournament: Pick<
     TournamentForPermissions,
     "status" | "organizerId" | "hostSchoolId"
   >,
   user: UserForPermissions,
-  isHostSchoolMember: boolean
+  isHostSchoolMember: boolean,
+  isTournamentStaff = false
 ): boolean {
   if (tournament.status !== "draft") return true;
-  if (isTournamentOrganizer(tournament, user)) return true;
+  if (isTournamentOrganizer(tournament, user, false, isTournamentStaff)) {
+    return true;
+  }
   if (isAdmin(user)) return true;
   return isHostSchoolMember;
 }
@@ -250,7 +288,7 @@ export async function canScoreMatches(
 export async function canRefereeMatch(
   tournament: Pick<
     TournamentForPermissions,
-    "organizerId" | "hostSchoolId" | "status" | "date"
+    "id" | "organizerId" | "hostSchoolId" | "status" | "date"
   >,
   user: UserForPermissions,
   match: { refTeamId: string | null },
