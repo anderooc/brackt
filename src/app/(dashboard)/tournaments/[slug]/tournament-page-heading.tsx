@@ -30,6 +30,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
+  Copy,
   FileText,
   Link2,
   MoreVertical,
@@ -39,6 +40,7 @@ import {
 import {
   renameTournament,
   deleteTournament,
+  duplicateTournament,
   updateTournamentDate,
   updateTournamentListingDetails,
 } from "../actions";
@@ -198,6 +200,8 @@ export function TournamentPageHeading({
   const [confirmText, setConfirmText] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [duplicateBusy, setDuplicateBusy] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!editingTitle) return;
@@ -298,6 +302,23 @@ export function TournamentPageHeading({
     resetDeleteDialog();
     router.replace("/tournaments");
     router.refresh();
+  }
+
+  async function handleDuplicate() {
+    setDuplicateBusy(true);
+    setDuplicateError(null);
+    const result = await duplicateTournament(tournamentId);
+    if (result?.error) {
+      setDuplicateError(result.error);
+      setDuplicateBusy(false);
+      return;
+    }
+    if (result?.success && result.slug) {
+      router.push(`/tournaments/${result.slug}`);
+      router.refresh();
+      return;
+    }
+    setDuplicateBusy(false);
   }
 
   const nameMatches =
@@ -533,6 +554,14 @@ export function TournamentPageHeading({
                   <Link2 className="size-4" />
                   Copy page link
                 </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  disabled={duplicateBusy}
+                  onClick={() => void handleDuplicate()}
+                >
+                  <Copy className="size-4" />
+                  {duplicateBusy ? "Duplicating…" : "Duplicate as draft"}
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
@@ -556,6 +585,14 @@ export function TournamentPageHeading({
               role="status"
             >
               {copyHint}
+            </span>
+          )}
+          {duplicateError && (
+            <span
+              className="pointer-events-none absolute -bottom-6 right-0 max-w-[14rem] truncate text-xs text-destructive"
+              role="alert"
+            >
+              {duplicateError}
             </span>
           )}
           </div>

@@ -45,6 +45,7 @@ import {
 } from "@/lib/validators";
 import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { createTournamentWithHostLocks } from "@/lib/tournaments/tournament-creation";
+import { duplicateTournamentAsDraft } from "@/lib/tournaments/duplicate-tournament";
 import { slugify, uniqueSlug } from "@/lib/utils/slug";
 import { isTournamentArchived } from "@/lib/tournament-status";
 import {
@@ -616,6 +617,35 @@ export async function deleteTournament(
   revalidatePath("/tournaments/[slug]/register", "page");
 
   return { success: true as const };
+}
+
+export async function duplicateTournament(tournamentId: string) {
+  const user = await requireUser();
+
+  const [tournament] = await db
+    .select()
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId))
+    .limit(1);
+
+  if (!tournament || !(await resolveIsTournamentOrganizer(tournament, user))) {
+    return { error: "Only the organizer can duplicate this tournament" };
+  }
+
+  let created: Awaited<ReturnType<typeof duplicateTournamentAsDraft>>;
+  try {
+    created = await duplicateTournamentAsDraft({
+      sourceTournamentId: tournamentId,
+      actorId: user.id,
+    });
+  } catch (error) {
+    return { error: competitionOperationError(error) };
+  }
+
+  revalidatePath("/tournaments");
+  revalidatePath("/dashboard");
+  revalidatePath("/schedule");
+  return { success: true as const, slug: created.slug };
 }
 
 export async function addTournamentStaff(
