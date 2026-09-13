@@ -360,6 +360,7 @@ export function MatchBoard({
   settings,
   tournamentId,
   courts = [],
+  refTeams = [],
   isOrganizer = false,
 }: {
   slug: string;
@@ -367,6 +368,7 @@ export function MatchBoard({
   settings: FormatSettings;
   tournamentId?: string;
   courts?: { id: string; name: string }[];
+  refTeams?: { id: string; name: string }[];
   isOrganizer?: boolean;
 }) {
   const [bulkMode, setBulkMode] = useState(false);
@@ -623,6 +625,7 @@ export function MatchBoard({
           tournamentId={tournamentId}
           slug={slug}
           courts={courts}
+          refTeams={refTeams}
           selectedMatchIds={selectedIds}
           onClearSelection={handleClearSelection}
           onExitBulkMode={handleExitBulkMode}

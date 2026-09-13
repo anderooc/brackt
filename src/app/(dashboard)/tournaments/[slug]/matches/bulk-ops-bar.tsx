@@ -27,6 +27,7 @@ import {
   Loader2,
   MapPin,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,15 +47,18 @@ import {
 import {
   bulkClearScheduleAction,
   bulkReassignCourtsAction,
+  bulkReassignRefsAction,
   bulkShiftMatchTimesAction,
 } from "./bulk-actions";
 
 const UNASSIGN_COURT_VAL = "__unassign__";
+const UNASSIGN_REF_VAL = "__unassign_ref__";
 
 export function BulkOpsBar({
   tournamentId,
   slug,
   courts,
+  refTeams = [],
   selectedMatchIds,
   onClearSelection,
   onExitBulkMode,
@@ -62,6 +66,7 @@ export function BulkOpsBar({
   tournamentId: string;
   slug: string;
   courts: { id: string; name: string }[];
+  refTeams?: { id: string; name: string }[];
   selectedMatchIds: string[];
   onClearSelection: () => void;
   onExitBulkMode: () => void;
@@ -70,6 +75,9 @@ export function BulkOpsBar({
   const [pending, startTransition] = useTransition();
   const [targetCourtId, setTargetCourtId] = useState<string>(
     courts[0]?.id ?? UNASSIGN_COURT_VAL
+  );
+  const [targetRefTeamId, setTargetRefTeamId] = useState<string>(
+    refTeams[0]?.id ?? UNASSIGN_REF_VAL
   );
   const [shiftMinutes, setShiftMinutes] = useState<number>(30);
 
@@ -85,6 +93,26 @@ export function BulkOpsBar({
         slug,
         selectedMatchIds,
         courtParam
+      );
+      if (!res.success) {
+        toast.error(res.error);
+      } else {
+        toast.success(res.message);
+        onClearSelection();
+        router.refresh();
+      }
+    });
+  }
+
+  function handleReassignRef() {
+    startTransition(async () => {
+      const refParam =
+        targetRefTeamId === UNASSIGN_REF_VAL ? null : targetRefTeamId;
+      const res = await bulkReassignRefsAction(
+        tournamentId,
+        slug,
+        selectedMatchIds,
+        refParam
       );
       if (!res.success) {
         toast.error(res.error);
@@ -150,7 +178,6 @@ export function BulkOpsBar({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Reassign Court */}
           {courts.length > 0 && (
             <div className="flex items-center gap-1.5">
               <Select
@@ -190,7 +217,45 @@ export function BulkOpsBar({
             </div>
           )}
 
-          {/* Shift Times */}
+          {refTeams.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={targetRefTeamId}
+                onValueChange={(v) => {
+                  if (v) setTargetRefTeamId(v);
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger size="sm" className="h-8 min-w-[8rem] text-xs">
+                  <Users className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                  <SelectValue placeholder="Working team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGN_REF_VAL}>Clear ref</SelectItem>
+                  {refTeams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleReassignRef}
+                disabled={pending}
+                className="h-8 text-xs font-medium"
+              >
+                {pending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  "Assign ref"
+                )}
+              </Button>
+            </div>
+          )}
+
           <div className="flex items-center gap-1.5">
             <Select
               value={String(shiftMinutes)}
@@ -231,7 +296,6 @@ export function BulkOpsBar({
             </Button>
           </div>
 
-          {/* Clear options dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -270,7 +334,6 @@ export function BulkOpsBar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Close bulk bar */}
           <Button
             type="button"
             variant="ghost"
