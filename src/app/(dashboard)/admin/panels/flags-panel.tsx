@@ -64,8 +64,10 @@ export async function AdminFlagsPanel({ page }: { page: number }) {
       <div>
         <h2 className="text-lg font-semibold tracking-tight">Content flags</h2>
         <p className="text-sm text-muted-foreground">
-          Recorded every time the content filter rejected user input. Resolve
-          entries you&apos;ve reviewed, or delete them to clear the log.{" "}
+          Recorded when the content filter rejects user input, and when users
+          report chat messages (<code className="text-xs">blocked_word</code>{" "}
+          = <code className="text-xs">user-report</code>). Resolve entries
+          you&apos;ve reviewed, or delete them to clear the log.{" "}
           <span className="text-muted-foreground/90">
             ({ADMIN_TABLE_PAGE_SIZE} per page.)
           </span>

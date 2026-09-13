@@ -25,6 +25,7 @@ import { requireUser } from "@/lib/auth";
 import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { db } from "@/lib/db";
 import {
+  contentFlags,
   teamMembers,
   tournamentChatChannels,
   tournamentChatMessages,
@@ -45,6 +46,18 @@ import type { EligibleSpeakingTeam } from "@/lib/tournaments/chat-access";
 import type { TournamentChatChannelKind } from "@/types";
 
 const CHAT_RATE_LIMIT_PER_HOUR = 30;
+
+const REPORT_REASONS = [
+  "spam",
+  "harassment",
+  "inappropriate",
+  "other",
+] as const;
+
+const reportMessageSchema = z.object({
+  messageId: z.string().uuid(),
+  reason: z.enum(REPORT_REASONS),
+});
 
 type ChatChannelRow = {
   id: string;
@@ -258,6 +271,56 @@ export async function sendTournamentChatMessage(
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/notifications");
   return { success: true as const, messageId: message!.id };
+}
+
+export async function reportTournamentChatMessage(
+  tournamentId: string,
+  input: z.infer<typeof reportMessageSchema>
+) {
+  const loaded = await loadChatContext(tournamentId);
+  if (!loaded.ok) {
+    return { error: loaded.error };
+  }
+
+  const parsed = reportMessageSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid report.",
+    } as const;
+  }
+
+  const [message] = await db
+    .select({
+      id: tournamentChatMessages.id,
+      authorUserId: tournamentChatMessages.authorUserId,
+      body: tournamentChatMessages.body,
+      tournamentId: tournamentChatMessages.tournamentId,
+    })
+    .from(tournamentChatMessages)
+    .where(
+      and(
+        eq(tournamentChatMessages.id, parsed.data.messageId),
+        eq(tournamentChatMessages.tournamentId, tournamentId)
+      )
+    )
+    .limit(1);
+
+  if (!message) {
+    return { error: "Message not found." as const };
+  }
+
+  if (message.authorUserId === loaded.user.id) {
+    return { error: "You cannot report your own message." as const };
+  }
+
+  await db.insert(contentFlags).values({
+    userId: loaded.user.id,
+    area: `chat.message:${message.id}`,
+    blockedWord: "user-report",
+    text: `Reason: ${parsed.data.reason}\n\n${message.body}`,
+  });
+
+  return { success: true as const };
 }
 
 export async function markTournamentChatChannelRead(

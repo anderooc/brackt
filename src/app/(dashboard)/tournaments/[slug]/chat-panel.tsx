@@ -22,12 +22,14 @@ import { useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format, isToday, isYesterday } from "date-fns";
 import {
+  Flag,
   HelpCircle,
   Megaphone,
   MessageSquare,
   MessagesSquare,
   Send,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -38,6 +40,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Card,
   CardContent,
@@ -54,6 +63,7 @@ import type { TournamentChatChannelKind } from "@/types";
 import { TOURNAMENT_CHAT_BODY_MAX } from "@/lib/tournaments/chat-constants";
 import {
   markTournamentChatChannelRead,
+  reportTournamentChatMessage,
   sendTournamentChatMessage,
 } from "./chat/actions";
 
@@ -82,6 +92,13 @@ const CHANNEL_ICONS: Record<TournamentChatChannelKind, typeof Megaphone> = {
   questions: HelpCircle,
   general: MessagesSquare,
 };
+
+const REPORT_REASONS = [
+  { value: "spam", label: "Spam" },
+  { value: "harassment", label: "Harassment" },
+  { value: "inappropriate", label: "Inappropriate" },
+  { value: "other", label: "Other" },
+] as const;
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -140,12 +157,45 @@ function composePlaceholder(kind: TournamentChatChannelKind | undefined): string
   }
 }
 
-function ChatMessageBubble({ message }: { message: ChatMessageRow }) {
+function ChatMessageBubble({
+  message,
+  tournamentId,
+  canReport,
+  reported,
+  onReported,
+}: {
+  message: ChatMessageRow;
+  tournamentId: string;
+  canReport: boolean;
+  reported: boolean;
+  onReported: (messageId: string) => void;
+}) {
+  const [reporting, setReporting] = useState(false);
   const subtitle = message.teamName
     ? message.teamName
     : message.isOrganizerMessage
       ? "Tournament host"
       : null;
+
+  async function handleReport(
+    reason: (typeof REPORT_REASONS)[number]["value"]
+  ) {
+    if (reporting || reported) return;
+    setReporting(true);
+    const result = await reportTournamentChatMessage(tournamentId, {
+      messageId: message.id,
+      reason,
+    });
+    setReporting(false);
+
+    if ("error" in result && result.error) {
+      toast.error(result.error);
+      return;
+    }
+
+    onReported(message.id);
+    toast.success("Message reported. Thanks for letting us know.");
+  }
 
   return (
     <div className="flex gap-3">
@@ -179,6 +229,41 @@ function ChatMessageBubble({ message }: { message: ChatMessageRow }) {
           >
             {formatMessageTime(message.createdAt)}
           </time>
+          {canReport ? (
+            reported ? (
+              <span className="text-xs text-muted-foreground">Reported</span>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={reporting}
+                      className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      aria-label="Report message"
+                    >
+                      <Flag className="h-3 w-3" />
+                      Report
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="start" className="min-w-44">
+                  <DropdownMenuLabel>Report reason</DropdownMenuLabel>
+                  {REPORT_REASONS.map((reason) => (
+                    <DropdownMenuItem
+                      key={reason.value}
+                      disabled={reporting}
+                      onClick={() => void handleReport(reason.value)}
+                    >
+                      {reason.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          ) : null}
         </div>
         <div
           className={cn(
@@ -199,7 +284,7 @@ export function TournamentChatPanel({
   tournamentId,
   tournamentStatus: _tournamentStatus,
   organizerId: _organizerId,
-  currentUserId: _currentUserId,
+  currentUserId,
   isOrganizer,
   canPost,
   eligibleTeams,
@@ -229,6 +314,7 @@ export function TournamentChatPanel({
   const [teamId, setTeamId] = useState(eligibleTeams[0]?.teamId ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reportedIds, setReportedIds] = useState<Set<string>>(() => new Set());
 
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ?? channels[0];
@@ -460,7 +546,20 @@ export function TournamentChatPanel({
                         <div className="h-px flex-1 bg-border/80" />
                       </div>
                       {group.messages.map((message) => (
-                        <ChatMessageBubble key={message.id} message={message} />
+                        <ChatMessageBubble
+                          key={message.id}
+                          message={message}
+                          tournamentId={tournamentId}
+                          canReport={message.authorUserId !== currentUserId}
+                          reported={reportedIds.has(message.id)}
+                          onReported={(messageId) => {
+                            setReportedIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(messageId);
+                              return next;
+                            });
+                          }}
+                        />
                       ))}
                     </div>
                   ))
