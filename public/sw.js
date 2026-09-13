@@ -236,3 +236,72 @@ self.addEventListener('message', (event) => {
     );
   }
 });
+
+// Web Push: show notification from push payload
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'brackt',
+    body: '',
+    data: {},
+  };
+
+  try {
+    if (event.data) {
+      const parsed = event.data.json();
+      payload = {
+        title: typeof parsed.title === 'string' && parsed.title ? parsed.title : 'brackt',
+        body: typeof parsed.body === 'string' ? parsed.body : '',
+        data:
+          parsed.data && typeof parsed.data === 'object' && !Array.isArray(parsed.data)
+            ? parsed.data
+            : {},
+      };
+    }
+  } catch {
+    // Keep defaults when payload is missing or invalid.
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body || undefined,
+      data: payload.data,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+    })
+  );
+});
+
+// Open the linked page (or notifications inbox) when the user taps a push
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const rawHref =
+    event.notification.data && typeof event.notification.data.href === 'string'
+      ? event.notification.data.href
+      : '/notifications';
+  const targetUrl = new URL(
+    rawHref.startsWith('/') ? rawHref : '/notifications',
+    self.location.origin
+  ).href;
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((windowClients) => {
+        for (const client of windowClients) {
+          if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+            return client.focus().then((focused) => {
+              if (focused && 'navigate' in focused) {
+                return focused.navigate(targetUrl);
+              }
+              return focused;
+            });
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow(targetUrl);
+        }
+        return null;
+      })
+  );
+});

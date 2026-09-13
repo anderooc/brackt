@@ -23,6 +23,7 @@ import {
 } from "@/lib/notifications/preferences-shared";
 import type { UserNotificationKind } from "@/types";
 import { updateNotificationPreferences } from "./actions";
+import { WebPushOptIn } from "@/components/notifications/web-push-opt-in";
 
 export function NotificationPreferencesForm({
   defaults,
@@ -61,6 +62,8 @@ export function NotificationPreferencesForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <WebPushOptIn />
+
         <div className="divide-y rounded-lg border">
           {NOTIFICATION_KINDS.map((kind) => (
             <div

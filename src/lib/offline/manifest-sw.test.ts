@@ -60,6 +60,8 @@ describe("PWA Manifest & Service Worker", () => {
     assert.match(content, /STATIC_CACHE/);
     assert.match(content, /PAGES_CACHE/);
     assert.match(content, /API_CACHE/);
+    assert.match(content, /addEventListener\('push'/);
+    assert.match(content, /addEventListener\('notificationclick'/);
   });
 
   it("verifies PWA icon files exist on disk", () => {

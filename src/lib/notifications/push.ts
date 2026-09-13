@@ -16,12 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import webpush from "web-push";
 import { safeInternalHref } from "@/lib/notifications/display";
 import { mapNotificationHrefForMobile } from "@/lib/notifications/mobile-href";
 import {
   listPushTokensForUsers,
   removePushTokens,
 } from "@/lib/notifications/push-tokens";
+import { getVapidConfig } from "@/lib/notifications/vapid";
+import {
+  listWebPushSubscriptionsForUsers,
+  removeWebPushSubscriptionsByEndpoints,
+  type WebPushSubscriptionRow,
+} from "@/lib/notifications/web-push-subscriptions";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const MAX_BATCH = 100;
@@ -131,11 +138,7 @@ async function sendExpoBatch(messages: ExpoPushMessage[]): Promise<void> {
   }
 }
 
-export async function deliverPushNotifications(
-  rows: PushDeliveryRow[]
-): Promise<void> {
-  if (rows.length === 0) return;
-
+async function deliverExpoPush(rows: PushDeliveryRow[]): Promise<void> {
   const userIds = [...new Set(rows.map((row) => row.userId))];
   const tokenRows = await listPushTokensForUsers(userIds);
   if (tokenRows.length === 0) return;
@@ -151,4 +154,86 @@ export async function deliverPushNotifications(
   for (const batch of chunk(messages, MAX_BATCH)) {
     await sendExpoBatch(batch);
   }
+}
+
+function webPushStatusCode(error: unknown): number | null {
+  if (!error || typeof error !== "object") return null;
+  if (!("statusCode" in error)) return null;
+  const code = (error as { statusCode?: unknown }).statusCode;
+  return typeof code === "number" ? code : null;
+}
+
+async function sendWebPushToSubscription(
+  subscription: WebPushSubscriptionRow,
+  row: PushDeliveryRow
+): Promise<"ok" | "gone" | "error"> {
+  const href = safeInternalHref(row.href);
+  const payload = JSON.stringify({
+    title: row.title,
+    body: row.body ?? "",
+    data: {
+      notificationId: row.id,
+      ...(href ? { href } : {}),
+    },
+  });
+
+  try {
+    await webpush.sendNotification(
+      {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.p256dh,
+          auth: subscription.auth,
+        },
+      },
+      payload
+    );
+    return "ok";
+  } catch (error) {
+    const status = webPushStatusCode(error);
+    if (status === 404 || status === 410) return "gone";
+    return "error";
+  }
+}
+
+async function deliverWebPush(rows: PushDeliveryRow[]): Promise<void> {
+  const vapid = getVapidConfig();
+  if (!vapid) return;
+
+  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
+
+  const userIds = [...new Set(rows.map((row) => row.userId))];
+  const subscriptions = await listWebPushSubscriptionsForUsers(userIds);
+  if (subscriptions.length === 0) return;
+
+  const byUser = new Map<string, WebPushSubscriptionRow[]>();
+  for (const sub of subscriptions) {
+    const existing = byUser.get(sub.userId) ?? [];
+    existing.push(sub);
+    byUser.set(sub.userId, existing);
+  }
+
+  const staleEndpoints: string[] = [];
+
+  for (const row of rows) {
+    const userSubs = byUser.get(row.userId);
+    if (!userSubs || userSubs.length === 0) continue;
+
+    for (const sub of userSubs) {
+      const result = await sendWebPushToSubscription(sub, row);
+      if (result === "gone") staleEndpoints.push(sub.endpoint);
+    }
+  }
+
+  if (staleEndpoints.length > 0) {
+    await removeWebPushSubscriptionsByEndpoints([...new Set(staleEndpoints)]);
+  }
+}
+
+export async function deliverPushNotifications(
+  rows: PushDeliveryRow[]
+): Promise<void> {
+  if (rows.length === 0) return;
+
+  await Promise.all([deliverExpoPush(rows), deliverWebPush(rows)]);
 }

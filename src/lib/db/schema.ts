@@ -851,6 +851,29 @@ export const userPushTokens = pgTable(
   ]
 );
 
+export const userWebPushSubscriptions = pgTable(
+  "user_web_push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("user_web_push_subscriptions_endpoint_uidx").on(t.endpoint),
+    index("user_web_push_subscriptions_user_id_idx").on(t.userId),
+  ]
+);
 
 export const userNotificationPreferences = pgTable(
   "user_notification_preferences",
@@ -1164,6 +1187,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   tournamentStaffMemberships: many(tournamentStaff),
   notifications: many(userNotifications),
   pushTokens: many(userPushTokens),
+  webPushSubscriptions: many(userWebPushSubscriptions),
   notificationPreferences: many(userNotificationPreferences),
   sentMemberInvites: many(memberInvites, { relationName: "memberInviteSender" }),
   acceptedMemberInvites: many(memberInvites, {
@@ -1337,6 +1361,23 @@ export const userPushTokensRelations = relations(userPushTokens, ({ one }) => ({
   }),
 }));
 
+export const userWebPushSubscriptionsRelations = relations(
+  userWebPushSubscriptions,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [userWebPushSubscriptions.userId],
+      references: [users.id],
+    }),
+  })
+);
+
+export const userNotificationPreferencesRelations = relations(
+  userNotificationPreferences,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [userNotificationPreferences.userId],
+      references: [users.id],
+    }),
   })
 );
 
