@@ -24,6 +24,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "./user-menu";
 import { SkipLink } from "./skip-link";
 import { NotificationBellSlot } from "@/components/notifications/notification-bell-slot";
+import { CommandPalette } from "./command-palette";
 
 export type HeaderUserProfile = {
   fullName: string;
@@ -53,6 +54,9 @@ export function Header({
         <div className="flex-1" />
 
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          {user ? (
+            <CommandPalette isAdmin={isAdmin} schoolsHref={schoolsHref} />
+          ) : null}
           <ThemeToggle />
           {user ? (
             <Suspense fallback={<span className="size-9" aria-hidden />}>
