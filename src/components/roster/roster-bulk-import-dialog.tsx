@@ -18,7 +18,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -30,10 +30,11 @@ import {
   FileText,
   Loader2,
   Mail,
-  Upload,
+  Paperclip,
   UserCheck,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -55,7 +56,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VOLLEYBALL_POSITION_LABELS } from "@/lib/constants/profile";
 import {
   generateSampleRosterCsv,
@@ -81,6 +81,8 @@ interface RosterBulkImportDialogProps {
   onSuccess?: () => void;
 }
 
+const STEPS = ["Paste", "Review", "Done"] as const;
+
 export function RosterBulkImportDialog({
   open,
   onOpenChange,
@@ -91,10 +93,12 @@ export function RosterBulkImportDialog({
   onSuccess,
 }: RosterBulkImportDialogProps) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<"input" | "preview" | "results">("input");
-  const [inputTab, setInputTab] = useState<string>("paste");
   const [rawText, setRawText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showInvalidOnly, setShowInvalidOnly] = useState(false);
   const [parsedResult, setParsedResult] = useState<ParseRosterResult | null>(
     null
   );
@@ -107,16 +111,20 @@ export function RosterBulkImportDialog({
   const [error, setError] = useState<string | null>(null);
 
   const isTeam = context === "team";
+  const stepIndex = step === "input" ? 0 : step === "preview" ? 1 : 2;
 
   function handleReset() {
     setStep("input");
     setRawText("");
     setFileName(null);
+    setIsDragging(false);
+    setShowInvalidOnly(false);
     setParsedResult(null);
     setSelectedIndices(new Set());
     setIsSubmitting(false);
     setImportSummary(null);
     setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -129,25 +137,34 @@ export function RosterBulkImportDialog({
     onOpenChange(nextOpen);
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  function applyFile(file: File) {
     setFileName(file.name);
+    setError(null);
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
+      const content = event.target?.result;
+      if (typeof content === "string") {
         setRawText(content);
       }
     };
     reader.readAsText(file);
   }
 
-  function handleLoadSample() {
-    const sample = generateSampleRosterCsv(context);
-    setRawText(sample);
-    setInputTab("paste");
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) applyFile(file);
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) applyFile(file);
+  }
+
+  function clearFile() {
+    setFileName(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleDownloadTemplate() {
@@ -169,25 +186,23 @@ export function RosterBulkImportDialog({
   function handlePreview() {
     setError(null);
     if (!rawText.trim()) {
-      setError("Please paste or upload roster data before continuing.");
+      setError("Paste roster data or attach a CSV before continuing.");
       return;
     }
 
     const res = parseRosterInput(rawText, { context });
     if (res.rows.length === 0) {
-      setError("No valid roster rows found. Check your CSV or text format.");
+      setError("No roster rows found. Check the format and try again.");
       return;
     }
 
     setParsedResult(res);
-    // Select all valid rows by default
     const validIndices = new Set<number>();
     res.rows.forEach((row, idx) => {
-      if (row.valid) {
-        validIndices.add(idx);
-      }
+      if (row.valid) validIndices.add(idx);
     });
     setSelectedIndices(validIndices);
+    setShowInvalidOnly(res.validRows === 0 && res.invalidRows > 0);
     setStep("preview");
   }
 
@@ -231,7 +246,7 @@ export function RosterBulkImportDialog({
     });
 
     if (rowsToImport.length === 0) {
-      setError("Please select at least one row to import.");
+      setError("Select at least one row to import.");
       return;
     }
 
@@ -251,9 +266,6 @@ export function RosterBulkImportDialog({
       setImportSummary(summary);
       setStep("results");
       onSuccess?.();
-      toast.success(
-        `Bulk import complete: ${summary.addedCount} added, ${summary.invitedCount} invited.`
-      );
     } catch (err) {
       setIsSubmitting(false);
       const msg = err instanceof Error ? err.message : "Bulk import failed";
@@ -268,167 +280,189 @@ export function RosterBulkImportDialog({
     parsedResult.validRows > 0 &&
     selectedCount === parsedResult.validRows;
 
+  const visibleRows =
+    parsedResult?.rows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => (showInvalidOnly ? !row.valid : true)) ?? [];
+
+  const placeholder = isTeam
+    ? "email, name, jersey, position, role\nalex@college.edu, Alex Morgan, 12, OH, player"
+    : "email, name, role, jersey, position, title\nalex@college.edu, Alex Morgan, member, 12, OH,";
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl sm:max-h-[88vh] flex flex-col gap-0 p-0 overflow-hidden">
-        <DialogHeader className="p-5 pb-3 border-b">
-          <div className="flex items-center gap-2">
+        <DialogHeader className="space-y-3 p-5 pb-4 border-b">
+          <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <FileSpreadsheet className="h-5 w-5" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <DialogTitle className="text-base font-semibold">
-                Bulk import {isTeam ? "team players" : "school roster"}
+                Bulk import {isTeam ? "players" : "roster"}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Import multiple athletes into {targetName} via CSV spreadsheet
-                or pasted text.
+                Add multiple athletes to {targetName} from a spreadsheet or
+                pasted list.
               </DialogDescription>
             </div>
           </div>
+          <ol className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            {STEPS.map((label, index) => (
+              <li key={label} className="flex items-center gap-1">
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                <span
+                  className={cn(
+                    index === stepIndex && "font-semibold text-foreground",
+                    index < stepIndex && "text-foreground/70"
+                  )}
+                >
+                  {label}
+                </span>
+              </li>
+            ))}
+          </ol>
         </DialogHeader>
 
-        {/* Dialog body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-              <AlertCircle className="h-4 w-4 shrink-0" />
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* STEP 1: INPUT */}
           {step === "input" && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Choose input method
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDownloadTemplate}
-                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <Download className="mr-1 h-3.5 w-3.5" />
-                    CSV Template
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleLoadSample}
-                    className="h-7 text-xs"
-                  >
-                    Load sample data
-                  </Button>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  CSV, TSV from Sheets/Excel, or a list of emails.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownloadTemplate}
+                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Template
+                </Button>
               </div>
 
-              <Tabs
-                value={inputTab}
-                onValueChange={(val) => {
-                  if (val) setInputTab(val);
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
                 }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                }}
+                onDrop={handleDrop}
+                className={cn(
+                  "rounded-xl border transition-colors",
+                  isDragging
+                    ? "border-primary bg-primary/5"
+                    : "border-border"
+                )}
               >
-                <TabsList className="grid grid-cols-2">
-                  <TabsTrigger value="paste" className="text-xs">
-                    Paste text or CSV
-                  </TabsTrigger>
-                  <TabsTrigger value="file" className="text-xs">
-                    Upload file
-                  </TabsTrigger>
-                </TabsList>
+                <Textarea
+                  value={rawText}
+                  onChange={(e) => {
+                    setRawText(e.target.value);
+                    if (fileName) clearFile();
+                  }}
+                  placeholder={placeholder}
+                  className="min-h-52 border-0 bg-transparent font-mono text-xs leading-relaxed shadow-none focus-visible:ring-0"
+                />
+              </div>
 
-                <TabsContent value="paste" className="mt-3 space-y-2">
-                  <Textarea
-                    value={rawText}
-                    onChange={(e) => setRawText(e.target.value)}
-                    placeholder={
-                      isTeam
-                        ? "email,name,jersey,position,role\nalex@college.edu,Alex Morgan,12,OH,player\nsam@college.edu,Sam Lee,5,Setter,captain"
-                        : "email,name,role,jersey,position,title\nalex@college.edu,Alex Morgan,member,12,OH,\nsam@college.edu,Sam Lee,officer,5,Setter,Vice President"
-                    }
-                    className="min-h-52 font-mono text-xs leading-relaxed"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Accepts CSV, TSV (pasted from Excel or Google Sheets), or a
-                    list of emails separated by commas or line breaks.
-                  </p>
-                </TabsContent>
-
-                <TabsContent value="file" className="mt-3 space-y-3">
-                  <label className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center cursor-pointer hover:bg-muted/40 transition-colors">
-                    <Upload className="h-7 w-7 text-muted-foreground" />
-                    <div>
-                      <p className="text-xs font-medium">
-                        Click to select or drag and drop a file
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Supports .csv, .tsv, and .txt files
-                      </p>
-                    </div>
-                    <input
-                      type="file"
-                      accept=".csv,.tsv,.txt"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  {fileName && (
-                    <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
-                      <FileText className="h-4 w-4 text-primary shrink-0" />
-                      <span className="font-medium truncate">{fileName}</span>
-                      <span className="text-muted-foreground ml-auto shrink-0">
-                        ({rawText.split("\n").filter(Boolean).length} lines)
-                      </span>
-                    </div>
-                  )}
-                </TabsContent>
-              </Tabs>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Paperclip className="mr-1.5 h-3.5 w-3.5" />
+                  Attach file
+                </Button>
+                {fileName ? (
+                  <div className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate font-medium">{fileName}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearFile();
+                        setRawText("");
+                      }}
+                      className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                      aria-label="Remove attached file"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    Or drop a .csv / .tsv / .txt onto the field above
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
-          {/* STEP 2: PREVIEW */}
           {step === "preview" && parsedResult && (
-            <div className="space-y-4">
-              {/* Summary cards */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg border bg-muted/30 p-2.5 text-center">
-                  <div className="text-lg font-bold">
-                    {parsedResult.totalRows}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Total parsed
-                  </div>
-                </div>
-                <div className="rounded-lg border border-success/30 bg-success/5 p-2.5 text-center text-success">
-                  <div className="text-lg font-bold">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <p className="text-muted-foreground">
+                  <span className="font-medium text-foreground">
                     {parsedResult.validRows}
-                  </div>
-                  <div className="text-[11px]">Ready to import</div>
-                </div>
-                <div className="rounded-lg border border-warning/30 bg-warning/5 p-2.5 text-center text-warning">
-                  <div className="text-lg font-bold">
-                    {parsedResult.invalidRows}
-                  </div>
-                  <div className="text-[11px]">Need attention</div>
-                </div>
+                  </span>{" "}
+                  ready
+                  {parsedResult.invalidRows > 0 ? (
+                    <>
+                      {" · "}
+                      <span className="font-medium text-warning">
+                        {parsedResult.invalidRows}
+                      </span>{" "}
+                      need attention
+                    </>
+                  ) : null}
+                  {" · "}
+                  {selectedCount} selected
+                </p>
+                {parsedResult.invalidRows > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowInvalidOnly((v) => !v)}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {showInvalidOnly ? "Show all rows" : "Show problems only"}
+                  </button>
+                ) : null}
               </div>
 
               {parsedResult.duplicateEmails.length > 0 && (
-                <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2.5 text-xs text-warning">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    {parsedResult.duplicateEmails.length} duplicate email(s)
-                    found in file. Only the first entry will be processed.
+                    {parsedResult.duplicateEmails.length} duplicate email
+                    {parsedResult.duplicateEmails.length === 1 ? "" : "s"} in
+                    the file — only the first of each is kept.
                   </span>
                 </div>
               )}
 
-              {/* Parsed rows table */}
               <div className="rounded-lg border overflow-hidden">
                 <Table>
                   <TableHeader>
@@ -451,11 +485,11 @@ export function RosterBulkImportDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {parsedResult.rows.map((row, idx) => {
-                      const isSelected = selectedIndices.has(idx);
+                    {visibleRows.map(({ row, index }) => {
+                      const isSelected = selectedIndices.has(index);
                       return (
                         <TableRow
-                          key={idx}
+                          key={index}
                           className={cn(
                             "text-xs transition-colors",
                             !row.valid && "opacity-60 bg-muted/10",
@@ -466,7 +500,7 @@ export function RosterBulkImportDialog({
                             <Checkbox
                               checked={isSelected}
                               disabled={!row.valid}
-                              onCheckedChange={() => toggleRow(idx)}
+                              onCheckedChange={() => toggleRow(index)}
                               aria-label={`Select ${row.email}`}
                             />
                           </TableCell>
@@ -527,69 +561,64 @@ export function RosterBulkImportDialog({
             </div>
           )}
 
-          {/* STEP 3: RESULTS SUMMARY */}
           {step === "results" && importSummary && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="grid grid-cols-4 gap-2">
-                <div className="rounded-lg border border-success/30 bg-success/5 p-2.5 text-center text-success">
-                  <div className="text-lg font-bold">
-                    {importSummary.addedCount}
-                  </div>
-                  <div className="text-[11px]">Added</div>
-                </div>
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-center text-primary">
-                  <div className="text-lg font-bold">
-                    {importSummary.invitedCount}
-                  </div>
-                  <div className="text-[11px]">Invites sent</div>
-                </div>
-                <div className="rounded-lg border bg-muted/40 p-2.5 text-center text-muted-foreground">
-                  <div className="text-lg font-bold">
-                    {importSummary.skippedCount}
-                  </div>
-                  <div className="text-[11px]">Skipped</div>
-                </div>
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-center text-destructive">
-                  <div className="text-lg font-bold">
-                    {importSummary.failedCount}
-                  </div>
-                  <div className="text-[11px]">Failed</div>
-                </div>
-              </div>
+            <div className="space-y-3 animate-in fade-in duration-200">
+              <p className="text-sm">
+                <span className="font-medium text-success">
+                  {importSummary.addedCount} added
+                </span>
+                {" · "}
+                <span className="font-medium text-primary">
+                  {importSummary.invitedCount} invited
+                </span>
+                {importSummary.skippedCount > 0 ? (
+                  <>
+                    {" · "}
+                    <span className="text-muted-foreground">
+                      {importSummary.skippedCount} skipped
+                    </span>
+                  </>
+                ) : null}
+                {importSummary.failedCount > 0 ? (
+                  <>
+                    {" · "}
+                    <span className="font-medium text-destructive">
+                      {importSummary.failedCount} failed
+                    </span>
+                  </>
+                ) : null}
+              </p>
 
               <div className="rounded-lg border overflow-hidden">
-                <div className="bg-muted/40 px-3 py-2 text-xs font-semibold">
-                  Row-by-row outcome
-                </div>
-                <div className="divide-y max-h-60 overflow-y-auto">
+                <div className="divide-y max-h-72 overflow-y-auto">
                   {importSummary.results.map((item, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between p-2.5 text-xs"
+                      className="flex items-center justify-between gap-3 p-2.5 text-xs"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
                         {item.status === "added" && (
-                          <UserCheck className="h-4 w-4 text-success shrink-0" />
+                          <UserCheck className="h-4 w-4 shrink-0 text-success" />
                         )}
                         {item.status === "invited" && (
-                          <Mail className="h-4 w-4 text-primary shrink-0" />
+                          <Mail className="h-4 w-4 shrink-0 text-primary" />
                         )}
                         {item.status === "skipped" && (
-                          <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
                         )}
                         {item.status === "failed" && (
-                          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                          <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
                         )}
-                        <span className="font-mono text-[11px] truncate">
+                        <span className="truncate font-mono text-[11px]">
                           {item.email}
                         </span>
-                        {item.fullName && (
-                          <span className="text-muted-foreground truncate hidden sm:inline">
+                        {item.fullName ? (
+                          <span className="hidden truncate text-muted-foreground sm:inline">
                             ({item.fullName})
                           </span>
-                        )}
+                        ) : null}
                       </div>
-                      <span className="text-[11px] text-muted-foreground text-right shrink-0">
+                      <span className="shrink-0 text-right text-[11px] text-muted-foreground">
                         {item.message}
                       </span>
                     </div>
@@ -600,8 +629,7 @@ export function RosterBulkImportDialog({
           )}
         </div>
 
-        {/* Dialog footer */}
-        <DialogFooter className="p-4 border-t bg-muted/10 flex items-center justify-between sm:justify-between">
+        <DialogFooter className="border-t bg-muted/10 p-4 flex items-center justify-between sm:justify-between">
           {step === "input" && (
             <>
               <Button
@@ -617,9 +645,10 @@ export function RosterBulkImportDialog({
                 type="button"
                 size="sm"
                 onClick={handlePreview}
+                disabled={!rawText.trim()}
                 className="text-xs"
               >
-                Preview & Validate
+                Review
               </Button>
             </>
           )}
@@ -630,12 +659,15 @@ export function RosterBulkImportDialog({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setStep("input")}
+                onClick={() => {
+                  setError(null);
+                  setStep("input");
+                }}
                 disabled={isSubmitting}
                 className="text-xs"
               >
                 <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-                Back to edit
+                Back
               </Button>
               <Button
                 type="button"
@@ -647,12 +679,12 @@ export function RosterBulkImportDialog({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    Importing {selectedCount} athletes...
+                    Importing {selectedCount}…
                   </>
                 ) : (
                   <>
                     <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                    Import {selectedCount} {isTeam ? "players" : "members"}
+                    Import {selectedCount}
                   </>
                 )}
               </Button>
@@ -660,7 +692,7 @@ export function RosterBulkImportDialog({
           )}
 
           {step === "results" && (
-            <div className="w-full flex justify-end">
+            <div className="flex w-full justify-end">
               <Button
                 type="button"
                 size="sm"
