@@ -24,15 +24,7 @@ import type {
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import {
   fetchTournament,
@@ -43,8 +35,21 @@ import {
 import { useSession } from "~/auth/session";
 import { TournamentMatchesPanel } from "~/tournament/matches-panel";
 import { TournamentOverview } from "~/tournament/overview";
+import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { TournamentTeamsPanel } from "~/tournament/teams-panel";
+import { messageFor as loaderMessageFor } from "~/tournament/use-public-loader";
 import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Banner,
+  EmptyState,
+  HIT_TARGET,
+  Icon,
+  ScreenScroll,
+  SegmentedControl,
+  SkeletonList,
+  space,
+} from "~/ui";
 
 type TabId = "overview" | "teams" | "matches";
 
@@ -81,20 +86,21 @@ export default function TournamentDetailScreen() {
   const [teams, setTeams] = useState<TournamentTeamContract[] | null>(null);
   const [matches, setMatches] = useState<TournamentMatchContract[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+  const [matchesError, setMatchesError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadOverview = useCallback(
     async (signal?: AbortSignal) => {
-      if (!slug) {
-        setError("Tournament not found.");
-        return;
-      }
+      if (!slug) return;
       // Wait for auth so Team tools can load with the rest of the overview.
       if (sessionLoading) return;
       try {
         setError(null);
         if (!session) {
-          setTournament(await fetchTournament(slug, signal));
+          const detail = await fetchTournament(slug, signal);
+          if (signal?.aborted) return;
+          setTournament(detail);
           setParticipation(null);
           return;
         }
@@ -107,8 +113,6 @@ export default function TournamentDetailScreen() {
         setParticipation(part);
       } catch (cause) {
         if (signal?.aborted) return;
-        setTournament(null);
-        setParticipation(null);
         setError(messageFor(cause, "Could not load this tournament."));
       }
     },
@@ -119,10 +123,13 @@ export default function TournamentDetailScreen() {
     async (signal?: AbortSignal) => {
       if (!slug) return;
       try {
-        setTeams((await fetchTournamentTeams(slug, signal)).teams);
+        setTeamsError(null);
+        const result = await fetchTournamentTeams(slug, signal);
+        if (signal?.aborted) return;
+        setTeams(result.teams);
       } catch (cause) {
         if (signal?.aborted) return;
-        setError(messageFor(cause, "Could not load teams."));
+        setTeamsError(loaderMessageFor(cause, "Could not load teams."));
       }
     },
     [slug]
@@ -132,10 +139,13 @@ export default function TournamentDetailScreen() {
     async (signal?: AbortSignal) => {
       if (!slug) return;
       try {
-        setMatches((await fetchTournamentMatches(slug, signal)).matches);
+        setMatchesError(null);
+        const result = await fetchTournamentMatches(slug, signal);
+        if (signal?.aborted) return;
+        setMatches(result.matches);
       } catch (cause) {
         if (signal?.aborted) return;
-        setError(messageFor(cause, "Could not load matches."));
+        setMatchesError(loaderMessageFor(cause, "Could not load matches."));
       }
     },
     [slug]
@@ -150,18 +160,18 @@ export default function TournamentDetailScreen() {
   );
 
   useEffect(() => {
-    if (tab !== "teams" || teams !== null) return;
+    if (tab !== "teams" || teams !== null || teamsError !== null) return;
     const controller = new AbortController();
     void loadTeams(controller.signal);
     return () => controller.abort();
-  }, [tab, teams, loadTeams]);
+  }, [tab, teams, teamsError, loadTeams]);
 
   useEffect(() => {
-    if (tab !== "matches" || matches !== null) return;
+    if (tab !== "matches" || matches !== null || matchesError !== null) return;
     const controller = new AbortController();
     void loadMatches(controller.signal);
     return () => controller.abort();
-  }, [tab, matches, loadMatches]);
+  }, [tab, matches, matchesError, loadMatches]);
 
   useLayoutEffect(() => {
     const canGoBack = navigation.canGoBack();
@@ -177,16 +187,17 @@ export default function TournamentDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back to Tournaments"
-              hitSlop={10}
-              onPress={() => router.replace("/")}
-              style={styles.headerBack}
+              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+              onPress={() => router.replace("/tournaments")}
+              style={({ pressed }) => [
+                styles.headerBack,
+                { opacity: pressed ? 0.5 : 1 },
+              ]}
             >
-              <Text style={[styles.headerBackChevron, { color: colors.primary }]}>
-                ‹
-              </Text>
-              <Text style={[styles.headerBackLabel, { color: colors.primary }]}>
+              <Icon name="chevron-back" size={24} color={colors.primary} />
+              <AppText variant="body" tone="primary">
                 Tournaments
-              </Text>
+              </AppText>
             </Pressable>
           ),
     });
@@ -194,92 +205,82 @@ export default function TournamentDetailScreen() {
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    setTeams(null);
-    setMatches(null);
-    await loadOverview();
-    if (tab === "teams") await loadTeams();
-    if (tab === "matches") await loadMatches();
+    // Only the visible tab is refetched in place; hidden tabs reload on next visit.
+    if (tab !== "teams") {
+      setTeams(null);
+      setTeamsError(null);
+    }
+    if (tab !== "matches") {
+      setMatches(null);
+      setMatchesError(null);
+    }
+    if (tab === "teams" && teams === null) setTeamsError(null);
+    if (tab === "matches" && matches === null) setMatchesError(null);
+    await Promise.all([
+      loadOverview(),
+      tab === "teams" && teams !== null ? loadTeams() : null,
+      tab === "matches" && matches !== null ? loadMatches() : null,
+    ]);
     setIsRefreshing(false);
-  }, [loadOverview, loadTeams, loadMatches, tab]);
+  }, [loadOverview, loadTeams, loadMatches, tab, teams, matches]);
 
-  if ((tournament === null && error === null) || sessionLoading) {
+  const selectTab = useCallback(
+    (next: TabId) => {
+      setTab(next);
+      router.setParams({ tab: next });
+    },
+    [router]
+  );
+
+  if (!slug) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} />
+        <EmptyState
+          icon="help-circle-outline"
+          title="Tournament not found"
+          message="This link is missing the tournament. Browse the list to find it."
+          action={{ label: "Browse tournaments", onPress: () => router.replace("/tournaments") }}
+        />
       </View>
     );
   }
 
+  if (tournament === null && error === null) return <LoadingScreen />;
+
   if (!tournament) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-          Tournament unavailable
-        </Text>
-        <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-          {error}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => void loadOverview()}
-          style={[styles.retry, { borderColor: colors.border }]}
-        >
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Try again
-          </Text>
-        </Pressable>
-      </View>
+      <ErrorScreen
+        title="Tournament unavailable"
+        message={error ?? "Could not load this tournament."}
+        onRetry={() => void loadOverview()}
+      />
     );
   }
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View
-        style={[styles.tabs, { borderBottomColor: colors.border }]}
-        accessibilityRole="tablist"
+        style={[
+          styles.tabs,
+          { backgroundColor: colors.background, borderBottomColor: colors.border },
+        ]}
       >
-        {TABS.map((item) => {
-          const selected = tab === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              onPress={() => {
-                setTab(item.id);
-                router.setParams({ tab: item.id });
-              }}
-              style={[
-                styles.tab,
-                selected ? { borderBottomColor: colors.primary } : null,
-              ]}
-            >
-              <Text
-                style={{
-                  color: selected ? colors.primary : colors.mutedForeground,
-                  fontWeight: selected ? "700" : "600",
-                  fontSize: 15,
-                }}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <SegmentedControl
+          accessibilityLabel="Tournament sections"
+          options={TABS}
+          value={tab}
+          onChange={selectTab}
+        />
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
+      <ScreenScroll refreshing={isRefreshing} onRefresh={onRefresh}>
+        {error ? (
+          <Banner
+            tone="error"
+            title="Could not refresh"
+            message={error}
+            action={{ label: "Try again", onPress: () => void loadOverview() }}
           />
-        }
-      >
-        {error && tab !== "overview" ? (
-          <Text style={{ color: colors.destructive }}>{error}</Text>
         ) : null}
 
         {tab === "overview" ? (
@@ -289,25 +290,50 @@ export default function TournamentDetailScreen() {
           />
         ) : null}
 
+        {tab === "teams" && teams !== null && teamsError ? (
+          <Banner tone="error" message={teamsError} onDismiss={() => setTeamsError(null)} />
+        ) : null}
+        {tab === "matches" && matches !== null && matchesError ? (
+          <Banner
+            tone="error"
+            message={matchesError}
+            onDismiss={() => setMatchesError(null)}
+          />
+        ) : null}
+
         {tab === "teams" ? (
-          teams === null ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
+          teams !== null ? (
             <TournamentTeamsPanel teams={teams} />
+          ) : teamsError ? (
+            <Banner
+              tone="error"
+              title="Teams unavailable"
+              message={teamsError}
+              action={{ label: "Try again", onPress: () => setTeamsError(null) }}
+            />
+          ) : (
+            <SkeletonList rows={6} header={false} />
           )
         ) : null}
 
         {tab === "matches" ? (
-          matches === null ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
+          matches !== null ? (
             <TournamentMatchesPanel
               matches={matches}
               tournamentSlug={tournament.slug}
             />
+          ) : matchesError ? (
+            <Banner
+              tone="error"
+              title="Matches unavailable"
+              message={matchesError}
+              action={{ label: "Try again", onPress: () => setMatchesError(null) }}
+            />
+          ) : (
+            <SkeletonList rows={4} header={false} />
           )
         ) : null}
-      </ScrollView>
+      </ScreenScroll>
     </View>
   );
 }
@@ -316,52 +342,21 @@ function messageFor(cause: unknown, fallback: string): string {
   if (cause instanceof ApiClientError && cause.code === "not_found") {
     return "This tournament is not posted, or the link is out of date.";
   }
-  if (cause instanceof ApiClientError) return cause.message;
-  return fallback;
+  return loaderMessageFor(cause, fallback);
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
+  centered: { flex: 1, justifyContent: "center" },
   headerBack: {
     flexDirection: "row",
     alignItems: "center",
-    marginLeft: -4,
-    gap: 2,
-  },
-  headerBackChevron: {
-    fontSize: 28,
-    fontWeight: "400",
-    lineHeight: 28,
-    marginTop: -2,
-  },
-  headerBackLabel: { fontSize: 17, fontWeight: "400" },
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 32,
-    gap: 10,
-  },
-  emptyTitle: { fontSize: 20, fontWeight: "700" },
-  emptyBody: { fontSize: 15, textAlign: "center" },
-  retry: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    minHeight: HIT_TARGET,
+    marginLeft: -space.sm,
   },
   tabs: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    paddingHorizontal: 8,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    paddingHorizontal: space.lg,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
 });

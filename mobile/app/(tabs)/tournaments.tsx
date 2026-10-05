@@ -18,15 +18,12 @@
 
 import type { TournamentListItemContract } from "@/lib/api/contracts/tournament";
 import type { TeamGender, TeamRegion } from "@/types";
-import { router, useNavigation } from "expo-router";
+import { router, useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
-  FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from "react-native";
@@ -34,11 +31,12 @@ import { ApiClientError } from "~/api/client";
 import { fetchTournaments } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
+  formatRailDate,
   formatScheduleHeading,
   parseISODate,
   todayISO,
 } from "~/lib/format";
-import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { DateRail } from "~/tournament/date-rail";
 import {
   buildScheduleGroups,
@@ -51,6 +49,22 @@ import { ListFiltersSheet } from "~/tournament/list-filters";
 import { MonthCalendar } from "~/tournament/month-calendar";
 import { ScheduleRow } from "~/tournament/schedule-row";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Chip,
+  EmptyState,
+  HeaderButton,
+  HIT_TARGET,
+  Icon,
+  IconButton,
+  ListGroup,
+  radius,
+  space,
+  type,
+} from "~/ui";
 
 const LIST_LIMIT = 100;
 
@@ -98,11 +112,13 @@ export default function TournamentsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      const controller = new AbortController();
+      void load(controller.signal);
+      return () => controller.abort();
+    }, [load])
+  );
 
   useEffect(() => {
     if (!registrationOpenOnly) return;
@@ -156,6 +172,15 @@ export default function TournamentsScreen() {
       date: selectedDate,
       tournaments: [] as TournamentListItemContract[],
     };
+  const nextDateWithEvents =
+    groups.find(
+      (group) => group.date > selectedDate && group.tournaments.length > 0
+    )?.date ??
+    [...groups]
+      .reverse()
+      .find((group) => group.date < selectedDate && group.tournaments.length > 0)
+      ?.date ??
+    null;
   const markedDates = useMemo(
     () => new Set(filtered.map((tournament) => tournament.date)),
     [filtered]
@@ -173,7 +198,7 @@ export default function TournamentsScreen() {
     setCalendarOpen(false);
   }
 
-  function openCalendar() {
+  function toggleCalendar() {
     const next = parseISODate(selectedDate);
     setCalendarMonth({ year: next.getFullYear(), monthIndex: next.getMonth() });
     setCalendarOpen((open) => !open);
@@ -183,45 +208,21 @@ export default function TournamentsScreen() {
     navigation.setOptions({
       headerRight: session
         ? () => (
-            <Pressable
-              accessibilityRole="button"
+            <IconButton
+              icon="add"
               accessibilityLabel="Create tournament"
               onPress={() => router.push("/tournament/new")}
-              hitSlop={8}
-              style={{ paddingHorizontal: 4, paddingVertical: 6 }}
-            >
-              <Text
-                style={{
-                  color: colors.primary,
-                  fontWeight: "700",
-                  fontSize: 16,
-                }}
-              >
-                New
-              </Text>
-            </Pressable>
+            />
           )
         : () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Sign in"
+            <HeaderButton
+              label="Sign in"
+              emphasis
               onPress={() => router.push("/sign-in")}
-              hitSlop={8}
-              style={{ paddingHorizontal: 4, paddingVertical: 6 }}
-            >
-              <Text
-                style={{
-                  color: colors.primary,
-                  fontWeight: "600",
-                  fontSize: 16,
-                }}
-              >
-                Sign in
-              </Text>
-            </Pressable>
+            />
           ),
     });
-  }, [colors.primary, navigation, router, session]);
+  }, [navigation, session]);
 
   if (tournaments === null && error === null) {
     return <LoadingScreen />;
@@ -245,54 +246,66 @@ export default function TournamentsScreen() {
           hasActiveFilters,
         })
       : null;
+  const emptyAction = hasActiveFilters
+    ? { label: "Clear filters", icon: "close-circle-outline" as const, onPress: clearFilters }
+    : query.trim()
+      ? { label: "Clear search", icon: "close-circle-outline" as const, onPress: () => setQuery("") }
+      : undefined;
+
+  const refreshControl = (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={onRefresh}
+      tintColor={colors.primary}
+    />
+  );
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <View style={styles.toolbar}>
-        <View style={styles.toolbarRow}>
+        <View
+          style={[
+            styles.search,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Icon name="search" size={18} tone="muted" />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search tournaments…"
+            placeholder="Search tournaments"
             placeholderTextColor={colors.mutedForeground}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
             clearButtonMode="while-editing"
             accessibilityLabel="Search tournaments"
-            style={[
-              styles.search,
-              {
-                color: colors.foreground,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-            ]}
+            style={[styles.searchInput, { color: colors.foreground }]}
           />
-          <FilterButton
-            activeCount={activeCount}
-            colors={colors}
+        </View>
+        <View style={styles.toolRow}>
+          <Chip
+            label="Filters"
+            icon="options-outline"
+            selected={hasActiveFilters}
+            count={hasActiveFilters ? activeCount : undefined}
             onPress={() => setFiltersOpen(true)}
           />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Calendar, ${formatScheduleHeading(selectedDate)} selected`}
-            onPress={openCalendar}
-            style={[
-              styles.toolButton,
-              {
-                borderColor: colors.border,
-                backgroundColor:
-                  calendarOpen || selectedDate !== today
-                    ? colors.muted
-                    : "transparent",
-              },
-            ]}
-          >
-            <Text style={[styles.toolButtonLabel, { color: colors.foreground }]}>
-              Calendar
-            </Text>
-          </Pressable>
+          <Chip
+            label={calendarOpen ? "Hide calendar" : "Calendar"}
+            icon="calendar-outline"
+            selected={calendarOpen}
+            onPress={toggleCalendar}
+          />
+          {hasActiveFilters ? (
+            <Button
+              label="Clear"
+              variant="ghost"
+              size="sm"
+              accessibilityLabel="Clear filters"
+              onPress={clearFilters}
+            />
+          ) : null}
         </View>
 
         {calendarOpen ? (
@@ -307,81 +320,98 @@ export default function TournamentsScreen() {
         ) : null}
       </View>
 
+      {error ? (
+        <View style={styles.bannerWrap}>
+          <Banner
+            title="Couldn’t refresh"
+            message={error}
+            action={{ label: "Try again", onPress: () => void onRefresh() }}
+            onDismiss={() => setError(null)}
+          />
+        </View>
+      ) : null}
+
       {empty ? (
         <ScrollView
-          contentContainerStyle={styles.empty}
+          contentContainerStyle={styles.emptyScroll}
           keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.primary}
-            />
-          }
+          keyboardDismissMode="on-drag"
+          refreshControl={refreshControl}
         >
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-            {empty.title}
-          </Text>
-          <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-            {empty.body}
-          </Text>
+          <EmptyState
+            icon={emptyAction ? "search-outline" : "trophy-outline"}
+            title={empty.title}
+            message={empty.body}
+            action={emptyAction}
+          />
         </ScrollView>
       ) : (
-        <View style={styles.split}>
-          <View style={styles.dayPane}>
+        <View style={[styles.split, { borderTopColor: colors.border }]}>
+          <ScrollView
+            style={styles.dayPane}
+            contentContainerStyle={styles.dayContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={refreshControl}
+          >
             <View style={styles.dayHeading}>
-              {selectedDate === today ? (
-                <View
-                  style={[
-                    styles.todayChip,
-                    { backgroundColor: withAlpha(colors.primary, 0.12) },
-                  ]}
-                >
-                  <Text style={[styles.todayChipLabel, { color: colors.primary }]}>
-                    Today
-                  </Text>
-                </View>
+              <View style={styles.dayHeadingText}>
+                {selectedDate === today ? <Badge label="Today" tone="info" /> : null}
+                <AppText variant="headline" accessibilityRole="header">
+                  {formatScheduleHeading(selectedDate)}
+                </AppText>
+                {selectedGroup.tournaments.length > 0 ? (
+                  <AppText variant="footnote" tone="muted">
+                    {selectedGroup.tournaments.length === 1
+                      ? "1 tournament"
+                      : `${selectedGroup.tournaments.length} tournaments`}
+                  </AppText>
+                ) : null}
+              </View>
+              {selectedDate !== today ? (
+                <Button
+                  label="Today"
+                  variant="ghost"
+                  size="sm"
+                  accessibilityLabel="Jump to today"
+                  onPress={() => setSelectedDate(today)}
+                />
               ) : null}
-              <Text
-                style={[styles.dayTitle, { color: colors.foreground }]}
-                accessibilityRole="header"
-              >
-                {formatScheduleHeading(selectedDate)}
-              </Text>
             </View>
-            <FlatList
-              data={selectedGroup.tournaments}
-              keyExtractor={(item) => item.slug}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.dayList}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={onRefresh}
-                  tintColor={colors.primary}
-                />
-              }
-              renderItem={({ item }) => (
-                <ScheduleRow
-                  tournament={item}
-                  today={today}
-                  onPress={() => router.push(`/tournament/${item.slug}`)}
-                />
-              )}
-              ListEmptyComponent={
-                <View
-                  style={[
-                    styles.dayEmpty,
-                    { borderColor: colors.border, backgroundColor: colors.muted },
-                  ]}
-                >
-                  <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-                    No tournaments scheduled.
-                  </Text>
-                </View>
-              }
-            />
-          </View>
+
+            {selectedGroup.tournaments.length > 0 ? (
+              <ListGroup>
+                {selectedGroup.tournaments.map((item) => (
+                  <ScheduleRow
+                    key={item.slug}
+                    tournament={item}
+                    today={today}
+                    onPress={() => router.push(`/tournament/${item.slug}`)}
+                  />
+                ))}
+              </ListGroup>
+            ) : (
+              <EmptyState
+                compact
+                icon="calendar-clear-outline"
+                title="Nothing on this day"
+                message={
+                  nextDateWithEvents
+                    ? "Pick another date from the rail, or jump to the nearest event."
+                    : "Pick another date from the rail."
+                }
+                action={
+                  nextDateWithEvents
+                    ? {
+                        label: `Go to ${formatRailDate(nextDateWithEvents).monthDay}`,
+                        icon: "arrow-forward",
+                        onPress: () => setSelectedDate(nextDateWithEvents),
+                      }
+                    : undefined
+                }
+              />
+            )}
+          </ScrollView>
           <DateRail
             dates={groups.map((group) => group.date)}
             selectedDate={selectedDate}
@@ -416,113 +446,48 @@ export default function TournamentsScreen() {
   );
 }
 
-function FilterButton({
-  activeCount,
-  colors,
-  onPress,
-}: {
-  activeCount: number;
-  colors: ThemeColors;
-  onPress: () => void;
-}) {
-  const hasActive = activeCount > 0;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={
-        hasActive ? `Filters, ${activeCount} active` : "Filter tournaments"
-      }
-      onPress={onPress}
-      style={[
-        styles.toolButton,
-        {
-          borderColor: colors.border,
-          backgroundColor: hasActive ? colors.muted : "transparent",
-        },
-      ]}
-    >
-      <Text style={[styles.toolButtonLabel, { color: colors.foreground }]}>
-        Filters
-      </Text>
-      {hasActive ? (
-        <View style={[styles.badge, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.badgeLabel, { color: colors.primaryForeground }]}>
-            {activeCount}
-          </Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  toolbar: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 10 },
-  toolbarRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  search: {
-    flex: 1,
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    fontSize: 16,
+  toolbar: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.md,
+    gap: space.md,
   },
-  toolButton: {
+  search: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    minHeight: 40,
+    gap: space.sm,
+    minHeight: HIT_TARGET,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
   },
-  toolButtonLabel: { fontSize: 14, fontWeight: "600" },
-  badge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 5,
+  searchInput: {
+    ...type.body,
+    flex: 1,
+    minHeight: HIT_TARGET,
+    paddingVertical: 0,
   },
-  badgeLabel: { fontSize: 11, fontWeight: "700" },
-  split: { flex: 1, flexDirection: "row" },
+  toolRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  bannerWrap: { paddingHorizontal: space.lg, paddingBottom: space.md },
+  split: {
+    flex: 1,
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   dayPane: { flex: 1, minWidth: 0 },
+  dayContent: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xxxl,
+    gap: space.md,
+  },
   dayHeading: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 8,
+    gap: space.sm,
   },
-  todayChip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  todayChipLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  dayTitle: { flex: 1, fontSize: 15, fontWeight: "700" },
-  dayList: { paddingHorizontal: 16, paddingBottom: 24 },
-  dayEmpty: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    padding: 20,
-  },
-  empty: {
-    flexGrow: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  emptyTitle: { fontSize: 20, fontWeight: "700" },
-  emptyBody: { fontSize: 15, textAlign: "center", lineHeight: 22 },
+  dayHeadingText: { flex: 1, gap: space.xs },
+  emptyScroll: { flexGrow: 1, justifyContent: "center" },
 });

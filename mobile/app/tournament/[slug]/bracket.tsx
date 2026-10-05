@@ -22,10 +22,8 @@ import {
   AccessibilityInfo,
   Animated,
   Easing,
-  RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -37,13 +35,36 @@ import { flattenBrackets, type DisplayBracket } from "~/tournament/flatten-brack
 import { HostSettingsEntry } from "~/tournament/host-settings-entry";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { usePublicLoader } from "~/tournament/use-public-loader";
-import { useThemeColors, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Banner,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  Icon,
+  ScreenScroll,
+  space,
+} from "~/ui";
+
+const ALL = "__all__";
+
+function bracketKey(bracket: DisplayBracket): string {
+  return `${bracket.tier}-${bracket.name}-${bracket.contextName ?? ""}`;
+}
+
+function bracketLabel(bracket: DisplayBracket): string {
+  return bracket.contextName
+    ? `${bracket.name} · ${bracket.contextName}`
+    : bracket.name;
+}
 
 export default function BracketScreen() {
-  const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const [filter, setFilter] = useState<string>(ALL);
 
   const load = useCallback(
     (signal?: AbortSignal) => {
@@ -53,10 +74,8 @@ export default function BracketScreen() {
     [slug]
   );
 
-  const { data, error, isRefreshing, reload, refresh } = usePublicLoader(
-    load,
-    "Could not load the bracket."
-  );
+  const { data, error, refreshError, isRefreshing, reload, refresh, clearError } =
+    usePublicLoader(load, "Could not load the bracket.");
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: "Bracket" });
@@ -75,19 +94,16 @@ export default function BracketScreen() {
 
   const brackets = flattenBrackets(data);
   const anyReleased = data.divisions.some((division) => division.released);
+  const visible =
+    filter === ALL || !brackets.some((bracket) => bracketKey(bracket) === filter)
+      ? brackets
+      : brackets.filter((bracket) => bracketKey(bracket) === filter);
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh} gap={space.xl}>
+      {refreshError ? (
+        <Banner tone="error" message={refreshError} onDismiss={clearError} />
+      ) : null}
       {slug ? (
         <HostSettingsEntry
           slug={slug}
@@ -97,43 +113,70 @@ export default function BracketScreen() {
         />
       ) : null}
       {data.divisions.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          Divisions have not been posted yet. The bracket lands here after the
-          host releases play.
-        </Text>
+        <EmptyState
+          icon="git-network-outline"
+          title="No bracket yet"
+          message="The bracket lands here after the host releases play."
+        />
       ) : !anyReleased ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          The host has not released this bracket yet.
-        </Text>
+        <EmptyState
+          icon="time-outline"
+          title="Bracket not released"
+          message="The host has not released this bracket yet. Pull down to check again."
+        />
       ) : brackets.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          Bracket rounds appear after pool play is seeded.
-        </Text>
+        <EmptyState
+          icon="git-network-outline"
+          title="Waiting on pool play"
+          message="Bracket rounds appear after pool play is seeded."
+          action={{
+            label: "View pools",
+            icon: "grid-outline",
+            onPress: () => router.push(`/tournament/${slug}/pools`),
+          }}
+        />
       ) : (
-        brackets.map((bracket) => (
-          <BracketSection
-            key={`${bracket.tier}-${bracket.name}-${bracket.contextName ?? ""}`}
-            bracket={bracket}
-            colors={colors}
-            onMatchPress={(matchSlug) =>
-              router.push(`/tournament/${slug}/matches/${matchSlug}`)
-            }
-          />
-        ))
+        <>
+          {brackets.length > 1 ? (
+            <ChipRow>
+              <Chip
+                label="All"
+                selected={filter === ALL}
+                onPress={() => setFilter(ALL)}
+              />
+              {brackets.map((bracket) => (
+                <Chip
+                  key={bracketKey(bracket)}
+                  label={bracketLabel(bracket)}
+                  selected={filter === bracketKey(bracket)}
+                  onPress={() => setFilter(bracketKey(bracket))}
+                />
+              ))}
+            </ChipRow>
+          ) : null}
+          {visible.map((bracket) => (
+            <BracketSection
+              key={bracketKey(bracket)}
+              bracket={bracket}
+              onMatchPress={(matchSlug) =>
+                router.push(`/tournament/${slug}/matches/${matchSlug}`)
+              }
+            />
+          ))}
+        </>
       )}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
 function BracketSection({
   bracket,
-  colors,
   onMatchPress,
 }: {
   bracket: DisplayBracket;
-  colors: ThemeColors;
   onMatchPress: (matchSlug: string) => void;
 }) {
+  const colors = useThemeColors();
   const typeLabel = BRACKET_TYPE_LABELS[bracket.type];
   const showType = bracket.type === "double_elimination";
   const reduceMotion = useReduceMotion();
@@ -163,37 +206,37 @@ function BracketSection({
     [dismissHint]
   );
 
+  const meta = [bracket.contextName, showType ? typeLabel : null]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <View style={[styles.section, { borderColor: colors.border }]}>
+    <Card padded={false} style={styles.section}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
+        <AppText variant="headline" accessibilityRole="header">
           {bracket.name} bracket
-        </Text>
-        {bracket.contextName ? (
-          <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-            {bracket.contextName}
-          </Text>
-        ) : null}
-        {showType && typeLabel ? (
-          <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-            {typeLabel}
-          </Text>
+        </AppText>
+        {meta ? (
+          <AppText variant="footnote" tone="muted">
+            {meta}
+          </AppText>
         ) : null}
       </View>
       {bracket.matches.length === 0 ? (
-        <Text style={[styles.emptyPad, { color: colors.mutedForeground }]}>
-          Seeds automatically when pool play finishes.
-        </Text>
+        <EmptyState
+          compact
+          icon="hourglass-outline"
+          title="Not seeded yet"
+          message="Seeds automatically when pool play finishes."
+        />
       ) : (
         <>
-          <Animated.Text
-            style={[
-              styles.hint,
-              { color: colors.mutedForeground, opacity: hintOpacity },
-            ]}
-          >
-            Swipe sideways to see later rounds
-          </Animated.Text>
+          <Animated.View style={[styles.hint, { opacity: hintOpacity }]}>
+            <Icon name="swap-horizontal" size={14} tone="muted" />
+            <AppText variant="caption" tone="muted">
+              Swipe sideways to see later rounds
+            </AppText>
+          </Animated.View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -208,7 +251,7 @@ function BracketSection({
           </ScrollView>
         </>
       )}
-    </View>
+    </Card>
   );
 }
 
@@ -226,28 +269,20 @@ function useReduceMotion(): boolean {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 40, gap: 20 },
-  section: {
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
+  section: { overflow: "hidden" },
   header: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    alignItems: "center",
-    gap: 2,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: space.xxs,
   },
-  title: { fontSize: 18, fontWeight: "700", letterSpacing: -0.2 },
-  meta: { fontSize: 13 },
   hint: {
-    fontSize: 12,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xs,
   },
-  draw: { paddingHorizontal: 16, paddingVertical: 12 },
-  empty: { fontSize: 15, lineHeight: 22 },
-  emptyPad: { fontSize: 15, lineHeight: 22, padding: 20, textAlign: "center" },
+  draw: { paddingHorizontal: space.lg, paddingVertical: space.md },
 });

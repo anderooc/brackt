@@ -18,16 +18,7 @@
 
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   fetchTournamentEmail,
   previewTournamentEmail,
@@ -35,10 +26,30 @@ import {
   sendTournamentWaiverReminder,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { EMAIL_AUDIENCE_OPTIONS } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { FormField, FormTextInput } from "~/components/create-form";
+import { EMAIL_AUDIENCE_OPTIONS, formatRelativeTime } from "~/lib/format";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  BottomBar,
+  Button,
+  Chip,
+  ChipRow,
+  EmptyState,
+  haptics,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  space,
+} from "~/ui";
+
+function captainsLabel(count: number): string {
+  return `${count} captain${count === 1 ? "" : "s"}`;
+}
 
 export default function EmailScreen() {
   const colors = useThemeColors();
@@ -74,284 +85,255 @@ export default function EmailScreen() {
     );
   }
 
-  async function run(key: string, action: () => Promise<void>) {
+  async function run(
+    key: string,
+    action: () => Promise<string | null>,
+    refreshAfter = true
+  ) {
     setBusy(key);
     setActionError(null);
     setActionSuccess(null);
     try {
-      await action();
-      await refresh();
+      const success = await action();
+      if (success) {
+        haptics.success();
+        setActionSuccess(success);
+      }
+      if (refreshAfter) await refresh();
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Something went wrong."));
     } finally {
       setBusy(null);
     }
   }
 
+  async function onPreview() {
+    await run(
+      "preview",
+      async () => {
+        const result = await previewTournamentEmail(slug!, audience);
+        setPreview(
+          `${result.recipientCount} recipient${result.recipientCount === 1 ? "" : "s"} · ${result.audienceLabel}`
+        );
+        return null;
+      },
+      false
+    );
+  }
+
+  async function onSendPress() {
+    setBusy("send");
+    setActionError(null);
+    setActionSuccess(null);
+    let count: number;
+    let audienceLabel: string;
+    try {
+      const result = await previewTournamentEmail(slug!, audience);
+      count = result.recipientCount;
+      audienceLabel = result.audienceLabel;
+    } catch (cause) {
+      haptics.error();
+      setActionError(messageFor(cause, "Could not count recipients."));
+      setBusy(null);
+      return;
+    }
+    setBusy(null);
+
+    if (count === 0) {
+      haptics.warning();
+      setActionError(`No captains match “${audienceLabel}”. Pick another audience.`);
+      return;
+    }
+
+    Alert.alert(
+      `Send to ${captainsLabel(count)}?`,
+      `“${subject.trim()}” will be emailed to ${audienceLabel.toLowerCase()}. This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: () =>
+            void run("send", async () => {
+              const result = await sendTournamentEmail(slug!, {
+                audience,
+                subject,
+                body,
+              });
+              setSubject("");
+              setBody("");
+              setPreview(null);
+              return `Email sent to ${captainsLabel(result.recipientCount)}.`;
+            }),
+        },
+      ]
+    );
+  }
+
+  function onWaiverReminder() {
+    Alert.alert(
+      "Send waiver reminder?",
+      "Captains of teams with unsigned waivers will get an email reminder.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send reminder",
+          onPress: () =>
+            void run("waiver", async () => {
+              const result = await sendTournamentWaiverReminder(slug!);
+              return `Waiver reminder sent to ${captainsLabel(result.recipientCount)}.`;
+            }),
+        },
+      ]
+    );
+  }
+
+  const locked = !data.canSend;
+  const canSend =
+    !locked && busy === null && subject.trim().length > 0 && body.trim().length > 0;
+
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>Email</Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
+    <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+        <AppText variant="subhead" tone="muted">
           Send updates to registered team captains. Daily send limits apply.
-        </Text>
+        </AppText>
 
-        {!data.canSend && data.lockedReason ? (
-          <Text style={{ color: colors.destructive, fontSize: 14 }}>
-            {data.lockedReason}
-          </Text>
-        ) : null}
-
-        <View style={styles.audiences}>
-          {EMAIL_AUDIENCE_OPTIONS.map((option) => {
-            const pressed = audience === option.value;
-            return (
-              <Pressable
-                key={option.value}
-                accessibilityRole="button"
-                accessibilityState={{ selected: pressed }}
-                onPress={() => {
-                  setAudience(option.value);
-                  setPreview(null);
-                }}
-                style={[
-                  styles.audience,
-                  {
-                    borderColor: pressed ? colors.primary : colors.border,
-                    backgroundColor: pressed
-                      ? withAlpha(colors.primary, 0.1)
-                      : "transparent",
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: pressed ? colors.primary : colors.mutedForeground,
-                    fontWeight: "600",
-                    fontSize: 13,
-                  }}
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <TextInput
-          value={subject}
-          onChangeText={setSubject}
-          placeholder="Subject"
-          placeholderTextColor={colors.mutedForeground}
-          style={[
-            styles.input,
-            {
-              color: colors.foreground,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            },
-          ]}
-        />
-        <TextInput
-          value={body}
-          onChangeText={setBody}
-          placeholder="Message"
-          placeholderTextColor={colors.mutedForeground}
-          multiline
-          textAlignVertical="top"
-          style={[
-            styles.textarea,
-            {
-              color: colors.foreground,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            },
-          ]}
-        />
-
-        {preview ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            {preview}
-          </Text>
+        {locked && data.lockedReason ? (
+          <Banner tone="warning" title="Sending paused" message={data.lockedReason} />
         ) : null}
         {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
+          <Banner
+            tone="error"
+            message={actionError}
+            onDismiss={() => setActionError(null)}
+          />
         ) : null}
         {actionSuccess ? (
-          <Text style={{ color: colors.secondary }}>{actionSuccess}</Text>
+          <Banner
+            tone="success"
+            message={actionSuccess}
+            onDismiss={() => setActionSuccess(null)}
+          />
         ) : null}
 
-        <View style={styles.row}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={!data.canSend || busy !== null}
-            onPress={() =>
-              void run("preview", async () => {
-                const result = await previewTournamentEmail(slug, audience);
-                setPreview(
-                  `${result.recipientCount} recipient${result.recipientCount === 1 ? "" : "s"} · ${result.audienceLabel}`
-                );
-              })
-            }
-            style={[styles.outline, { borderColor: colors.border }]}
+        <View style={styles.form}>
+          <FormField
+            label="Recipients"
+            hint={preview ?? undefined}
+            colors={colors}
           >
-            {busy === "preview" ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                Preview
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={!data.canSend || busy !== null}
-            onPress={() =>
-              void run("send", async () => {
-                const result = await sendTournamentEmail(slug, {
-                  audience,
-                  subject,
-                  body,
-                });
-                setActionSuccess(
-                  `Sent to ${result.recipientCount} captain${result.recipientCount === 1 ? "" : "s"}.`
-                );
-                setSubject("");
-                setBody("");
-              })
-            }
-            style={[
-              styles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: data.canSend ? 1 : 0.5,
-              },
-            ]}
-          >
-            {busy === "send" ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text
-                style={{ color: colors.primaryForeground, fontWeight: "700" }}
-              >
-                Send email
-              </Text>
-            )}
-          </Pressable>
+            <ChipRow>
+              {EMAIL_AUDIENCE_OPTIONS.map((option) => (
+                <Chip
+                  key={option.value}
+                  label={option.label}
+                  selected={audience === option.value}
+                  disabled={locked}
+                  onPress={() => {
+                    setAudience(option.value);
+                    setPreview(null);
+                  }}
+                />
+              ))}
+            </ChipRow>
+            <Button
+              label="Count recipients"
+              icon="people-outline"
+              size="sm"
+              variant="ghost"
+              loading={busy === "preview"}
+              disabled={locked || busy !== null}
+              onPress={() => void onPreview()}
+            />
+          </FormField>
+
+          <FormField label="Subject" colors={colors}>
+            <FormTextInput
+              value={subject}
+              onChangeText={setSubject}
+              placeholder="Check-in moved to 8:00 AM"
+              autoCapitalize="sentences"
+              maxLength={200}
+              editable={!locked}
+              accessibilityLabel="Subject"
+              colors={colors}
+            />
+          </FormField>
+
+          <FormField label="Message" colors={colors}>
+            <FormTextInput
+              value={body}
+              onChangeText={setBody}
+              placeholder="Write your update"
+              multiline
+              autoCapitalize="sentences"
+              editable={!locked}
+              accessibilityLabel="Message"
+              colors={colors}
+              style={styles.textarea}
+            />
+          </FormField>
         </View>
 
         {data.waiverEnabled ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={!data.canSend || busy !== null}
-            onPress={() =>
-              void run("waiver", async () => {
-                const result = await sendTournamentWaiverReminder(slug);
-                setActionSuccess(
-                  `Waiver reminder sent to ${result.recipientCount} captain${result.recipientCount === 1 ? "" : "s"}.`
-                );
-              })
-            }
-            style={[styles.outline, { borderColor: colors.border }]}
+          <Section
+            title="Waiver reminder"
+            description="Email captains whose teams still have unsigned waivers."
           >
-            {busy === "waiver" ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={{ color: colors.secondary, fontWeight: "700" }}>
-                Send waiver reminder
-              </Text>
-            )}
-          </Pressable>
+            <Button
+              label="Send waiver reminder"
+              icon="document-text-outline"
+              variant="outline"
+              size="sm"
+              loading={busy === "waiver"}
+              disabled={locked || busy !== null}
+              onPress={onWaiverReminder}
+            />
+          </Section>
         ) : null}
 
-        <View style={styles.history}>
-          <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-            Recent sends
-          </Text>
+        <Section title="Recent sends">
           {data.history.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-              No emails sent yet.
-            </Text>
+            <EmptyState
+              compact
+              icon="mail-outline"
+              title="No emails sent yet"
+              message="Emails you send from here will be listed with their recipient count."
+            />
           ) : (
-            data.history.map((row) => (
-              <View
-                key={row.id}
-                style={[styles.historyRow, { borderColor: colors.border }]}
-              >
-                <Text
-                  style={{ color: colors.foreground, fontWeight: "600" }}
+            <ListGroup>
+              {data.history.map((row) => (
+                <ListRow
+                  key={row.id}
+                  icon="mail-outline"
+                  iconTone="muted"
+                  title={row.subject}
                   numberOfLines={1}
-                >
-                  {row.subject}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  {row.recipientCount} recipients ·{" "}
-                  {new Date(row.sentAt).toLocaleString()}
-                </Text>
-              </View>
-            ))
+                  subtitle={`${row.recipientCount} recipient${row.recipientCount === 1 ? "" : "s"} · ${formatRelativeTime(row.sentAt)}`}
+                />
+              ))}
+            </ListGroup>
           )}
-        </View>
-      </ScrollView>
+        </Section>
+      </ScreenScroll>
+
+      <BottomBar>
+        <Button
+          label="Send email"
+          icon="paper-plane-outline"
+          fullWidth
+          loading={busy === "send"}
+          disabled={!canSend}
+          onPress={() => void onSendPress()}
+        />
+      </BottomBar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 14 },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22 },
-  audiences: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  audience: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  textarea: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 140,
-  },
-  row: { flexDirection: "row", gap: 8, alignItems: "center" },
-  outline: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  button: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  history: { gap: 10, marginTop: 8 },
-  cardTitle: { fontSize: 17, fontWeight: "700" },
-  historyRow: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 10,
-    gap: 3,
-  },
+  fill: { flex: 1 },
+  form: { gap: space.xl },
+  textarea: { minHeight: 160 },
 });

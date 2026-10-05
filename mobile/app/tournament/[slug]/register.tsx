@@ -19,15 +19,7 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   fetchTournamentRegisterOptions,
   submitTournamentRegistration,
@@ -35,9 +27,25 @@ import {
 import { useSession } from "~/auth/session";
 import { formatDeadline } from "~/lib/format";
 import { goBackOrReplace } from "~/lib/navigation";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  BottomBar,
+  Button,
+  Card,
+  EmptyState,
+  haptics,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  space,
+  StatusBadge,
+} from "~/ui";
 
 export default function RegisterScreen() {
   const colors = useThemeColors();
@@ -65,11 +73,18 @@ export default function RegisterScreen() {
   if (!session) return <Redirect href="/sign-in" />;
   if (!slug) {
     return (
-      <ErrorScreen
-        title="Tournament unavailable"
-        message="Missing tournament link."
-        onRetry={() => {}}
-      />
+      <View style={[styles.fill, styles.centered, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="link-outline"
+          title="Tournament unavailable"
+          message="This registration link is missing its tournament."
+          action={{
+            label: "Go back",
+            icon: "chevron-back",
+            onPress: () => goBackOrReplace(router, "/"),
+          }}
+        />
+      </View>
     );
   }
   if (data === null && error === null) return <LoadingScreen />;
@@ -84,6 +99,7 @@ export default function RegisterScreen() {
   }
 
   function toggle(teamSlug: string) {
+    haptics.selection();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(teamSlug)) next.delete(teamSlug);
@@ -101,10 +117,12 @@ export default function RegisterScreen() {
         teamSlugs: [...selected],
         operationId: Crypto.randomUUID(),
       });
+      haptics.success();
       setResult(outcome);
-      await refresh();
       setSelected(new Set());
+      await refresh();
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Could not register teams."));
     } finally {
       setBusy(false);
@@ -119,235 +137,160 @@ export default function RegisterScreen() {
           data.availability.capacity - data.availability.registeredCount
         );
 
-  return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Register
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          Select captain teams to enter this {data.genderLabel.toLowerCase()}{" "}
-          tournament.
-        </Text>
+  const facts = [
+    `${data.availability.registeredCount} registered`,
+    spotsLeft !== null ? `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left` : null,
+    data.availability.waitlistCount > 0
+      ? `${data.availability.waitlistCount} waitlisted`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
-        <View style={[styles.facts, { borderColor: colors.border }]}>
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            {data.availability.registeredCount} registered
-            {spotsLeft !== null ? ` · ${spotsLeft} spots left` : ""}
-            {data.availability.waitlistCount > 0
-              ? ` · ${data.availability.waitlistCount} waitlisted`
-              : ""}
-          </Text>
+  const resultMessage = result
+    ? [
+        result.acceptedCount > 0
+          ? `${result.acceptedCount} team${result.acceptedCount === 1 ? "" : "s"} registered.`
+          : null,
+        result.waitlistedCount > 0
+          ? `${result.waitlistedCount} team${result.waitlistedCount === 1 ? "" : "s"} added to the waitlist.`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ") || "Your registration was received."
+    : "";
+
+  const showFooter =
+    data.registrationOpen && data.eligibleTeams.length > 0 && !result;
+
+  return (
+    <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+        <AppText variant="subhead" tone="muted">
+          Select the teams you captain to enter this{" "}
+          {data.genderLabel.toLowerCase()} tournament.
+        </AppText>
+
+        <Card>
+          <View style={styles.factRow}>
+            <Icon name="people-outline" size={18} tone="muted" />
+            <AppText variant="subhead">{facts}</AppText>
+          </View>
           {data.availability.deadline ? (
-            <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-              Deadline {formatDeadline(data.availability.deadline)}
-            </Text>
+            <View style={styles.factRow}>
+              <Icon name="time-outline" size={18} tone="muted" />
+              <AppText variant="subhead">
+                Registration closes {formatDeadline(data.availability.deadline)}
+              </AppText>
+            </View>
           ) : null}
-        </View>
+        </Card>
 
         {result ? (
-          <View
-            style={[
-              styles.result,
-              { backgroundColor: withAlpha(colors.primary, 0.12) },
-            ]}
-          >
-            <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-              Registration submitted
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-              {result.acceptedCount > 0
-                ? `${result.acceptedCount} team${result.acceptedCount === 1 ? "" : "s"} accepted.`
-                : null}
-              {result.waitlistedCount > 0
-                ? ` ${result.waitlistedCount} waitlisted.`
-                : null}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                goBackOrReplace(router, `/tournament/${slug}`)
-              }
-              style={[styles.done, { borderColor: colors.primary }]}
-            >
-              <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                Done
-              </Text>
-            </Pressable>
-          </View>
+          <Banner
+            tone="success"
+            title="Registration submitted"
+            message={resultMessage}
+            action={{
+              label: "Back to tournament",
+              onPress: () => goBackOrReplace(router, `/tournament/${slug}`),
+            }}
+          />
         ) : null}
 
         {!data.registrationOpen ? (
-          <Text style={{ color: colors.destructive, fontSize: 15 }}>
-            {data.closedReason ?? "Registration is closed."}
-          </Text>
-        ) : null}
-
-        {data.myTeams.length > 0 ? (
-          <View style={styles.block}>
-            <Text style={[styles.section, { color: colors.foreground }]}>
-              Already entered
-            </Text>
-            {data.myTeams.map((team) => (
-              <Text
-                key={team.slug}
-                style={{ color: colors.mutedForeground, fontSize: 15 }}
-              >
-                {team.name} · {team.status}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        {data.emptyMessage ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            {data.emptyMessage}
-          </Text>
-        ) : null}
-
-        {data.eligibleTeams.length > 0 ? (
-          <View style={styles.block}>
-            <Text style={[styles.section, { color: colors.foreground }]}>
-              Your teams
-            </Text>
-            {data.eligibleTeams.map((team) => {
-              const pressed = selected.has(team.slug);
-              return (
-                <Pressable
-                  key={team.slug}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: pressed }}
-                  onPress={() => toggle(team.slug)}
-                  style={[
-                    styles.teamRow,
-                    {
-                      borderColor: pressed ? colors.primary : colors.border,
-                      backgroundColor: pressed
-                        ? withAlpha(colors.primary, 0.1)
-                        : "transparent",
-                    },
-                  ]}
-                >
-                  <View style={styles.teamText}>
-                    <Text
-                      style={[styles.teamName, { color: colors.foreground }]}
-                    >
-                      {team.name}
-                    </Text>
-                    <Text
-                      style={{ color: colors.mutedForeground, fontSize: 13 }}
-                    >
-                      {team.university}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    {pressed ? "Selected" : "Select"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Banner
+            tone="warning"
+            title="Registration closed"
+            message={data.closedReason ?? "This tournament is not accepting new teams."}
+          />
         ) : null}
 
         {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
+          <Banner
+            tone="error"
+            message={actionError}
+            onDismiss={() => setActionError(null)}
+          />
         ) : null}
-      </ScrollView>
 
-      {data.registrationOpen && data.eligibleTeams.length > 0 && !result ? (
-        <View
-          style={[
-            styles.footer,
-            {
-              borderTopColor: colors.border,
-              backgroundColor: colors.background,
-            },
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy || selected.size === 0}
-            onPress={() => void onSubmit()}
-            style={[
-              styles.submit,
-              {
-                backgroundColor: colors.primary,
-                opacity: busy || selected.size === 0 ? 0.5 : 1,
-              },
-            ]}
+        {data.myTeams.length > 0 ? (
+          <Section title="Already entered">
+            <ListGroup>
+              {data.myTeams.map((team) => (
+                <ListRow
+                  key={team.slug}
+                  title={team.name}
+                  icon="shield-checkmark-outline"
+                  trailing={<StatusBadge kind="registration" status={team.status} />}
+                />
+              ))}
+            </ListGroup>
+          </Section>
+        ) : null}
+
+        {data.eligibleTeams.length > 0 ? (
+          <Section
+            title="Your teams"
+            description={
+              data.registrationOpen ? "Tap a team to select it." : undefined
+            }
           >
-            {busy ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text
-                style={[
-                  styles.submitLabel,
-                  { color: colors.primaryForeground },
-                ]}
-              >
-                {selected.size <= 1
-                  ? "Register team"
-                  : `Register ${selected.size} teams`}
-              </Text>
-            )}
-          </Pressable>
-        </View>
+            <ListGroup>
+              {data.eligibleTeams.map((team) => {
+                const isSelected = selected.has(team.slug);
+                return (
+                  <ListRow
+                    key={team.slug}
+                    title={team.name}
+                    subtitle={team.university}
+                    chevron={false}
+                    disabled={!data.registrationOpen || busy || result !== null}
+                    onPress={() => toggle(team.slug)}
+                    accessibilityLabel={`${team.name}, ${team.university}${isSelected ? ", selected" : ""}`}
+                    accessibilityHint="Toggles this team for registration"
+                    trailing={
+                      <Icon
+                        name={isSelected ? "checkmark-circle" : "ellipse-outline"}
+                        size={24}
+                        tone={isSelected ? "primary" : "muted"}
+                      />
+                    }
+                  />
+                );
+              })}
+            </ListGroup>
+          </Section>
+        ) : data.emptyMessage ? (
+          <EmptyState
+            icon="people-outline"
+            title="No teams to register"
+            message={data.emptyMessage}
+          />
+        ) : null}
+      </ScreenScroll>
+
+      {showFooter ? (
+        <BottomBar>
+          <Button
+            label={
+              selected.size <= 1
+                ? "Register team"
+                : `Register ${selected.size} teams`
+            }
+            loading={busy}
+            disabled={selected.size === 0}
+            onPress={() => void onSubmit()}
+            fullWidth
+          />
+        </BottomBar>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22 },
-  facts: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 4,
-  },
-  block: { gap: 10 },
-  section: { fontSize: 17, fontWeight: "700" },
-  teamRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  teamText: { flex: 1, gap: 2 },
-  teamName: { fontSize: 16, fontWeight: "700" },
-  footer: {
-    borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  submit: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  submitLabel: { fontSize: 16, fontWeight: "700" },
-  result: { borderRadius: 12, padding: 14, gap: 8 },
-  done: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: 4,
-  },
+  fill: { flex: 1 },
+  centered: { justifyContent: "center" },
+  factRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
 });

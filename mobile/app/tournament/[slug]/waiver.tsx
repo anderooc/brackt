@@ -18,36 +18,44 @@
 
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Linking, StyleSheet, View } from "react-native";
 import {
   acknowledgeTournamentWaiver,
   downloadTournamentWaiverPdf,
   fetchTournamentWaiver,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField, FormTextInput } from "~/components/create-form";
 import { waiverMethodLabel } from "~/lib/format";
 import { shareDownloadedPdf } from "~/lib/share-pdf";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  haptics,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  space,
+  SwitchRow,
+} from "~/ui";
 
 export default function WaiverScreen() {
   const colors = useThemeColors();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [signedName, setSignedName] = useState<Record<string, string>>({});
+  const [agreed, setAgreed] = useState<Record<string, boolean>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentWaiver(slug ?? "", signal),
@@ -71,110 +79,129 @@ export default function WaiverScreen() {
     );
   }
 
-  async function run(key: string, action: () => Promise<void>) {
+  async function run(
+    key: string,
+    action: () => Promise<void>,
+    success?: string
+  ) {
     setBusyKey(key);
     setActionError(null);
+    setActionSuccess(null);
     try {
       await action();
-      await refresh();
+      if (success) {
+        haptics.success();
+        setActionSuccess(success);
+        await refresh();
+      }
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Something went wrong."));
     } finally {
       setBusyKey(null);
     }
   }
 
+  const canDownload = data.settings.allowDownloadPrint && data.hasPdf;
+  const externalUrl =
+    data.settings.allowThirdParty && data.settings.thirdPartyUrl
+      ? data.settings.thirdPartyUrl
+      : null;
+
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>Waiver</Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <Card>
+        <AppText variant="headline">
+          {data.hasPdf ? `Waiver version ${data.version}` : "No waiver posted"}
+        </AppText>
+        <AppText variant="subhead" tone="muted">
           {data.hasPdf
-            ? `Current waiver v${data.version}${data.fileName ? ` · ${data.fileName}` : ""}`
-            : "No waiver PDF has been uploaded yet."}
-        </Text>
-
-        <View style={styles.actions}>
-          {data.settings.allowDownloadPrint && data.hasPdf ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={busyKey === "download"}
-              onPress={() =>
-                void run("download", async () => {
-                  await shareDownloadedPdf(
-                    () => downloadTournamentWaiverPdf(slug),
-                    `${slug}-waiver.pdf`
-                  );
-                })
-              }
-              style={[styles.outline, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                Download PDF
-              </Text>
-            </Pressable>
-          ) : null}
-          {data.settings.allowThirdParty && data.settings.thirdPartyUrl ? (
-            <Pressable
-              accessibilityRole="link"
-              onPress={() =>
-                void Linking.openURL(data.settings.thirdPartyUrl!)
-              }
-              style={[styles.outline, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.secondary, fontWeight: "700" }}>
-                Sign externally
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
+            ? (data.fileName ?? "Read the waiver before you sign.")
+            : "The host has not uploaded a waiver PDF yet."}
+        </AppText>
+        {canDownload || externalUrl ? (
+          <View style={styles.actions}>
+            {canDownload ? (
+              <Button
+                label="Download PDF"
+                icon="download-outline"
+                size="sm"
+                variant="outline"
+                loading={busyKey === "download"}
+                disabled={busyKey !== null}
+                onPress={() =>
+                  void run("download", async () => {
+                    await shareDownloadedPdf(
+                      () => downloadTournamentWaiverPdf(slug),
+                      `${slug}-waiver.pdf`
+                    );
+                  })
+                }
+              />
+            ) : null}
+            {externalUrl ? (
+              <Button
+                label="Sign externally"
+                icon="open-outline"
+                size="sm"
+                variant="outline"
+                onPress={() => void Linking.openURL(externalUrl)}
+              />
+            ) : null}
+          </View>
         ) : null}
+      </Card>
 
-        {data.teams.length === 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            No registered teams are available for waiver tracking yet.
-          </Text>
-        ) : (
-          data.teams.map((team) => {
-            const myRow = team.roster.find((member) => member.isViewer);
-            const canAck =
-              data.settings.allowDigitalAck && myRow && !myRow.completed;
+      {actionError ? (
+        <Banner
+          tone="error"
+          message={actionError}
+          onDismiss={() => setActionError(null)}
+        />
+      ) : null}
+      {actionSuccess ? (
+        <Banner
+          tone="success"
+          message={actionSuccess}
+          onDismiss={() => setActionSuccess(null)}
+        />
+      ) : null}
 
-            return (
-              <View
-                key={team.teamSlug}
-                style={[styles.card, { borderColor: colors.border }]}
-              >
-                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                  {team.teamName}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-                  {team.completedCount}/{team.totalCount} complete
-                  {team.complete ? " · Ready for check-in" : ""}
-                </Text>
+      {data.teams.length === 0 ? (
+        <EmptyState
+          icon="document-text-outline"
+          title="No teams to track"
+          message="Waiver progress appears here once your team is registered for this tournament."
+        />
+      ) : (
+        data.teams.map((team) => {
+          const myRow = team.roster.find((member) => member.isViewer);
+          const canAck =
+            data.settings.allowDigitalAck && myRow && !myRow.completed;
+          const name = signedName[team.teamSlug] ?? "";
+          const hasAgreed = agreed[team.teamSlug] ?? false;
+          const ackKey = `ack-${team.teamSlug}`;
 
-                {canAck ? (
-                  <View style={styles.ack}>
-                    <Text
-                      style={[styles.ackLabel, { color: colors.foreground }]}
-                    >
-                      Your digital acknowledgment
-                    </Text>
-                    <TextInput
-                      value={signedName[team.teamSlug] ?? ""}
+          return (
+            <Section
+              key={team.teamSlug}
+              title={team.teamName}
+              description={`${team.completedCount} of ${team.totalCount} signed`}
+            >
+              {team.complete ? (
+                <Badge label="Ready for check-in" tone="success" />
+              ) : null}
+
+              {canAck ? (
+                <Card style={styles.ack}>
+                  <AppText variant="headline">Sign digitally</AppText>
+                  <FormField
+                    label="Full legal name"
+                    hint="Type your name as your digital signature."
+                    colors={colors}
+                  >
+                    <FormTextInput
+                      value={name}
                       onChangeText={(value) =>
                         setSignedName((prev) => ({
                           ...prev,
@@ -182,129 +209,81 @@ export default function WaiverScreen() {
                         }))
                       }
                       placeholder="Full legal name"
-                      placeholderTextColor={colors.mutedForeground}
-                      style={[
-                        styles.input,
-                        {
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                          backgroundColor: colors.card,
-                        },
-                      ]}
+                      autoCapitalize="words"
+                      maxLength={120}
+                      colors={colors}
                     />
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={busyKey === `ack-${team.teamSlug}`}
-                      onPress={() =>
-                        void run(`ack-${team.teamSlug}`, async () => {
+                  </FormField>
+                  <ListGroup>
+                    <SwitchRow
+                      label="I agree to the waiver"
+                      description="I have read the waiver and agree to its terms."
+                      value={hasAgreed}
+                      onValueChange={(value) =>
+                        setAgreed((prev) => ({ ...prev, [team.teamSlug]: value }))
+                      }
+                    />
+                  </ListGroup>
+                  <Button
+                    label="Sign waiver"
+                    icon="create-outline"
+                    fullWidth
+                    loading={busyKey === ackKey}
+                    disabled={!hasAgreed || !name.trim() || busyKey !== null}
+                    onPress={() =>
+                      void run(
+                        ackKey,
+                        async () => {
                           await acknowledgeTournamentWaiver(slug, {
                             teamSlug: team.teamSlug,
-                            signedName: signedName[team.teamSlug] ?? "",
+                            signedName: name.trim(),
                           });
-                        })
-                      }
-                      style={[
-                        styles.button,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    >
-                      {busyKey === `ack-${team.teamSlug}` ? (
-                        <ActivityIndicator color={colors.primaryForeground} />
-                      ) : (
-                        <Text
-                          style={{
-                            color: colors.primaryForeground,
-                            fontWeight: "700",
-                          }}
-                        >
-                          I agree
-                        </Text>
-                      )}
-                    </Pressable>
-                  </View>
-                ) : null}
+                        },
+                        `Waiver signed for ${team.teamName}.`
+                      )
+                    }
+                  />
+                </Card>
+              ) : null}
 
-                <View style={styles.roster}>
+              {team.roster.length > 0 ? (
+                <ListGroup>
                   {team.roster.map((member) => (
-                    <View key={member.userId} style={styles.rosterRow}>
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <Text
-                          style={{
-                            color: colors.foreground,
-                            fontWeight: "600",
-                            fontSize: 15,
-                          }}
-                        >
-                          {member.fullName}
-                          {member.role === "captain" ? " · Captain" : ""}
-                        </Text>
-                        <Text
-                          style={{
-                            color: colors.mutedForeground,
-                            fontSize: 13,
-                          }}
-                        >
-                          {member.completed
-                            ? waiverMethodLabel(member.method)
-                            : "Pending"}
-                        </Text>
-                      </View>
-                      <Text
-                        style={{
-                          color: member.completed
-                            ? colors.secondary
-                            : colors.mutedForeground,
-                          fontWeight: "700",
-                          fontSize: 13,
-                        }}
-                      >
-                        {member.completed ? "Done" : "Open"}
-                      </Text>
-                    </View>
+                    <ListRow
+                      key={member.userId}
+                      title={
+                        member.isViewer ? `${member.fullName} (you)` : member.fullName
+                      }
+                      subtitle={[
+                        member.role === "captain" ? "Captain" : null,
+                        member.completed ? waiverMethodLabel(member.method) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                      trailing={
+                        <Badge
+                          label={member.completed ? "Signed" : "Not signed"}
+                          tone={member.completed ? "success" : "warning"}
+                        />
+                      }
+                    />
                   ))}
-                </View>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-    </View>
+                </ListGroup>
+              ) : null}
+            </Section>
+          );
+        })
+      )}
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  outline: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
-  cardTitle: { fontSize: 17, fontWeight: "700" },
-  ack: { gap: 8 },
-  ackLabel: { fontSize: 14, fontWeight: "600" },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  button: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  roster: { gap: 0 },
-  rosterRow: {
+  actions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
+    flexWrap: "wrap",
+    gap: space.sm,
+    marginTop: space.xs,
   },
+  ack: { gap: space.lg },
 });

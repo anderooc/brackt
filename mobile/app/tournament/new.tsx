@@ -17,8 +17,8 @@
  */
 
 import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { View } from "react-native";
 import { createTournament, fetchCreateOptions } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
@@ -28,6 +28,7 @@ import {
   FormTextInput,
 } from "~/components/create-form";
 import {
+  formatCalendarDate,
   GENDER_LABELS,
   PLAY_FORMAT_DESCRIPTIONS,
   PLAY_FORMAT_LABELS,
@@ -36,8 +37,25 @@ import {
   todayISO,
 } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { MonthCalendar } from "~/tournament/month-calendar";
 import { LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import {
+  Banner,
+  EmptyState,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  haptics,
+} from "~/ui";
+
+const NO_MARKS: ReadonlySet<string> = new Set();
+
+function monthOf(iso: string) {
+  const [year, month] = iso.split("-").map(Number);
+  return { year: year!, monthIndex: month! - 1 };
+}
 
 export default function CreateTournamentScreen() {
   const colors = useThemeColors();
@@ -55,6 +73,9 @@ export default function CreateTournamentScreen() {
   const [date, setDate] = useState(todayISO);
   const [location, setLocation] = useState("");
   const [address, setAddress] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => monthOf(todayISO()));
+  const today = useMemo(() => todayISO(), []);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const options = await fetchCreateOptions(signal);
@@ -91,9 +112,11 @@ export default function CreateTournamentScreen() {
         address: address.trim() || undefined,
         playFormat,
       });
+      haptics.success();
       router.replace(`/tournament/${result.slug}`);
     } catch (cause) {
       setError(messageFor(cause, "Could not create tournament."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -101,36 +124,13 @@ export default function CreateTournamentScreen() {
 
   if (!hostSchool) {
     return (
-      <View style={[styles.blocked, { backgroundColor: colors.background }]}>
-        <Text style={[styles.blockedTitle, { color: colors.foreground }]}>
-          Join or create a school first
-        </Text>
-        <Text
-          style={{
-            color: colors.mutedForeground,
-            textAlign: "center",
-            lineHeight: 22,
-          }}
-        >
-          Tournaments are hosted by a school. You need to be a school president
-          or officer, then return here to host an event.
-        </Text>
-        <Pressable
-          onPress={() => router.push("/schools/new")}
-          style={[styles.cta, { backgroundColor: colors.primary }]}
-        >
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            Create school
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push("/schools")}
-          style={[styles.cta, { borderColor: colors.border, borderWidth: 1 }]}
-        >
-          <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-            Browse schools
-          </Text>
-        </Pressable>
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: colors.background }}>
+        <EmptyState
+          icon="school-outline"
+          title="Join or create a school first"
+          message="Tournaments are hosted by a school. Become a president or officer of your school, then come back to host an event."
+          action={{ label: "Find your school", icon: "search", onPress: () => router.push("/schools") }}
+        />
       </View>
     );
   }
@@ -141,124 +141,112 @@ export default function CreateTournamentScreen() {
     location.trim().length > 0;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={[styles.hostCard, { borderColor: colors.border }]}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Hosting school
-        </Text>
-        <Text style={{ color: colors.foreground, fontWeight: "700", fontSize: 17 }}>
-          {hostSchool.name}
-        </Text>
-        <Text style={{ color: colors.mutedForeground }}>{hostSchool.university}</Text>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          {GENDER_LABELS[hostSchool.gender]} · {REGION_LABELS[hostSchool.region]}
-        </Text>
-      </View>
-
-      <FormField label="Tournament name" colors={colors}>
-        <FormTextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Spring Invitational 2026"
-          colors={colors}
+    <ScreenScroll gap={24}>
+      <ListGroup>
+        <ListRow
+          icon="school"
+          iconTone="secondary"
+          title={hostSchool.name}
+          subtitle={`Hosting school · ${GENDER_LABELS[hostSchool.gender]} ${REGION_LABELS[hostSchool.region]}`}
         />
-      </FormField>
+      </ListGroup>
 
-      <FormField label="Description (optional)" colors={colors}>
-        <FormTextInput
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Start time, fees, format, and other details…"
+
+      <Section title="Basics">
+        <FormField label="Tournament name" colors={colors}>
+          <FormTextInput
+            value={name}
+            onChangeText={setName}
+            placeholder="Spring Invitational 2026"
+            autoCapitalize="words"
+            maxLength={120}
+            colors={colors}
+          />
+        </FormField>
+
+        <FormField label="Date" colors={colors}>
+          <ListGroup>
+            <ListRow
+              icon="calendar-outline"
+              title={date ? formatCalendarDate(date) : "Choose a date"}
+              chevron={false}
+              accessibilityHint={calendarOpen ? "Hides the calendar" : "Shows a calendar"}
+              onPress={() => setCalendarOpen((open) => !open)}
+            />
+          </ListGroup>
+          {calendarOpen ? (
+            <MonthCalendar
+              selectedDate={date}
+              today={today}
+              markedDates={NO_MARKS}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
+              onSelectDate={(iso) => {
+                setDate(iso);
+                setCalendarOpen(false);
+              }}
+            />
+          ) : null}
+        </FormField>
+
+        <FormField
+          label="Format"
+          hint={PLAY_FORMAT_DESCRIPTIONS[playFormat]}
           colors={colors}
-          multiline
-        />
-      </FormField>
+        >
+          <ChipPicker
+            options={PLAY_FORMAT_VALUES}
+            value={playFormat}
+            onChange={setPlayFormat}
+            colors={colors}
+            labels={PLAY_FORMAT_LABELS}
+          />
+        </FormField>
+      </Section>
 
-      <FormField
-        label="Tournament format"
-        hint={PLAY_FORMAT_DESCRIPTIONS[playFormat]}
-        colors={colors}
-      >
-        <ChipPicker
-          options={PLAY_FORMAT_VALUES}
-          value={playFormat}
-          onChange={setPlayFormat}
-          colors={colors}
-          labels={PLAY_FORMAT_LABELS}
-        />
-      </FormField>
+      <Section title="Venue">
+        <FormField label="Location" colors={colors}>
+          <FormTextInput
+            value={location}
+            onChangeText={setLocation}
+            placeholder="University Gym"
+            autoCapitalize="words"
+            colors={colors}
+          />
+        </FormField>
 
-      <FormField
-        label="Date"
-        hint="Use YYYY-MM-DD format."
-        colors={colors}
-      >
-        <FormTextInput
-          value={date}
-          onChangeText={setDate}
-          placeholder="2026-03-15"
-          colors={colors}
-          keyboardType="numbers-and-punctuation"
-          autoCapitalize="none"
-        />
-      </FormField>
+        <FormField label="Address" hint="Optional. Shown with a map link." colors={colors}>
+          <FormTextInput
+            value={address}
+            onChangeText={setAddress}
+            placeholder="123 Main St, City, ST 12345"
+            textContentType="fullStreetAddress"
+            autoComplete="street-address"
+            colors={colors}
+          />
+        </FormField>
+      </Section>
 
-      <FormField label="Location" colors={colors}>
-        <FormTextInput
-          value={location}
-          onChangeText={setLocation}
-          placeholder="University Gym"
-          colors={colors}
-        />
-      </FormField>
+      <Section title="Details">
+        <FormField label="Description" hint="Optional. Start time, fees, and anything teams should know." colors={colors}>
+          <FormTextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Check-in at 8am, first serve at 9am…"
+            multiline
+            colors={colors}
+          />
+        </FormField>
+      </Section>
 
-      <FormField label="Address (optional)" colors={colors}>
-        <FormTextInput
-          value={address}
-          onChangeText={setAddress}
-          placeholder="123 Main St, City, ST 12345"
-          colors={colors}
-        />
-      </FormField>
-
-      {error ? <Text style={{ color: colors.destructive }}>{error}</Text> : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
       <FormSubmitButton
         label="Create tournament"
         busy={busy}
         disabled={!valid}
         onPress={() => void onSubmit()}
-        colors={colors}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  hostCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 4,
-  },
-  blocked: {
-    flex: 1,
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  blockedTitle: { fontSize: 20, fontWeight: "700" },
-  cta: {
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    minWidth: 200,
-    alignItems: "center",
-  },
-});

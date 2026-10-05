@@ -21,21 +21,34 @@ import type {
   PlayPoolContract,
 } from "@/lib/api/contracts/tournament";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { useCallback, useLayoutEffect } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useLayoutEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { fetchTournamentPlay } from "~/api/endpoints";
 import { formatSigned } from "~/lib/format";
 import { HostSettingsEntry } from "~/tournament/host-settings-entry";
 import { MatchRow } from "~/tournament/match-row";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { usePublicLoader } from "~/tournament/use-public-loader";
-import { useThemeColors, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Banner,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ScreenScroll,
+  Section,
+  space,
+} from "~/ui";
+
+const ALL = "__all__";
 
 export default function PoolsScreen() {
-  const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const [filter, setFilter] = useState<string>(ALL);
 
   const load = useCallback(
     (signal?: AbortSignal) => {
@@ -45,10 +58,8 @@ export default function PoolsScreen() {
     [slug]
   );
 
-  const { data, error, isRefreshing, reload, refresh } = usePublicLoader(
-    load,
-    "Could not load pools."
-  );
+  const { data, error, refreshError, isRefreshing, reload, refresh, clearError } =
+    usePublicLoader(load, "Could not load pools.");
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: "Pools" });
@@ -69,19 +80,16 @@ export default function PoolsScreen() {
     (division) =>
       division.format === "pool_to_bracket" || division.pools.length > 0
   );
+  const visible =
+    filter === ALL || !withPools.some((division) => division.name === filter)
+      ? withPools
+      : withPools.filter((division) => division.name === filter);
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh}>
+      {refreshError ? (
+        <Banner tone="error" message={refreshError} onDismiss={clearError} />
+      ) : null}
       {slug ? (
         <HostSettingsEntry
           slug={slug}
@@ -91,125 +99,173 @@ export default function PoolsScreen() {
         />
       ) : null}
       {withPools.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          This tournament goes straight to the bracket. Open Bracket to follow
-          elimination rounds.
-        </Text>
+        <EmptyState
+          icon="git-network-outline"
+          title="No pool play"
+          message="This tournament goes straight to the bracket."
+          action={{
+            label: "View bracket",
+            icon: "arrow-forward",
+            onPress: () => router.push(`/tournament/${slug}/bracket`),
+          }}
+        />
       ) : (
-        withPools.map((division) => (
-          <DivisionPools
-            key={division.name}
-            division={division}
-            colors={colors}
-            onMatchPress={(matchSlug) =>
-              router.push(`/tournament/${slug}/matches/${matchSlug}`)
-            }
-          />
-        ))
+        <>
+          {withPools.length > 1 ? (
+            <ChipRow>
+              <Chip
+                label="All"
+                selected={filter === ALL}
+                onPress={() => setFilter(ALL)}
+              />
+              {withPools.map((division) => (
+                <Chip
+                  key={division.name}
+                  label={division.name}
+                  selected={filter === division.name}
+                  onPress={() => setFilter(division.name)}
+                />
+              ))}
+            </ChipRow>
+          ) : null}
+          {visible.map((division) => (
+            <DivisionPools
+              key={division.name}
+              division={division}
+              onMatchPress={(matchSlug) =>
+                router.push(`/tournament/${slug}/matches/${matchSlug}`)
+              }
+            />
+          ))}
+        </>
       )}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
 function DivisionPools({
   division,
-  colors,
   onMatchPress,
 }: {
   division: PlayDivisionContract;
-  colors: ThemeColors;
   onMatchPress: (matchSlug: string) => void;
 }) {
   return (
-    <View style={styles.division}>
-      <Text style={[styles.divisionName, { color: colors.foreground }]}>
-        {division.name}
-      </Text>
+    <Section title={division.name}>
       {!division.released ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          The host has not posted pools yet. Standings appear here once they
-          release play.
-        </Text>
-      ) : division.pools.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          No pool groups in this division.
-        </Text>
-      ) : (
-        division.pools.map((pool) => (
-          <PoolBlock
-            key={pool.name}
-            divisionName={division.name}
-            pool={pool}
-            colors={colors}
-            onMatchPress={onMatchPress}
+        <Card>
+          <EmptyState
+            compact
+            icon="time-outline"
+            title="Pools not posted yet"
+            message="Standings appear here once the host releases play."
           />
-        ))
+        </Card>
+      ) : division.pools.length === 0 ? (
+        <Card>
+          <EmptyState
+            compact
+            icon="grid-outline"
+            title="No pools here yet"
+            message="Pools appear once the host assigns teams."
+          />
+        </Card>
+      ) : (
+        <View style={styles.pools}>
+          {division.pools.map((pool) => (
+            <PoolBlock
+              key={pool.name}
+              divisionName={division.name}
+              pool={pool}
+              onMatchPress={onMatchPress}
+            />
+          ))}
+        </View>
       )}
-    </View>
+    </Section>
   );
 }
 
 function PoolBlock({
   divisionName,
   pool,
-  colors,
   onMatchPress,
 }: {
   divisionName: string;
   pool: PlayPoolContract;
-  colors: ThemeColors;
   onMatchPress: (matchSlug: string) => void;
 }) {
+  const colors = useThemeColors();
   return (
     <View style={styles.pool}>
       {pool.name !== divisionName ? (
-        <Text style={[styles.poolName, { color: colors.foreground }]}>
+        <AppText variant="callout" weight="600">
           {pool.name}
-        </Text>
+        </AppText>
       ) : null}
-      <View style={[styles.table, { borderColor: colors.border }]}>
-        <View style={styles.tableHead}>
-          <Text style={[styles.rank, { color: colors.mutedForeground }]}>#</Text>
-          <Text style={[styles.teamCol, { color: colors.mutedForeground }]}>
+      <Card padded={false}>
+        <View
+          style={[
+            styles.tableRow,
+            styles.tableHead,
+            { borderBottomColor: colors.border },
+          ]}
+        >
+          <AppText variant="caption" tone="muted" style={styles.rank}>
+            #
+          </AppText>
+          <AppText variant="caption" tone="muted" style={styles.teamCol}>
             Team
-          </Text>
-          <Text style={[styles.stat, { color: colors.mutedForeground }]}>
+          </AppText>
+          <AppText variant="caption" tone="muted" style={styles.stat}>
             W-L
-          </Text>
-          <Text style={[styles.stat, { color: colors.mutedForeground }]}>
+          </AppText>
+          <AppText variant="caption" tone="muted" style={styles.stat}>
             Sets
-          </Text>
-          <Text style={[styles.stat, { color: colors.mutedForeground }]}>
+          </AppText>
+          <AppText
+            variant="caption"
+            tone="muted"
+            style={styles.stat}
+            accessibilityLabel="Point difference"
+          >
             +/−
-          </Text>
+          </AppText>
         </View>
         {pool.standings.map((row, index) => (
-          <View key={row.teamSlug} style={styles.tableRow}>
-            <Text style={[styles.rank, { color: colors.mutedForeground }]}>
+          <View
+            key={row.teamSlug}
+            style={styles.tableRow}
+            accessible
+            accessibilityLabel={`${index + 1}. ${row.teamName}. ${row.wins} wins, ${row.losses} losses. Sets ${row.setsWon} to ${row.setsLost}. Point difference ${formatSigned(row.pointDiff)}`}
+          >
+            <AppText variant="footnote" tone="muted" style={styles.rank}>
               {index + 1}
-            </Text>
-            <Text
-              style={[styles.teamCol, { color: colors.foreground }]}
+            </AppText>
+            <AppText
+              variant="callout"
+              weight="600"
+              style={styles.teamCol}
               numberOfLines={1}
             >
               {row.teamName}
-            </Text>
-            <Text style={[styles.stat, { color: colors.foreground }]}>
+            </AppText>
+            <AppText variant="footnote" style={styles.stat}>
               {row.wins}–{row.losses}
-            </Text>
-            <Text style={[styles.stat, { color: colors.foreground }]}>
+            </AppText>
+            <AppText variant="footnote" style={styles.stat}>
               {row.setsWon}–{row.setsLost}
-            </Text>
-            <Text style={[styles.stat, { color: colors.foreground }]}>
+            </AppText>
+            <AppText variant="footnote" style={styles.stat}>
               {formatSigned(row.pointDiff)}
-            </Text>
+            </AppText>
           </View>
         ))}
-      </View>
+      </Card>
       {pool.matches.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          Matches appear here after the host schedules the pool.
-        </Text>
+        <AppText variant="subhead" tone="muted">
+          Matches appear here after the host schedules this pool.
+        </AppText>
       ) : (
         <View style={styles.matches}>
           {pool.matches.map((match) => (
@@ -227,34 +283,21 @@ function PoolBlock({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 28 },
-  division: { gap: 16 },
-  divisionName: { fontSize: 22, fontWeight: "700", letterSpacing: -0.3 },
-  pool: { gap: 12 },
-  poolName: { fontSize: 17, fontWeight: "700" },
-  table: { borderWidth: 1, borderRadius: 14, overflow: "hidden" },
+  pools: { gap: space.xxl },
+  pool: { gap: space.md },
   tableHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
+    paddingVertical: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + space.xxs,
+    gap: space.sm,
   },
-  rank: { width: 20, fontSize: 13, fontVariant: ["tabular-nums"] },
-  teamCol: { flex: 1, fontSize: 15, fontWeight: "600" },
-  stat: {
-    width: 40,
-    fontSize: 13,
-    textAlign: "right",
-    fontVariant: ["tabular-nums"],
-  },
-  matches: { gap: 10 },
-  empty: { fontSize: 15, lineHeight: 22 },
+  rank: { width: 20, fontVariant: ["tabular-nums"] },
+  teamCol: { flex: 1 },
+  stat: { width: 40, textAlign: "right", fontVariant: ["tabular-nums"] },
+  matches: { gap: space.sm },
 });

@@ -21,16 +21,17 @@ import type {
   TournamentChatMessageContract,
 } from "@/lib/api/contracts/tournament-ops";
 import { Redirect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
   StyleSheet,
-  Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import {
   fetchTournamentChat,
@@ -43,10 +44,27 @@ import { useThemeColors, withAlpha } from "~/theme/colors";
 import { subscribeToTournamentChat } from "~/tournament/chat-realtime";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  BottomBar,
+  Chip,
+  ChipRow,
+  EmptyState,
+  haptics,
+  HIT_TARGET,
+  Icon,
+  radius,
+  SegmentedControl,
+  space,
+  type,
+} from "~/ui";
 
 type ChatListItem =
   | { kind: "date"; key: string; label: string }
   | { kind: "message"; key: string; message: TournamentChatMessageContract };
+
+const NEAR_BOTTOM_PX = 80;
 
 function localDayKey(iso: string): string {
   const date = new Date(iso);
@@ -104,6 +122,102 @@ function buildChatListItems(
   return items;
 }
 
+function authorLabel(message: TournamentChatMessageContract): string {
+  if (message.isOrganizerMessage) return "Host";
+  return message.teamName
+    ? `${message.authorName} · ${message.teamName}`
+    : message.authorName;
+}
+
+function MessageBubble({ message }: { message: TournamentChatMessageContract }) {
+  const colors = useThemeColors();
+  const own = message.isOwn;
+  const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  return (
+    <View
+      style={[styles.bubbleWrap, own ? styles.bubbleWrapOwn : styles.bubbleWrapOther]}
+      accessible
+      accessibilityLabel={`${own ? "You" : authorLabel(message)}, ${time}. ${message.body}`}
+    >
+      {!own ? (
+        <AppText
+          variant="caption"
+          weight="600"
+          tone={message.isOrganizerMessage ? "primary" : "muted"}
+          style={styles.author}
+        >
+          {authorLabel(message)}
+        </AppText>
+      ) : null}
+      <View
+        style={[
+          styles.bubble,
+          own
+            ? {
+                backgroundColor: withAlpha(colors.primary, 0.12),
+                borderBottomRightRadius: radius.sm / 2,
+              }
+            : {
+                backgroundColor: colors.muted,
+                borderBottomLeftRadius: radius.sm / 2,
+              },
+        ]}
+      >
+        <AppText>{message.body}</AppText>
+      </View>
+      <AppText variant="caption" tone="muted" style={styles.time}>
+        {time}
+      </AppText>
+    </View>
+  );
+}
+
+function SendButton({
+  onPress,
+  disabled,
+  busy,
+}: {
+  onPress: () => void;
+  disabled: boolean;
+  busy: boolean;
+}) {
+  const colors = useThemeColors();
+  const inactive = disabled || busy;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Send message"
+      accessibilityState={{ disabled: inactive, busy }}
+      disabled={inactive}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.send,
+        {
+          backgroundColor: inactive
+            ? colors.muted
+            : pressed
+              ? withAlpha(colors.primary, 0.85)
+              : colors.primary,
+        },
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={colors.mutedForeground} size="small" />
+      ) : (
+        <Icon
+          name="send"
+          size={18}
+          color={inactive ? colors.mutedForeground : colors.primaryForeground}
+        />
+      )}
+    </Pressable>
+  );
+}
+
 export default function ChatScreen() {
   const colors = useThemeColors();
   const { session, isLoading: sessionLoading } = useSession();
@@ -113,6 +227,9 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const listRef = useRef<FlatList<ChatListItem>>(null);
+  const nearBottom = useRef(true);
+  const hasScrolled = useRef(false);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentChat(slug ?? "", signal),
@@ -147,6 +264,11 @@ export default function ChatScreen() {
     void markTournamentChatRead(slug, channelKind).catch(() => undefined);
   }, [slug, channelKind, data]);
 
+  useEffect(() => {
+    nearBottom.current = true;
+    hasScrolled.current = false;
+  }, [channelKind]);
+
   const channel: TournamentChatChannelContract | null = useMemo(() => {
     if (!data || !channelKind) return null;
     return data.channels.find((item) => item.kind === channelKind) ?? null;
@@ -155,6 +277,22 @@ export default function ChatScreen() {
   const listItems = useMemo(
     () => buildChatListItems(channel?.messages ?? []),
     [channel?.messages]
+  );
+
+  const scrollToNewest = useCallback(() => {
+    if (!nearBottom.current) return;
+    listRef.current?.scrollToEnd({ animated: hasScrolled.current });
+    hasScrolled.current = true;
+  }, []);
+
+  const onScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      nearBottom.current =
+        contentSize.height - (contentOffset.y + layoutMeasurement.height) <
+        NEAR_BOTTOM_PX;
+    },
+    []
   );
 
   if (sessionLoading) return <LoadingScreen />;
@@ -171,285 +309,236 @@ export default function ChatScreen() {
   }
 
   async function onSend() {
-    if (!channel || !draft.trim() || !data) return;
+    const body = draft.trim();
+    if (!channel || !body || !data || busy) return;
     const speakingTeams = data.speakingTeams;
     setBusy(true);
     setActionError(null);
     try {
       await postTournamentChatMessage(slug, {
         channelKind: channel.kind,
-        body: draft,
+        body,
         teamSlug: speakingTeams.length > 1 ? teamSlug ?? undefined : undefined,
       });
       setDraft("");
+      nearBottom.current = true;
       await refresh();
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Could not send message."));
     } finally {
       setBusy(false);
     }
   }
 
+  const channelOptions = data.channels.map((item) => ({
+    id: item.kind,
+    label: item.label,
+    count: item.unreadCount,
+  }));
+  const canSend = Boolean(draft.trim()) && !busy;
+
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Chat</Text>
-        <View style={styles.channels}>
-          {data.channels.map((item) => {
-            const selected = item.kind === channelKind;
-            return (
-              <Pressable
-                key={item.kind}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => setChannelKind(item.kind)}
-                style={[
-                  styles.channel,
-                  {
-                    borderColor: selected ? colors.primary : colors.border,
-                    backgroundColor: selected
-                      ? withAlpha(colors.primary, 0.1)
-                      : "transparent",
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: selected ? colors.primary : colors.mutedForeground,
-                    fontWeight: "700",
-                    fontSize: 13,
-                  }}
-                >
-                  {item.label}
-                  {item.unreadCount > 0 ? ` · ${item.unreadCount}` : ""}
-                </Text>
-              </Pressable>
-            );
-          })}
+    <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      {data.channels.length > 1 || channel?.description ? (
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          {data.channels.length > 1 && data.channels.length <= 3 ? (
+            <SegmentedControl
+              accessibilityLabel="Chat channel"
+              options={channelOptions}
+              value={channelKind ?? data.channels[0]!.kind}
+              onChange={setChannelKind}
+            />
+          ) : data.channels.length > 3 ? (
+            <ChipRow>
+              {channelOptions.map((option) => (
+                <Chip
+                  key={option.id}
+                  label={option.label}
+                  count={option.count > 0 ? option.count : undefined}
+                  selected={option.id === channelKind}
+                  onPress={() => setChannelKind(option.id)}
+                />
+              ))}
+            </ChipRow>
+          ) : null}
+          {channel?.description ? (
+            <AppText variant="footnote" tone="muted">
+              {channel.description}
+            </AppText>
+          ) : null}
         </View>
-        {channel ? (
-          <Text style={[styles.description, { color: colors.mutedForeground }]}>
-            {channel.description}
-          </Text>
-        ) : null}
-      </View>
+      ) : null}
 
       <FlatList
+        ref={listRef}
+        style={styles.fill}
         data={listItems}
         keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.messages}
+        contentContainerStyle={[
+          styles.messages,
+          listItems.length === 0 && styles.messagesEmpty,
+        ]}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={64}
+        onContentSizeChange={scrollToNewest}
+        onLayout={scrollToNewest}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
-            onRefresh={refresh}
+            onRefresh={() => void refresh()}
             tintColor={colors.primary}
           />
         }
         ListEmptyComponent={
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            No messages in this channel yet.
-          </Text>
+          <EmptyState
+            icon="chatbubbles-outline"
+            title="No messages yet"
+            message={
+              channel?.canPost
+                ? "Start the conversation. Messages here are visible to everyone in this channel."
+                : "Messages from the host will show up here."
+            }
+          />
         }
         renderItem={({ item }) => {
           if (item.kind === "date") {
             return (
-              <View style={styles.dateRow}>
-                <Text
-                  style={[styles.dateLabel, { color: colors.mutedForeground }]}
-                  accessibilityRole="header"
-                >
-                  {item.label}
-                </Text>
-              </View>
+              <AppText
+                variant="caption"
+                tone="muted"
+                weight="600"
+                accessibilityRole="header"
+                style={styles.dateLabel}
+              >
+                {item.label}
+              </AppText>
             );
           }
-
-          const message = item.message;
-          return (
-            <View
-              style={[
-                styles.message,
-                {
-                  alignSelf: message.isOwn ? "flex-end" : "flex-start",
-                  backgroundColor: message.isOwn
-                    ? withAlpha(colors.primary, 0.12)
-                    : colors.muted,
-                },
-              ]}
-            >
-              <Text style={[styles.author, { color: colors.mutedForeground }]}>
-                {message.isOrganizerMessage
-                  ? "Host"
-                  : message.teamName
-                    ? `${message.authorName} · ${message.teamName}`
-                    : message.authorName}
-              </Text>
-              <Text style={[styles.body, { color: colors.foreground }]}>
-                {message.body}
-              </Text>
-              <Text style={[styles.time, { color: colors.mutedForeground }]}>
-                {new Date(message.createdAt).toLocaleTimeString(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </Text>
-            </View>
-          );
+          return <MessageBubble message={item.message} />;
         }}
       />
 
-      <View style={[styles.composer, { borderTopColor: colors.border }]}>
+      <BottomBar>
         {actionError ? (
-          <Text style={{ color: colors.destructive, fontSize: 13 }}>
-            {actionError}
-          </Text>
-        ) : null}
-        {data.speakingTeams.length > 1 ? (
-          <View style={styles.teams}>
-            {data.speakingTeams.map((team) => {
-              const selected = team.slug === teamSlug;
-              return (
-                <Pressable
-                  key={team.slug}
-                  onPress={() => setTeamSlug(team.slug)}
-                  style={[
-                    styles.teamChip,
-                    {
-                      borderColor: selected ? colors.secondary : colors.border,
-                      backgroundColor: selected
-                        ? withAlpha(colors.secondary, 0.1)
-                        : "transparent",
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: selected
-                        ? colors.secondary
-                        : colors.mutedForeground,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {team.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Banner
+            tone="error"
+            message={actionError}
+            onDismiss={() => setActionError(null)}
+          />
         ) : null}
         {channel?.canPost ? (
-          <View style={styles.composeRow}>
-            <TextInput
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Write a message"
-              placeholderTextColor={colors.mutedForeground}
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.card,
-                },
-              ]}
-            />
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy || !draft.trim()}
-              onPress={() => void onSend()}
-              style={[
-                styles.send,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: busy || !draft.trim() ? 0.5 : 1,
-                },
-              ]}
-            >
-              {busy ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <Text
-                  style={{ color: colors.primaryForeground, fontWeight: "700" }}
-                >
-                  Send
-                </Text>
-              )}
-            </Pressable>
-          </View>
+          <>
+            {data.speakingTeams.length > 1 ? (
+              <View style={styles.postingAs}>
+                <AppText variant="footnote" tone="muted">
+                  Posting as
+                </AppText>
+                <ChipRow>
+                  {data.speakingTeams.map((team) => (
+                    <Chip
+                      key={team.slug}
+                      label={team.name}
+                      selected={team.slug === teamSlug}
+                      onPress={() => setTeamSlug(team.slug)}
+                    />
+                  ))}
+                </ChipRow>
+              </View>
+            ) : null}
+            <View style={styles.composeRow}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Write a message"
+                placeholderTextColor={colors.mutedForeground}
+                accessibilityLabel="Message"
+                multiline
+                maxLength={2000}
+                autoCapitalize="sentences"
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                  },
+                ]}
+              />
+              <SendButton
+                busy={busy}
+                disabled={!canSend}
+                onPress={() => void onSend()}
+              />
+            </View>
+          </>
         ) : (
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            {data.canPost
-              ? "You can read this channel, but only the host can post here."
-              : "Chat is read-only for this tournament."}
-          </Text>
+          <View style={styles.readOnly}>
+            <Icon name="lock-closed-outline" size={16} tone="muted" />
+            <AppText variant="footnote" tone="muted" style={styles.fill}>
+              {data.canPost
+                ? "Only the host can post in this channel."
+                : "Chat is read-only for this tournament."}
+            </AppText>
+          </View>
         )}
-      </View>
+      </BottomBar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10, gap: 10 },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  channels: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  channel: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  fill: { flex: 1 },
+  header: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.md,
+    gap: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  description: { fontSize: 13, lineHeight: 18 },
-  messages: { paddingHorizontal: 20, paddingBottom: 16, gap: 10 },
-  dateRow: {
-    alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 2,
+  messages: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.lg,
+    gap: space.md,
   },
-  dateLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+  messagesEmpty: { flexGrow: 1, justifyContent: "center" },
+  dateLabel: { textAlign: "center", paddingTop: space.sm },
+  bubbleWrap: { maxWidth: "82%", gap: space.xs },
+  bubbleWrapOwn: { alignSelf: "flex-end", alignItems: "flex-end" },
+  bubbleWrapOther: { alignSelf: "flex-start", alignItems: "flex-start" },
+  author: { paddingHorizontal: space.xs },
+  bubble: {
+    borderRadius: radius.lg,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm + 2,
   },
-  message: {
-    maxWidth: "88%",
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 3,
-  },
-  author: { fontSize: 12, fontWeight: "700" },
-  body: { fontSize: 15, lineHeight: 21 },
-  time: { fontSize: 11 },
-  composer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 16,
-    gap: 8,
-  },
-  teams: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  teamChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  composeRow: { flexDirection: "row", gap: 8, alignItems: "center" },
+  time: { paddingHorizontal: space.xs },
+  postingAs: { gap: space.xs },
+  composeRow: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
   input: {
     flex: 1,
+    ...type.body,
+    minHeight: HIT_TARGET,
+    maxHeight: 120,
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.md + 2,
+    paddingTop: space.md - 1,
+    paddingBottom: space.md - 1,
   },
   send: {
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minWidth: 72,
+    width: HIT_TARGET,
+    height: HIT_TARGET,
+    borderRadius: radius.full,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  readOnly: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    minHeight: HIT_TARGET,
   },
 });

@@ -18,16 +18,7 @@
 
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   confirmTournamentPayment,
   fetchTournamentPayment,
@@ -35,15 +26,44 @@ import {
   waiveTournamentPayment,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField, FormTextInput } from "~/components/create-form";
 import {
   formatFeeCents,
   PAYMENT_METHODS,
   paymentMethodLabel,
   paymentStatusLabel,
 } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  haptics,
+  ScreenScroll,
+  Section,
+  space,
+  type BadgeTone,
+} from "~/ui";
+
+function paymentTone(status: string): BadgeTone {
+  switch (status) {
+    case "unpaid":
+      return "warning";
+    case "submitted":
+      return "info";
+    case "confirmed":
+      return "success";
+    default:
+      return "neutral";
+  }
+}
 
 export default function PaymentScreen() {
   const colors = useThemeColors();
@@ -53,6 +73,7 @@ export default function PaymentScreen() {
   const [note, setNote] = useState<Record<string, string>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentPayment(slug ?? "", signal),
@@ -76,259 +97,220 @@ export default function PaymentScreen() {
     );
   }
 
-  async function run(key: string, action: () => Promise<void>) {
+  async function run(
+    key: string,
+    success: string,
+    action: () => Promise<void>
+  ) {
     setBusyKey(key);
     setActionError(null);
+    setActionSuccess(null);
     try {
       await action();
+      haptics.success();
+      setActionSuccess(success);
       await refresh();
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Something went wrong."));
     } finally {
       setBusyKey(null);
     }
   }
 
+  function confirmWaive(teamSlug: string, teamName: string) {
+    Alert.alert(
+      `Waive fee for ${teamName}?`,
+      "The team will be marked as not owing a fee.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Waive fee",
+          style: "destructive",
+          onPress: () =>
+            void run(`waive-${teamSlug}`, `Fee waived for ${teamName}.`, async () => {
+              await waiveTournamentPayment(slug!, teamSlug);
+            }),
+        },
+      ]
+    );
+  }
+
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>Payment</Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          brackt tracks payment status — it does not process card charges.
-        </Text>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <AppText variant="subhead" tone="muted">
+        brackt tracks payment status. It does not process card charges.
+      </AppText>
 
-        {data.settings.instructionsText ? (
-          <View style={[styles.card, { borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-              How to pay
-            </Text>
-            <Text style={[styles.notes, { color: colors.foreground }]}>
-              {data.settings.instructionsText}
-            </Text>
-          </View>
-        ) : null}
+      {data.settings.instructionsText ? (
+        <Section title="How to pay">
+          <Card>
+            <AppText>{data.settings.instructionsText}</AppText>
+          </Card>
+        </Section>
+      ) : null}
 
-        {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
-        ) : null}
+      {actionError ? (
+        <Banner
+          tone="error"
+          message={actionError}
+          onDismiss={() => setActionError(null)}
+        />
+      ) : null}
+      {actionSuccess ? (
+        <Banner
+          tone="success"
+          message={actionSuccess}
+          onDismiss={() => setActionSuccess(null)}
+        />
+      ) : null}
 
-        {data.teams.length === 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            No payment rows yet for your registered teams.
-          </Text>
-        ) : (
-          data.teams.map((team) => {
+      {data.teams.length === 0 ? (
+        <EmptyState
+          icon="card-outline"
+          title="No payments yet"
+          message="Payment details appear here once one of your teams is registered for this tournament."
+        />
+      ) : (
+        <Section title={data.isOrganizer ? "Teams" : "Your teams"}>
+          {data.teams.map((team) => {
             const settled =
               team.status === "confirmed" || team.status === "waived";
             const canSubmit = team.isCaptain && team.status === "unpaid";
             const selected = method[team.teamSlug] ?? "venmo";
+            const meta = [
+              formatFeeCents(team.amountCents),
+              team.submittedMethod
+                ? paymentMethodLabel(team.submittedMethod)
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
 
             return (
-              <View
-                key={team.teamSlug}
-                style={[styles.card, { borderColor: colors.border }]}
-              >
-                <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                  {team.teamName}
-                </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-                  {formatFeeCents(team.amountCents)} ·{" "}
-                  {paymentStatusLabel(team.status)}
-                  {team.submittedMethod
-                    ? ` · ${paymentMethodLabel(team.submittedMethod)}`
-                    : ""}
-                </Text>
+              <Card key={team.teamSlug} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.cardTitle}>
+                    <AppText variant="headline">{team.teamName}</AppText>
+                    <AppText variant="footnote" tone="muted">
+                      {meta}
+                    </AppText>
+                  </View>
+                  <Badge
+                    label={paymentStatusLabel(team.status)}
+                    tone={paymentTone(team.status)}
+                  />
+                </View>
+
                 {team.submittedNote ? (
-                  <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
+                  <AppText variant="subhead" tone="muted">
                     Captain note: {team.submittedNote}
-                  </Text>
+                  </AppText>
                 ) : null}
 
                 {canSubmit ? (
-                  <View style={styles.submit}>
-                    <Text
-                      style={[styles.ackLabel, { color: colors.foreground }]}
-                    >
-                      Payment method
-                    </Text>
-                    <View style={styles.methods}>
-                      {PAYMENT_METHODS.map((value) => {
-                        const pressed = selected === value;
-                        return (
-                          <Pressable
+                  <View style={styles.form}>
+                    <FormField label="Payment method" colors={colors}>
+                      <ChipRow>
+                        {PAYMENT_METHODS.map((value) => (
+                          <Chip
                             key={value}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: pressed }}
+                            label={paymentMethodLabel(value)}
+                            selected={selected === value}
                             onPress={() =>
                               setMethod((prev) => ({
                                 ...prev,
                                 [team.teamSlug]: value,
                               }))
                             }
-                            style={[
-                              styles.methodChip,
-                              {
-                                borderColor: pressed
-                                  ? colors.primary
-                                  : colors.border,
-                                backgroundColor: pressed
-                                  ? withAlpha(colors.primary, 0.1)
-                                  : "transparent",
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={{
-                                color: pressed
-                                  ? colors.primary
-                                  : colors.mutedForeground,
-                                fontWeight: "600",
-                                fontSize: 13,
-                              }}
-                            >
-                              {paymentMethodLabel(value)}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                    <TextInput
-                      value={note[team.teamSlug] ?? ""}
-                      onChangeText={(value) =>
-                        setNote((prev) => ({
-                          ...prev,
-                          [team.teamSlug]: value,
-                        }))
-                      }
-                      placeholder="Optional note"
-                      placeholderTextColor={colors.mutedForeground}
-                      style={[
-                        styles.input,
-                        {
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                          backgroundColor: colors.card,
-                        },
-                      ]}
-                    />
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={busyKey === `submit-${team.teamSlug}`}
-                      onPress={() =>
-                        void run(`submit-${team.teamSlug}`, async () => {
-                          await submitTournamentPayment(slug, {
-                            teamSlug: team.teamSlug,
-                            method: selected,
-                            note: note[team.teamSlug],
-                          });
-                        })
-                      }
-                      style={[
-                        styles.button,
-                        { backgroundColor: colors.primary },
-                      ]}
+                          />
+                        ))}
+                      </ChipRow>
+                    </FormField>
+                    <FormField
+                      label="Note"
+                      hint="Optional. For example, the name on the payment."
+                      colors={colors}
                     >
-                      {busyKey === `submit-${team.teamSlug}` ? (
-                        <ActivityIndicator color={colors.primaryForeground} />
-                      ) : (
-                        <Text
-                          style={{
-                            color: colors.primaryForeground,
-                            fontWeight: "700",
-                          }}
-                        >
-                          Mark payment sent
-                        </Text>
-                      )}
-                    </Pressable>
+                      <FormTextInput
+                        value={note[team.teamSlug] ?? ""}
+                        onChangeText={(value) =>
+                          setNote((prev) => ({
+                            ...prev,
+                            [team.teamSlug]: value,
+                          }))
+                        }
+                        placeholder="Optional note"
+                        autoCapitalize="sentences"
+                        maxLength={500}
+                        colors={colors}
+                      />
+                    </FormField>
+                    <Button
+                      label="Mark payment sent"
+                      icon="paper-plane-outline"
+                      fullWidth
+                      loading={busyKey === `submit-${team.teamSlug}`}
+                      disabled={busyKey !== null}
+                      onPress={() =>
+                        void run(
+                          `submit-${team.teamSlug}`,
+                          `Payment for ${team.teamName} sent for host review.`,
+                          async () => {
+                            await submitTournamentPayment(slug, {
+                              teamSlug: team.teamSlug,
+                              method: selected,
+                              note: note[team.teamSlug],
+                            });
+                          }
+                        )
+                      }
+                    />
                   </View>
                 ) : null}
 
                 {data.isOrganizer && !settled ? (
                   <View style={styles.hostActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={busyKey === `confirm-${team.teamSlug}`}
+                    <Button
+                      label="Mark paid"
+                      icon="checkmark"
+                      size="sm"
+                      variant={canSubmit ? "outline" : "primary"}
+                      loading={busyKey === `confirm-${team.teamSlug}`}
+                      disabled={busyKey !== null}
                       onPress={() =>
-                        void run(`confirm-${team.teamSlug}`, async () => {
-                          await confirmTournamentPayment(slug, team.teamSlug);
-                        })
+                        void run(
+                          `confirm-${team.teamSlug}`,
+                          `${team.teamName} marked paid.`,
+                          async () => {
+                            await confirmTournamentPayment(slug, team.teamSlug);
+                          }
+                        )
                       }
-                      style={[styles.outline, { borderColor: colors.border }]}
-                    >
-                      <Text style={{ color: colors.secondary, fontWeight: "700" }}>
-                        Confirm
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={busyKey === `waive-${team.teamSlug}`}
-                      onPress={() =>
-                        void run(`waive-${team.teamSlug}`, async () => {
-                          await waiveTournamentPayment(slug, team.teamSlug);
-                        })
-                      }
-                      style={[styles.outline, { borderColor: colors.border }]}
-                    >
-                      <Text style={{ color: colors.mutedForeground, fontWeight: "700" }}>
-                        Waive
-                      </Text>
-                    </Pressable>
+                    />
+                    <Button
+                      label="Waive fee"
+                      size="sm"
+                      variant="ghost"
+                      loading={busyKey === `waive-${team.teamSlug}`}
+                      disabled={busyKey !== null}
+                      onPress={() => confirmWaive(team.teamSlug, team.teamName)}
+                    />
                   </View>
                 ) : null}
-              </View>
+              </Card>
             );
-          })
-        )}
-      </ScrollView>
-    </View>
+          })}
+        </Section>
+      )}
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22 },
-  card: { borderWidth: 1, borderRadius: 14, padding: 14, gap: 10 },
-  cardTitle: { fontSize: 17, fontWeight: "700" },
-  notes: { fontSize: 15, lineHeight: 22 },
-  submit: { gap: 8 },
-  ackLabel: { fontSize: 14, fontWeight: "600" },
-  methods: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  methodChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  button: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  hostActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  outline: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
+  card: { gap: space.md },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.md },
+  cardTitle: { flex: 1, gap: space.xxs },
+  form: { gap: space.lg },
+  hostActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
 });

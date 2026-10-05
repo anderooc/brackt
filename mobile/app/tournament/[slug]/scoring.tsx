@@ -20,22 +20,15 @@ import type {
   PublicMatchStatus,
   TournamentMatchContract,
 } from "@/lib/api/contracts/tournament";
-import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { useCallback, useLayoutEffect, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { fetchTournamentMatches } from "~/api/endpoints";
 import { usePolling } from "~/lib/use-polling";
 import { MatchRow } from "~/tournament/match-row";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { usePublicLoader } from "~/tournament/use-public-loader";
-import { useThemeColors } from "~/theme/colors";
+import { Banner, EmptyState, ScreenScroll, SegmentedControl, space } from "~/ui";
 
 type BoardTab = PublicMatchStatus;
 
@@ -46,11 +39,9 @@ const TABS: { id: BoardTab; label: string }[] = [
 ];
 
 export default function ScoringScreen() {
-  const colors = useThemeColors();
-  const navigation = useNavigation();
   const router = useRouter();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const [tab, setTab] = useState<BoardTab>("in_progress");
+  const [chosenTab, setChosenTab] = useState<BoardTab | null>(null);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -60,16 +51,10 @@ export default function ScoringScreen() {
     [slug]
   );
 
-  const { data, error, isRefreshing, reload, refresh, poll } = usePublicLoader(
-    load,
-    "Could not load scores."
-  );
+  const { data, error, refreshError, isRefreshing, reload, refresh, poll } =
+    usePublicLoader(load, "Could not load scores.");
 
   usePolling(poll, 8000, data !== null);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({ title: "Live scores" });
-  }, [navigation]);
 
   if (data === null && error === null) return <LoadingScreen />;
   if (!data) {
@@ -87,101 +72,65 @@ export default function ScoringScreen() {
     upcoming: data.filter((match) => match.status === "upcoming"),
     completed: data.filter((match) => match.status === "completed"),
   };
+  const tab: BoardTab =
+    chosenTab ??
+    (grouped.in_progress.length > 0
+      ? "in_progress"
+      : grouped.upcoming.length > 0
+        ? "upcoming"
+        : grouped.completed.length > 0
+          ? "completed"
+          : "in_progress");
   const visible = grouped[tab];
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View
-        style={[styles.tabs, { borderBottomColor: colors.border }]}
-        accessibilityRole="tablist"
-      >
-        {TABS.map((item) => {
-          const selected = tab === item.id;
-          const count = grouped[item.id].length;
-          return (
-            <Pressable
-              key={item.id}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              onPress={() => setTab(item.id)}
-              style={[
-                styles.tab,
-                selected ? { borderBottomColor: colors.primary } : null,
-              ]}
-            >
-              <Text
-                style={{
-                  color: selected ? colors.primary : colors.mutedForeground,
-                  fontWeight: selected ? "700" : "600",
-                  fontSize: 15,
-                }}
-              >
-                {item.label} ({count})
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh} gap={space.lg}>
+      <SegmentedControl
+        accessibilityLabel="Match status"
+        options={TABS.map((item) => ({ ...item, count: grouped[item.id].length }))}
+        value={tab}
+        onChange={setChosenTab}
+      />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        {visible.length === 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 15, lineHeight: 22 }}>
-            {emptyCopy(tab, data.length === 0)}
-          </Text>
-        ) : (
-          <View style={styles.list}>
-            {visible.map((match) => (
-              <MatchRow
-                key={match.slug}
-                match={match}
-                onPress={() =>
-                  router.push(`/tournament/${slug}/matches/${match.slug}`)
-                }
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
-    </View>
+      {refreshError ? <Banner tone="error" message={refreshError} /> : null}
+
+      {visible.length === 0 ? (
+        <EmptyState
+          icon={data.length === 0 ? "trophy-outline" : "time-outline"}
+          title={emptyTitle(tab, data.length === 0)}
+          message={emptyCopy(tab, data.length === 0)}
+        />
+      ) : (
+        <View style={styles.list}>
+          {visible.map((match) => (
+            <MatchRow
+              key={match.slug}
+              match={match}
+              onPress={() => router.push(`/tournament/${slug}/matches/${match.slug}`)}
+            />
+          ))}
+        </View>
+      )}
+    </ScreenScroll>
   );
+}
+
+function emptyTitle(tab: BoardTab, nonePosted: boolean): string {
+  if (nonePosted) return "No matches posted yet";
+  if (tab === "in_progress") return "Nothing live right now";
+  if (tab === "upcoming") return "No upcoming matches";
+  return "No finals yet";
 }
 
 function emptyCopy(tab: BoardTab, nonePosted: boolean): string {
   if (nonePosted) {
-    return "No public matches yet. Scores appear here once the host releases pools or brackets.";
+    return "Scores appear here once the host releases pools or brackets.";
   }
-  if (tab === "in_progress") {
-    return "No matches on court right now. Check Upcoming, or pull to refresh.";
-  }
-  if (tab === "upcoming") {
-    return "Nothing left on the upcoming board.";
-  }
-  return "No completed matches yet. Finals land here as sets close.";
+  if (tab === "in_progress") return "Check Upcoming for what’s next. This page updates on its own.";
+  if (tab === "upcoming") return "Every scheduled match has started or finished.";
+  return "Completed matches show up here as they finish.";
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  tabs: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    paddingHorizontal: 8,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  content: { padding: 20, paddingBottom: 40 },
-  list: { gap: 10 },
+  list: { gap: space.sm },
 });

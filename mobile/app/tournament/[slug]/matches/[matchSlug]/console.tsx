@@ -19,15 +19,7 @@
 import type { MatchConsoleContract } from "@/lib/api/contracts/match-console";
 import { Redirect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useLayoutEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert } from "react-native";
 import {
   fetchMatchConsole,
   runMatchConsoleAction,
@@ -36,13 +28,12 @@ import {
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { usePolling } from "~/lib/use-polling";
-import { useThemeColors } from "~/theme/colors";
 import { MatchConsolePanel } from "~/tournament/match-console-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import { Banner, ScreenScroll, haptics } from "~/ui";
 
 export default function MatchConsoleScreen() {
-  const colors = useThemeColors();
   const navigation = useNavigation();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug, matchSlug } = useLocalSearchParams<{
@@ -71,11 +62,8 @@ export default function MatchConsoleScreen() {
   );
 
   useLayoutEffect(() => {
-    const current = consoleData ?? data;
-    navigation.setOptions({
-      title: current ? matchTitle(current) : "Match console",
-    });
-  }, [consoleData, data, navigation]);
+    navigation.setOptions({ title: "Match console" });
+  }, [navigation]);
 
   useLayoutEffect(() => {
     if (data) setConsoleData(data);
@@ -93,8 +81,7 @@ export default function MatchConsoleScreen() {
     return (
       <ErrorScreen
         title="Match unavailable"
-        message="Missing match link."
-        onRetry={() => {}}
+        message="This link is missing the match. Go back and open it again."
       />
     );
   }
@@ -121,8 +108,10 @@ export default function MatchConsoleScreen() {
     try {
       const result = await action();
       await applyConsole(result.console);
+      haptics.success();
     } catch (cause) {
       setActionError(messageFor(cause, "Something went wrong."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -142,28 +131,12 @@ export default function MatchConsoleScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      {busy ? (
-        <View style={styles.busyRow}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : null}
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh}>
       {actionError ? (
-        <Text style={{ color: colors.destructive }}>{actionError}</Text>
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
       ) : null}
       <MatchConsolePanel
         data={view}
-        colors={colors}
         busy={busy}
         onLifecycle={(action, winnerSlug) => {
           if (action === "finalize") {
@@ -198,7 +171,6 @@ export default function MatchConsoleScreen() {
           );
         }}
         onSaveSet={async (setNumber, teamAScore, teamBScore) => {
-          setBusy(true);
           setActionError(null);
           try {
             const result = await saveMatchSetScore(
@@ -211,8 +183,7 @@ export default function MatchConsoleScreen() {
             await applyConsole(result.console);
           } catch (cause) {
             setActionError(messageFor(cause, "Could not save the score."));
-          } finally {
-            setBusy(false);
+            haptics.error();
           }
         }}
         onCrewAction={(action, role) => {
@@ -224,17 +195,6 @@ export default function MatchConsoleScreen() {
           });
         }}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
-
-function matchTitle(match: MatchConsoleContract): string {
-  const a = match.teamA?.name ?? "TBD";
-  const b = match.teamB?.name ?? "TBD";
-  return `${a} vs ${b}`;
-}
-
-const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 12 },
-  busyRow: { alignItems: "center" },
-});

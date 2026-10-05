@@ -19,27 +19,29 @@
 import type { TournamentMatchDetailContract } from "@/lib/api/contracts/tournament";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 import { fetchMatchConsole, fetchTournamentMatch } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import {
-  formatMatchTime,
-  MATCH_STATUS_LABELS,
-} from "~/lib/format";
+import { formatMatchTime } from "~/lib/format";
 import { usePolling } from "~/lib/use-polling";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { usePublicLoader } from "~/tournament/use-public-loader";
-import { useThemeColors, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Banner,
+  Button,
+  Card,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  StatusBadge,
+  space,
+} from "~/ui";
 
 export default function MatchDetailScreen() {
-  const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { session } = useSession();
@@ -59,10 +61,8 @@ export default function MatchDetailScreen() {
     [slug, matchSlug]
   );
 
-  const { data, error, isRefreshing, reload, refresh, poll } = usePublicLoader(
-    load,
-    "Could not load this match."
-  );
+  const { data, error, refreshError, isRefreshing, reload, refresh, poll } =
+    usePublicLoader(load, "Could not load this match.");
 
   usePolling(poll, 5000, data?.status === "in_progress");
 
@@ -90,10 +90,8 @@ export default function MatchDetailScreen() {
   }, [session, slug, matchSlug, data?.status]);
 
   useLayoutEffect(() => {
-    navigation.setOptions({
-      title: data ? matchTitle(data) : "Match",
-    });
-  }, [navigation, data]);
+    navigation.setOptions({ title: "Match" });
+  }, [navigation]);
 
   if (data === null && error === null) return <LoadingScreen />;
   if (!data) {
@@ -106,184 +104,160 @@ export default function MatchDetailScreen() {
     );
   }
 
-  const status = MATCH_STATUS_LABELS[data.status] ?? data.status;
-  const meta = [
-    data.scheduledTime ? formatMatchTime(data.scheduledTime) : null,
-    data.courtName,
-    data.divisionName,
-    data.phase === "bracket" ? "Bracket" : "Pool",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const sets = data.sets.slice().sort((a, b) => a.setNumber - b.setNumber);
+  const setsWonA = sets.filter((set) => set.teamAScore > set.teamBScore).length;
+  const setsWonB = sets.filter((set) => set.teamBScore > set.teamAScore).length;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <Text style={[styles.kicker, { color: colors.mutedForeground }]}>
-        {data.tournamentName}
-      </Text>
-      <Text
-        style={[
-          styles.status,
-          {
-            color:
-              data.status === "in_progress" ? colors.primary : colors.foreground,
-          },
-        ]}
-      >
-        {status}
-      </Text>
-      {meta ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {meta}
-        </Text>
-      ) : null}
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh} gap={space.xxl}>
+      {refreshError ? <Banner tone="error" message={refreshError} /> : null}
+
+      <Card style={styles.scoreboard}>
+        <View style={styles.boardTop}>
+          <StatusBadge kind="match" status={data.status} />
+          <AppText variant="footnote" tone="muted" numberOfLines={1} style={styles.tournamentName}>
+            {data.tournamentName}
+          </AppText>
+        </View>
+        <View style={styles.teams}>
+          <TeamSide
+            name={data.teamA?.name ?? "TBD"}
+            won={data.winnerSlug != null && data.winnerSlug === data.teamA?.slug}
+          />
+          <View style={styles.total} accessible accessibilityLabel={`Sets ${setsWonA} to ${setsWonB}`}>
+            <AppText variant="largeTitle" style={styles.totalText}>
+              {setsWonA}
+              <AppText variant="title" tone="muted">
+                {"  –  "}
+              </AppText>
+              {setsWonB}
+            </AppText>
+            <AppText variant="caption" tone="muted">
+              Sets
+            </AppText>
+          </View>
+          <TeamSide
+            name={data.teamB?.name ?? "TBD"}
+            won={data.winnerSlug != null && data.winnerSlug === data.teamB?.slug}
+          />
+        </View>
+      </Card>
 
       {canOpenConsole ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() =>
-            router.push(`/tournament/${slug}/matches/${matchSlug}/console`)
-          }
-          style={[styles.consoleBtn, { backgroundColor: colors.primary }]}
-        >
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            Open match console
-          </Text>
-        </Pressable>
+        <Button
+          label="Open match console"
+          icon="create-outline"
+          fullWidth
+          onPress={() => router.push(`/tournament/${slug}/matches/${matchSlug}/console`)}
+        />
       ) : null}
 
-      <View style={[styles.board, { borderColor: colors.border }]}>
-        <View style={styles.boardHead}>
-          <Text style={[styles.boardSpacer, { color: colors.mutedForeground }]}>
-            Set
-          </Text>
-          <Text
-            style={[
-              styles.boardCol,
-              {
-                color: colors.foreground,
-                fontWeight: data.winnerSlug === data.teamA?.slug ? "700" : "600",
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {data.teamA?.name ?? "TBD"}
-          </Text>
-          <Text
-            style={[
-              styles.boardCol,
-              {
-                color: colors.foreground,
-                fontWeight: data.winnerSlug === data.teamB?.slug ? "700" : "600",
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {data.teamB?.name ?? "TBD"}
-          </Text>
-        </View>
-        {data.sets.length === 0 ? (
-          <Text style={[styles.emptySets, { color: colors.mutedForeground }]}>
+      <Section title="Set scores">
+        {sets.length === 0 ? (
+          <AppText variant="subhead" tone="muted">
             {data.status === "upcoming"
-              ? "Sets appear here when the match starts."
+              ? "Set scores appear here once the match starts."
               : "No set scores posted yet."}
-          </Text>
+          </AppText>
         ) : (
-          data.sets
-            .slice()
-            .sort((a, b) => a.setNumber - b.setNumber)
-            .map((set) => (
-              <SetRow key={set.setNumber} set={set} colors={colors} />
-            ))
+          <ListGroup>
+            {sets.map((set) => (
+              <SetRow key={set.setNumber} set={set} />
+            ))}
+          </ListGroup>
         )}
-      </View>
+      </Section>
 
-      {data.refTeamName ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Ref: {data.refTeamName}
-        </Text>
-      ) : null}
-    </ScrollView>
+      <Section title="Details">
+        <ListGroup>
+          {data.scheduledTime ? (
+            <ListRow icon="time-outline" iconTone="secondary" title={formatMatchTime(data.scheduledTime)} subtitle="Start time" />
+          ) : null}
+          {data.courtName ? (
+            <ListRow icon="location-outline" iconTone="secondary" title={data.courtName} subtitle="Court" />
+          ) : null}
+          <ListRow
+            icon={data.phase === "bracket" ? "git-network-outline" : "grid-outline"}
+            iconTone="secondary"
+            title={data.divisionName ?? (data.phase === "bracket" ? "Bracket" : "Pool play")}
+            subtitle={data.phase === "bracket" ? "Bracket" : "Pool"}
+          />
+          {data.refTeamName ? (
+            <ListRow icon="flag-outline" iconTone="secondary" title={data.refTeamName} subtitle="Reffing team" />
+          ) : null}
+        </ListGroup>
+      </Section>
+    </ScreenScroll>
   );
 }
 
-function SetRow({
-  set,
-  colors,
-}: {
-  set: TournamentMatchDetailContract["sets"][number];
-  colors: ThemeColors;
-}) {
-  const aWon = set.teamAScore > set.teamBScore;
-  const bWon = set.teamBScore > set.teamAScore;
+function TeamSide({ name, won }: { name: string; won: boolean }) {
+  const colors = useThemeColors();
   return (
-    <View style={styles.setRow}>
-      <Text style={[styles.boardSpacer, { color: colors.mutedForeground }]}>
-        {set.setNumber}
-      </Text>
-      <Text
-        style={[
-          styles.score,
-          { color: colors.foreground, fontWeight: aWon ? "700" : "500" },
-        ]}
+    <View style={styles.teamSide}>
+      <AppText
+        variant="headline"
+        weight={won ? "700" : "600"}
+        tone={name === "TBD" ? "muted" : "default"}
+        numberOfLines={3}
+        style={styles.teamName}
       >
-        {set.teamAScore}
-      </Text>
-      <Text
-        style={[
-          styles.score,
-          { color: colors.foreground, fontWeight: bWon ? "700" : "500" },
-        ]}
-      >
-        {set.teamBScore}
-      </Text>
+        {name}
+      </AppText>
+      {won ? (
+        <View style={styles.winner}>
+          <Icon name="trophy" size={14} color={colors.success} />
+          <AppText variant="caption" tone="success">
+            Winner
+          </AppText>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function matchTitle(match: TournamentMatchDetailContract): string {
-  const a = match.teamA?.name ?? "TBD";
-  const b = match.teamB?.name ?? "TBD";
-  return `${a} vs ${b}`;
+function SetRow({ set }: { set: TournamentMatchDetailContract["sets"][number] }) {
+  const aWon = set.teamAScore > set.teamBScore;
+  const bWon = set.teamBScore > set.teamAScore;
+  return (
+    <View
+      style={styles.setRow}
+      accessible
+      accessibilityLabel={`Set ${set.setNumber}: ${set.teamAScore} to ${set.teamBScore}`}
+    >
+      <AppText variant="subhead" tone="muted" style={styles.setLabel}>
+        Set {set.setNumber}
+      </AppText>
+      <AppText variant="title" weight={aWon ? "700" : "400"} tone={aWon ? "default" : "muted"} style={styles.setScore}>
+        {set.teamAScore}
+      </AppText>
+      <AppText variant="subhead" tone="muted">
+        –
+      </AppText>
+      <AppText variant="title" weight={bWon ? "700" : "400"} tone={bWon ? "default" : "muted"} style={styles.setScore}>
+        {set.teamBScore}
+      </AppText>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 10 },
-  kicker: { fontSize: 14, fontWeight: "600" },
-  status: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  meta: { fontSize: 15 },
-  consoleBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
+  scoreboard: { gap: space.lg, paddingVertical: space.xl },
+  boardTop: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  tournamentName: { flex: 1, textAlign: "right" },
+  teams: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  teamSide: { flex: 1, alignItems: "center", gap: space.xs },
+  teamName: { textAlign: "center" },
+  winner: { flexDirection: "row", alignItems: "center", gap: space.xxs },
+  total: { alignItems: "center", minWidth: 96 },
+  totalText: { fontVariant: ["tabular-nums"], fontSize: 40, lineHeight: 46 },
+  setRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    minHeight: 52,
   },
-  board: {
-    marginTop: 12,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 10,
-  },
-  boardHead: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
-  boardSpacer: { width: 36, fontSize: 13, fontWeight: "600" },
-  boardCol: { flex: 1, fontSize: 16, textAlign: "center" },
-  setRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  score: {
-    flex: 1,
-    fontSize: 28,
-    textAlign: "center",
-    fontVariant: ["tabular-nums"],
-  },
-  emptySets: { fontSize: 15, lineHeight: 22 },
+  setLabel: { flex: 1 },
+  setScore: { width: 44, textAlign: "center", fontVariant: ["tabular-nums"] },
 });
