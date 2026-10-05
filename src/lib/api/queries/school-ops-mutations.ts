@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { AppUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
@@ -111,7 +111,7 @@ export async function addSchoolMemberForViewer(
   const [target] = await db
     .select()
     .from(users)
-    .where(eq(users.email, parsed.data.email.toLowerCase().trim()))
+    .where(sql`lower(${users.email}) = ${parsed.data.email.toLowerCase().trim()}`)
     .limit(1);
 
   if (!target) {

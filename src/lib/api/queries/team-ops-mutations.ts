@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { AppUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -111,7 +111,7 @@ export async function addTeamMemberForViewer(
     ? await db
         .select()
         .from(users)
-        .where(eq(users.email, email))
+        .where(sql`lower(${users.email}) = ${email}`)
         .limit(1)
     : await db
         .select()

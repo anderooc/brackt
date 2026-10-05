@@ -89,7 +89,7 @@ export async function signUpAccount(input: {
     try {
       await db.insert(users).values({
         authId: authUser.id,
-        email: parsed.data.email,
+        email: parsed.data.email.toLowerCase(),
         fullName: parsed.data.fullName,
         displayEmail: parsed.data.email,
         role: "player",
