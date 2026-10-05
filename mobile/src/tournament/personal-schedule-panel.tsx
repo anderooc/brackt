@@ -18,14 +18,10 @@
 
 import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  formatCalendarDate,
-  formatMatchTime,
-  MATCH_STATUS_LABELS,
-  PERSONAL_SCHEDULE_ROLE_LABELS,
-} from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { StyleSheet, View } from "react-native";
+import { formatCalendarDate, PERSONAL_SCHEDULE_ROLE_LABELS } from "~/lib/format";
+import { AppText, Badge, EmptyState, ListGroup, space } from "~/ui";
+import { ScheduleMatchItem } from "~/tournament/schedule-match-item";
 
 export function PersonalSchedulePanel({
   matches,
@@ -34,119 +30,62 @@ export function PersonalSchedulePanel({
   matches: PersonalScheduleMatchContract[];
   compact?: boolean;
 }) {
-  const colors = useThemeColors();
   const router = useRouter();
 
   if (matches.length === 0) {
     return (
-      <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-        No upcoming matches. Scheduled games for your teams will show up here.
-      </Text>
+      <EmptyState
+        compact
+        icon="calendar-outline"
+        title="No upcoming matches"
+        message="Games for your teams, reffing assignments, and scorekeeping shifts will show up here once a host posts the schedule."
+      />
     );
   }
 
   return (
-    <View style={styles.list}>
+    <ListGroup>
       {matches.map((match) => (
-        <Pressable
+        <ScheduleMatchItem
           key={match.id}
-          accessibilityRole="button"
-          onPress={() =>
-            router.push(
-              `/tournament/${match.tournamentSlug}/matches/${match.matchSlug}`
-            )
+          scheduledTime={match.scheduledTime}
+          status={match.status}
+          teamAName={match.teamAName}
+          teamBName={match.teamBName}
+          eyebrow={
+            compact
+              ? null
+              : `${match.tournamentName} · ${formatCalendarDate(match.tournamentDate)}`
           }
-          style={[
-            styles.row,
-            {
-              borderColor:
-                match.status === "in_progress"
-                  ? colors.primary
-                  : colors.border,
-              backgroundColor:
-                match.status === "in_progress"
-                  ? withAlpha(colors.primary, 0.05)
-                  : colors.card,
-            },
-          ]}
-        >
-          <View style={styles.top}>
-            <Text style={[styles.time, { color: colors.foreground }]}>
-              {formatMatchTime(match.scheduledTime)}
-            </Text>
-            <Text style={[styles.status, { color: colors.mutedForeground }]}>
-              {MATCH_STATUS_LABELS[match.status] ?? match.status}
-            </Text>
-          </View>
-
-          {!compact ? (
-            <Text style={[styles.tournament, { color: colors.mutedForeground }]}>
-              {match.tournamentName} · {formatCalendarDate(match.tournamentDate)}
-            </Text>
-          ) : null}
-
-          <Text style={[styles.matchup, { color: colors.foreground }]}>
-            {match.teamAName} vs {match.teamBName}
-          </Text>
-
-          <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-            {[match.courtName, match.contextLabel].filter(Boolean).join(" · ")}
-          </Text>
-
-          <View style={styles.roleRow}>
-            <View
-              style={[
-                styles.roleChip,
-                { backgroundColor: withAlpha(colors.primary, 0.1) },
-              ]}
-            >
-              <Text style={[styles.roleText, { color: colors.primary }]}>
-                {PERSONAL_SCHEDULE_ROLE_LABELS[match.role] ?? match.role}
-              </Text>
+          details={[match.courtName, match.contextLabel]}
+          footer={
+            <View style={styles.roleRow}>
+              <Badge
+                label={PERSONAL_SCHEDULE_ROLE_LABELS[match.role] ?? match.role}
+                tone={match.role === "playing" ? "info" : "warning"}
+              />
+              {match.myTeamName ? (
+                <AppText variant="footnote" tone="muted" numberOfLines={1} style={styles.team}>
+                  {match.myTeamName}
+                </AppText>
+              ) : null}
             </View>
-            {match.myTeamName ? (
-              <Text style={[styles.teamName, { color: colors.mutedForeground }]}>
-                {match.myTeamName}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
+          }
+          onPress={() =>
+            router.push(`/tournament/${match.tournamentSlug}/matches/${match.matchSlug}`)
+          }
+        />
       ))}
-    </View>
+    </ListGroup>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 10 },
-  empty: { fontSize: 14, lineHeight: 20 },
-  row: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 4,
-  },
-  top: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  time: { fontSize: 15, fontWeight: "700" },
-  status: { fontSize: 12, fontWeight: "600" },
-  tournament: { fontSize: 13 },
-  matchup: { fontSize: 16, fontWeight: "600", marginTop: 2 },
-  meta: { fontSize: 13 },
   roleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 6,
+    gap: space.sm,
+    marginTop: space.xs,
   },
-  roleChip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  roleText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  teamName: { fontSize: 13 },
+  team: { flexShrink: 1 },
 });

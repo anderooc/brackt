@@ -17,7 +17,7 @@
  */
 
 import type { TournamentListItemContract } from "@/lib/api/contracts/tournament";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import {
   GENDER_LABELS,
   REGION_LABELS,
@@ -25,6 +25,7 @@ import {
   tournamentListStatusLabel,
 } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { AppText, Badge, Icon, space, statusTone } from "~/ui";
 
 export function ScheduleRow({
   tournament,
@@ -36,13 +37,10 @@ export function ScheduleRow({
   onPress: () => void;
 }) {
   const colors = useThemeColors();
-  const status = tournamentListStatusLabel(
-    tournament.status,
-    tournament.date,
-    today
-  );
+  const status = tournamentListStatusLabel(tournament.status, tournament.date, today);
   const gender = GENDER_LABELS[tournament.gender] ?? tournament.gender;
   const region = REGION_LABELS[tournament.region] ?? tournament.region;
+  const availability = registrationAvailabilityLabel(tournament.registrationAvailability);
 
   return (
     <Pressable
@@ -51,56 +49,68 @@ export function ScheduleRow({
       onPress={onPress}
       style={({ pressed }) => [
         styles.row,
-        {
-          borderColor: colors.border,
-          backgroundColor: pressed ? colors.muted : "transparent",
-        },
+        { backgroundColor: pressed ? colors.muted : "transparent" },
       ]}
     >
-      <View style={styles.top}>
-        <Text
-          style={[styles.name, { color: colors.foreground }]}
-          numberOfLines={2}
-        >
-          {tournament.name}
-        </Text>
-        <Text style={[styles.status, { color: colors.mutedForeground }]}>
-          {status}
-        </Text>
+      <View style={styles.body}>
+        <View style={styles.top}>
+          <AppText variant="headline" numberOfLines={2} style={styles.name}>
+            {tournament.name}
+          </AppText>
+          <Badge
+            label={status}
+            tone={statusTone("tournament", tournament.status, tournament.date).tone}
+          />
+        </View>
+        <MetaLine icon="location-outline" text={tournament.location} />
+        <MetaLine icon="people-outline" text={`${gender} · ${region}`} />
+        <MetaLine icon="clipboard-outline" text={availability} />
+        {tournament.hostSchool ? (
+          <AppText variant="footnote" tone="secondary" weight="600" numberOfLines={1}>
+            Hosted by {tournament.hostSchool.name}
+          </AppText>
+        ) : null}
       </View>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]} numberOfLines={1}>
-        {tournament.location}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {registrationAvailabilityLabel(tournament.registrationAvailability)}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {gender} · {region}
-      </Text>
-      {tournament.hostSchool ? (
-        <Text style={[styles.host, { color: colors.secondary }]} numberOfLines={1}>
-          Hosted by {tournament.hostSchool.name}
-        </Text>
-      ) : null}
+      <Icon name="chevron-forward" size={18} color={colors.mutedForeground} />
     </Pressable>
+  );
+}
+
+function MetaLine({
+  icon,
+  text,
+}: {
+  icon: "location-outline" | "people-outline" | "clipboard-outline";
+  text: string;
+}) {
+  const colors = useThemeColors();
+  return (
+    <View style={styles.metaLine}>
+      <Icon name={icon} size={14} color={colors.mutedForeground} />
+      <AppText variant="footnote" tone="muted" numberOfLines={1} style={styles.metaText}>
+        {text}
+      </AppText>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    gap: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md + 2,
   },
+  body: { flex: 1, minWidth: 0, gap: space.xs },
   top: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 10,
+    gap: space.sm,
+    marginBottom: space.xxs,
   },
-  name: { flex: 1, fontSize: 16, fontWeight: "600", lineHeight: 20 },
-  status: { fontSize: 13, fontWeight: "600", maxWidth: "42%", textAlign: "right" },
-  meta: { fontSize: 13, lineHeight: 18 },
-  host: { fontSize: 13, fontWeight: "600", marginTop: 2 },
+  name: { flex: 1 },
+  metaLine: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  metaText: { flexShrink: 1 },
 });

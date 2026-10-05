@@ -19,7 +19,8 @@
 import type { BracketMatchContract } from "@/lib/api/contracts/tournament";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { bracketRoundLabel } from "~/lib/format";
-import { useThemeColors, type ThemeColors } from "~/theme/colors";
+import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { radius, space, type } from "~/ui/tokens";
 
 const MATCH_BLOCK = 84;
 const TEAM_LINE = 44;
@@ -279,25 +280,15 @@ function TeamLine({
 }) {
   return (
     <View style={[styles.teamLine, { top }]} pointerEvents="none">
-      <View
-        style={[
-          styles.teamChip,
-          won ? { backgroundColor: withAlpha(colors.primary, 0.14) } : null,
-        ]}
-      >
+      <View style={styles.teamChip}>
         <Text
           numberOfLines={1}
           style={{
             flexShrink: 1,
             fontSize: 15,
             lineHeight: 20,
-            fontWeight: won ? "700" : "600",
-            color: won
-              ? colors.primary
-              : lost || placeholder
-                ? colors.mutedForeground
-                : colors.foreground,
-            textDecorationLine: lost ? "line-through" : "none",
+            fontWeight: won ? "700" : lost ? "500" : "600",
+            color: lost || placeholder ? colors.mutedForeground : colors.foreground,
             fontStyle: placeholder ? "italic" : "normal",
           }}
         >
@@ -439,15 +430,6 @@ function underlineColor(
 }
 
 /** sRGB hex + alpha. Theme tokens are already converted from OKLCH. */
-function withAlpha(hex: string, alpha: number): string {
-  const raw = hex.replace("#", "");
-  if (raw.length !== 6) return hex;
-  const r = Number.parseInt(raw.slice(0, 2), 16);
-  const g = Number.parseInt(raw.slice(2, 4), 16);
-  const b = Number.parseInt(raw.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
 const styles = StyleSheet.create({
   roundLabel: {
     position: "absolute",

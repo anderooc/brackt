@@ -17,13 +17,14 @@
  */
 
 import type { TournamentMatchContract } from "@/lib/api/contracts/tournament";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import {
   formatMatchTime,
   formatSetLine,
   MATCH_STATUS_LABELS,
 } from "~/lib/format";
-import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { useThemeColors, withAlpha } from "~/theme/colors";
+import { AppText, Icon, StatusBadge, radius, space } from "~/ui";
 
 export function MatchRow({
   match,
@@ -39,7 +40,7 @@ export function MatchRow({
   const setLine = formatSetLine(match.sets);
   const teamA = match.teamA?.name ?? "TBD";
   const teamB = match.teamB?.name ?? "TBD";
-  const isLive = match.status === "in_progress";
+  const live = match.status === "in_progress";
   const meta = [
     match.scheduledTime ? formatMatchTime(match.scheduledTime) : null,
     match.courtName,
@@ -48,126 +49,87 @@ export function MatchRow({
     .filter(Boolean)
     .join(" · ");
 
-  const body = (
-    <View
-      style={[
+  return (
+    <Pressable
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={`${status}. ${teamA} versus ${teamB}. ${meta}`}
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.row,
         {
-          borderColor: isLive ? colors.primary : colors.border,
-          backgroundColor: isLive
-            ? withAlpha(colors.primary, 0.05)
-            : colors.card,
+          borderColor: live ? withAlpha(colors.live, 0.5) : colors.border,
+          backgroundColor: pressed
+            ? colors.muted
+            : live
+              ? withAlpha(colors.live, 0.04)
+              : colors.card,
         },
       ]}
     >
       <View style={styles.top}>
-        <View
-          style={[
-            styles.statusChip,
-            {
-              backgroundColor: isLive
-                ? withAlpha(colors.primary, 0.12)
-                : colors.muted,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.status,
-              { color: isLive ? colors.primary : colors.mutedForeground },
-            ]}
-          >
-            {status}
-          </Text>
-        </View>
+        <StatusBadge kind="match" status={match.status} />
         {meta ? (
-          <Text
-            style={[styles.meta, { color: colors.mutedForeground }]}
-            numberOfLines={1}
-          >
+          <AppText variant="footnote" tone="muted" numberOfLines={1} style={styles.meta}>
             {meta}
-          </Text>
+          </AppText>
+        ) : null}
+        {onPress ? (
+          <Icon name="chevron-forward" size={16} color={colors.mutedForeground} />
         ) : null}
       </View>
 
-      <TeamLine
-        team={match.teamA}
-        won={match.winnerSlug === match.teamA?.slug}
-        colors={colors}
-      />
-      <TeamLine
-        team={match.teamB}
-        won={match.winnerSlug === match.teamB?.slug}
-        colors={colors}
-      />
+      <TeamLine name={teamA} won={match.winnerSlug === match.teamA?.slug} />
+      <TeamLine name={teamB} won={match.winnerSlug === match.teamB?.slug} />
 
       {setLine ? (
-        <Text style={[styles.sets, { color: colors.mutedForeground }]}>
+        <AppText
+          variant="footnote"
+          tone="muted"
+          style={[styles.sets, { fontVariant: ["tabular-nums"] }]}
+        >
           {setLine}
-        </Text>
+        </AppText>
       ) : null}
-    </View>
-  );
-
-  if (!onPress) return body;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${status}. ${teamA} versus ${teamB}`}
-      onPress={onPress}
-    >
-      {body}
     </Pressable>
   );
 }
 
-function TeamLine({
-  team,
-  won,
-  colors,
-}: {
-  team: TournamentMatchContract["teamA"];
-  won: boolean;
-  colors: ThemeColors;
-}) {
+function TeamLine({ name, won }: { name: string; won: boolean }) {
+  const colors = useThemeColors();
   return (
-    <Text
-      style={[
-        styles.team,
-        {
-          color: colors.foreground,
-          fontWeight: won ? "700" : "500",
-        },
-      ]}
-      numberOfLines={1}
-    >
-      {team?.name ?? "TBD"}
-    </Text>
+    <View style={styles.teamLine}>
+      <AppText
+        variant="body"
+        weight={won ? "700" : "500"}
+        tone={name === "TBD" ? "muted" : "default"}
+        numberOfLines={1}
+        style={styles.teamName}
+      >
+        {name}
+      </AppText>
+      {won ? (
+        <Icon name="checkmark-circle" size={16} color={colors.success} />
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: space.xs,
   },
   top: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 6,
+    gap: space.sm,
+    marginBottom: space.xs,
   },
-  statusChip: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  status: { fontSize: 12, fontWeight: "700" },
-  meta: { fontSize: 13, flexShrink: 1, textAlign: "right" },
-  team: { fontSize: 16, lineHeight: 22 },
-  sets: { fontSize: 13, marginTop: 6 },
+  meta: { flex: 1, textAlign: "right" },
+  teamLine: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  teamName: { flexShrink: 1 },
+  sets: { marginTop: space.xs },
 });

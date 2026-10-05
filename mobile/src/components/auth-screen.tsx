@@ -16,111 +16,112 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { ReactNode } from "react";
+import { useNavigation, useRouter } from "expo-router";
+import { useCallback, useState, type ReactNode, type Ref } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   type TextInputProps,
   View,
 } from "react-native";
 import { useThemeColors } from "~/theme/colors";
+import { AppText, Button, radius, space } from "~/ui";
 
-export const authStyles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { padding: 24, gap: 12, paddingBottom: 40 },
-  heading: { fontSize: 24, fontWeight: "700", marginBottom: 4 },
-  subheading: { fontSize: 15, lineHeight: 21 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-  },
-  hint: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 14 },
-  button: {
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  buttonLabel: { fontSize: 16, fontWeight: "700" },
-  linkRow: { alignItems: "center", marginTop: 8, gap: 12 },
-  link: { fontSize: 15, fontWeight: "600" },
-});
+const AUTH_ROUTES = new Set([
+  "sign-in",
+  "sign-up",
+  "forgot-password",
+  "reset-password",
+]);
+
+/**
+ * Closes every auth modal stacked on top of the screen that opened the flow,
+ * so finishing sign-up from sign-in does not land back on sign-in.
+ */
+export function useExitAuthFlow() {
+  const router = useRouter();
+  const navigation = useNavigation();
+  return useCallback(() => {
+    const routes = navigation.getState()?.routes ?? [];
+    let count = 0;
+    for (let i = routes.length - 1; i >= 0; i--) {
+      if (!AUTH_ROUTES.has(routes[i].name)) break;
+      count++;
+    }
+    if (count > 0 && count < routes.length) {
+      router.dismiss(count);
+      return;
+    }
+    router.replace("/");
+  }, [navigation, router]);
+}
 
 export function AuthScreen({
   children,
-  scroll = false,
+  lead,
 }: {
   children: ReactNode;
-  scroll?: boolean;
+  lead?: string;
 }) {
   const colors = useThemeColors();
-  const body = (
-    <View style={authStyles.content}>{children}</View>
-  );
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={[authStyles.screen, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === "android" ? "padding" : undefined}
+      style={[styles.screen, { backgroundColor: colors.background }]}
     >
-      {scroll ? (
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-        >
-          {body}
-        </ScrollView>
-      ) : (
-        <View style={{ flex: 1, justifyContent: "center" }}>{body}</View>
-      )}
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        {lead ? (
+          <AppText variant="callout" tone="muted">
+            {lead}
+          </AppText>
+        ) : null}
+        {children}
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-export function AuthFieldLabel({
-  children,
-  hint,
-}: {
-  children: string;
-  hint?: string;
-}) {
-  const colors = useThemeColors();
-  return (
-    <View style={{ gap: 4 }}>
-      <Text style={{ color: colors.foreground, fontSize: 15, fontWeight: "600" }}>
-        {children}
-      </Text>
-      {hint ? (
-        <Text style={[authStyles.hint, { color: colors.mutedForeground }]}>
-          {hint}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 export function AuthInput({
+  ref,
   style,
+  onFocus,
+  onBlur,
+  invalid = false,
   ...props
-}: TextInputProps & { style?: object }) {
+}: TextInputProps & { ref?: Ref<TextInput>; invalid?: boolean }) {
   const colors = useThemeColors();
+  const [focused, setFocused] = useState(false);
   return (
     <TextInput
+      ref={ref}
       placeholderTextColor={colors.mutedForeground}
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
       style={[
-        authStyles.input,
+        styles.input,
         {
           color: colors.foreground,
-          borderColor: colors.border,
+          borderColor: invalid
+            ? colors.destructive
+            : focused
+              ? colors.primary
+              : colors.border,
           backgroundColor: colors.card,
         },
         style,
@@ -130,6 +131,11 @@ export function AuthInput({
   );
 }
 
+/** Stack of the primary submit button and secondary text links under a form. */
+export function AuthActions({ children }: { children: ReactNode }) {
+  return <View style={styles.actions}>{children}</View>;
+}
+
 export function AuthLink({
   label,
   onPress,
@@ -137,10 +143,34 @@ export function AuthLink({
   label: string;
   onPress: () => void;
 }) {
-  const colors = useThemeColors();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} hitSlop={8}>
-      <Text style={[authStyles.link, { color: colors.primary }]}>{label}</Text>
-    </Pressable>
+    <Button
+      label={label}
+      onPress={onPress}
+      variant="ghost"
+      size="sm"
+      haptic={false}
+      style={styles.link}
+    />
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  content: {
+    paddingHorizontal: space.xxl,
+    paddingTop: space.xxl,
+    paddingBottom: space.xxxl + space.lg,
+    gap: space.lg,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md + 2,
+    paddingVertical: space.md,
+    minHeight: 48,
+    fontSize: 16,
+  },
+  actions: { gap: space.sm, marginTop: space.xs },
+  link: { alignSelf: "center", minHeight: 44 },
+});

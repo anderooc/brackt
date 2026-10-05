@@ -18,9 +18,9 @@
 
 import type { TournamentMatchContract } from "@/lib/api/contracts/tournament";
 import { useRouter } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { MatchRow } from "~/tournament/match-row";
-import { useThemeColors } from "~/theme/colors";
+import { AppText, EmptyState, Section, space } from "~/ui";
 
 export function TournamentMatchesPanel({
   matches,
@@ -29,19 +29,15 @@ export function TournamentMatchesPanel({
   matches: TournamentMatchContract[];
   tournamentSlug: string;
 }) {
-  const colors = useThemeColors();
   const router = useRouter();
 
   if (matches.length === 0) {
     return (
-      <View style={styles.empty}>
-        <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-          No matches yet
-        </Text>
-        <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-          Public matches appear here once the host releases pools or brackets.
-        </Text>
-      </View>
+      <EmptyState
+        icon="calendar-outline"
+        title="No matches yet"
+        message="Matches appear here once the host releases pools or brackets."
+      />
     );
   }
 
@@ -50,20 +46,12 @@ export function TournamentMatchesPanel({
 
   return (
     <View style={styles.stack}>
-      <Text style={[styles.summary, { color: colors.mutedForeground }]}>
+      <AppText variant="footnote" tone="muted" weight="600">
         {matches.length} match{matches.length === 1 ? "" : "es"}
         {liveCount > 0 ? ` · ${liveCount} live` : ""}
-      </Text>
+      </AppText>
       {groups.map((group) => (
-        <View key={group.key} style={styles.group}>
-          <Text style={[styles.groupTitle, { color: colors.foreground }]}>
-            {group.title}
-          </Text>
-          {group.subtitle ? (
-            <Text style={[styles.groupSubtitle, { color: colors.mutedForeground }]}>
-              {group.subtitle}
-            </Text>
-          ) : null}
+        <Section key={group.key} title={group.title} description={group.subtitle}>
           <View style={styles.rows}>
             {group.matches.map((match) => (
               <MatchRow
@@ -77,7 +65,7 @@ export function TournamentMatchesPanel({
               />
             ))}
           </View>
-        </View>
+        </Section>
       ))}
     </View>
   );
@@ -89,7 +77,7 @@ function groupMatches(matches: TournamentMatchContract[]) {
     {
       key: string;
       title: string;
-      subtitle: string | null;
+      subtitle: string;
       matches: TournamentMatchContract[];
     }
   >();
@@ -115,13 +103,6 @@ function groupMatches(matches: TournamentMatchContract[]) {
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 22 },
-  summary: { fontSize: 14, fontWeight: "600" },
-  group: { gap: 8 },
-  groupTitle: { fontSize: 15, fontWeight: "700" },
-  groupSubtitle: { fontSize: 13, fontWeight: "600", marginTop: -4 },
-  rows: { gap: 10 },
-  empty: { gap: 8, paddingVertical: 24 },
-  emptyTitle: { fontSize: 18, fontWeight: "700" },
-  emptyBody: { fontSize: 15, lineHeight: 22 },
+  stack: { gap: space.xxl },
+  rows: { gap: space.sm },
 });

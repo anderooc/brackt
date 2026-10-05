@@ -16,9 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { formatMonthTitle, parseISODate } from "~/lib/format";
 import { useThemeColors, withAlpha } from "~/theme/colors";
+import {
+  AppText,
+  haptics,
+  HIT_TARGET,
+  IconButton,
+  radius,
+  space,
+} from "~/ui";
 import { monthCellIsos, shiftMonth } from "./filter-tournament-list";
 
 const WEEKDAYS = [
@@ -30,6 +38,8 @@ const WEEKDAYS = [
   { key: "fri", short: "F", label: "Friday" },
   { key: "sat", short: "S", label: "Saturday" },
 ] as const;
+
+const DAY_SIZE = 36;
 
 export function MonthCalendar({
   selectedDate,
@@ -48,45 +58,46 @@ export function MonthCalendar({
 }) {
   const colors = useThemeColors();
   const cells = monthCellIsos(month.year, month.monthIndex);
+  const monthTitle = formatMonthTitle(month.year, month.monthIndex);
 
   return (
     <View
       style={[styles.card, { borderColor: colors.border, backgroundColor: colors.card }]}
-      accessibilityLabel={`Calendar, ${formatMonthTitle(month.year, month.monthIndex)}`}
+      accessibilityLabel={`Calendar, ${monthTitle}`}
     >
       <View style={styles.monthBar}>
-        <Pressable
-          accessibilityRole="button"
+        <IconButton
+          icon="chevron-back"
           accessibilityLabel="Previous month"
-          onPress={() => onMonthChange(shiftMonth(month.year, month.monthIndex, -1))}
-          hitSlop={8}
-          style={styles.monthNav}
-        >
-          <Text style={[styles.monthNavLabel, { color: colors.primary }]}>‹</Text>
-        </Pressable>
-        <Text style={[styles.monthTitle, { color: colors.foreground }]}>
-          {formatMonthTitle(month.year, month.monthIndex)}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
+          onPress={() => {
+            haptics.selection();
+            onMonthChange(shiftMonth(month.year, month.monthIndex, -1));
+          }}
+        />
+        <AppText variant="headline" accessibilityRole="header">
+          {monthTitle}
+        </AppText>
+        <IconButton
+          icon="chevron-forward"
           accessibilityLabel="Next month"
-          onPress={() => onMonthChange(shiftMonth(month.year, month.monthIndex, 1))}
-          hitSlop={8}
-          style={styles.monthNav}
-        >
-          <Text style={[styles.monthNavLabel, { color: colors.primary }]}>›</Text>
-        </Pressable>
+          onPress={() => {
+            haptics.selection();
+            onMonthChange(shiftMonth(month.year, month.monthIndex, 1));
+          }}
+        />
       </View>
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((day) => (
-          <Text
+          <AppText
             key={day.key}
+            variant="caption"
+            tone="muted"
             accessibilityLabel={day.label}
-            style={[styles.weekday, { color: colors.mutedForeground }]}
+            style={styles.weekday}
           >
             {day.short}
-          </Text>
+          </AppText>
         ))}
       </View>
 
@@ -105,50 +116,59 @@ export function MonthCalendar({
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               accessibilityLabel={`${formatA11yDay(iso)}${hasEvents ? ", has tournaments" : ""}${isToday ? ", today" : ""}`}
-              onPress={() => onSelectDate(iso)}
+              onPress={() => {
+                haptics.selection();
+                onSelectDate(iso);
+              }}
               style={styles.dayCell}
             >
-              <View
-                style={[
-                  styles.dayHit,
-                  isSelected && {
-                    backgroundColor: colors.primary,
-                  },
-                  isToday && !isSelected && {
-                    borderColor: colors.primary,
-                    borderWidth: 1,
-                    backgroundColor: withAlpha(colors.primary, 0.08),
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.dayNumber,
-                    {
-                      color: isSelected
-                        ? colors.primaryForeground
-                        : isToday
-                          ? colors.primary
-                          : colors.foreground,
-                      fontWeight: isSelected || isToday ? "700" : "500",
-                    },
-                  ]}
-                >
-                  {dayNumber}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.dot,
-                  {
-                    backgroundColor: hasEvents
-                      ? isSelected
-                        ? colors.primaryForeground
-                        : colors.primary
-                      : "transparent",
-                  },
-                ]}
-              />
+              {({ pressed }) => (
+                <>
+                  <View
+                    style={[
+                      styles.dayHit,
+                      pressed && !isSelected && { backgroundColor: colors.muted },
+                      isToday &&
+                        !isSelected && {
+                          borderColor: colors.primary,
+                          borderWidth: 1,
+                          backgroundColor: withAlpha(colors.primary, pressed ? 0.16 : 0.08),
+                        },
+                      isSelected && {
+                        backgroundColor: pressed
+                          ? withAlpha(colors.primary, 0.85)
+                          : colors.primary,
+                      },
+                    ]}
+                  >
+                    <AppText
+                      variant="subhead"
+                      weight={isSelected || isToday ? "700" : "500"}
+                      style={{
+                        color: isSelected
+                          ? colors.primaryForeground
+                          : isToday
+                            ? colors.primary
+                            : colors.foreground,
+                      }}
+                    >
+                      {dayNumber}
+                    </AppText>
+                  </View>
+                  <View
+                    style={[
+                      styles.dot,
+                      {
+                        backgroundColor: hasEvents
+                          ? isSelected
+                            ? colors.primary
+                            : colors.mutedForeground
+                          : "transparent",
+                      },
+                    ]}
+                  />
+                </>
+              )}
             </Pressable>
           );
         })}
@@ -167,49 +187,43 @@ function formatA11yDay(iso: string): string {
 
 const styles = StyleSheet.create({
   card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-    paddingBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderRadius: radius.lg,
+    paddingHorizontal: space.sm,
+    paddingTop: space.xs,
+    paddingBottom: space.sm,
   },
   monthBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 4,
-    marginBottom: 8,
+    marginBottom: space.xs,
   },
-  monthTitle: { fontSize: 16, fontWeight: "700" },
-  monthNav: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
-  monthNavLabel: { fontSize: 28, lineHeight: 32, fontWeight: "500" },
   weekRow: { flexDirection: "row" },
   weekday: {
     width: "14.285%",
     textAlign: "center",
-    fontSize: 12,
-    fontWeight: "600",
-    paddingBottom: 6,
+    paddingBottom: space.xs,
   },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   dayCell: {
     width: "14.285%",
     alignItems: "center",
-    paddingVertical: 2,
-    minHeight: 44,
+    justifyContent: "center",
+    minHeight: HIT_TARGET + space.xs,
+    paddingTop: space.xxs,
   },
   dayHit: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: DAY_SIZE,
+    height: DAY_SIZE,
+    borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
-  dayNumber: { fontSize: 14 },
   dot: {
     width: 4,
     height: 4,
-    borderRadius: 2,
-    marginTop: 2,
+    borderRadius: radius.full,
+    marginTop: space.xxs,
   },
 });

@@ -17,12 +17,16 @@
  */
 
 import { useEffect, useRef } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { formatRailDate } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { AppText, haptics, radius, space } from "~/ui";
 
-const DATE_RAIL_ITEM_HEIGHT = 64;
-const DATE_RAIL_WIDTH = 88;
+const DATE_RAIL_ITEM_HEIGHT = 60;
+const DATE_RAIL_ITEM_GAP = space.xs;
+const DATE_RAIL_STRIDE = DATE_RAIL_ITEM_HEIGHT + DATE_RAIL_ITEM_GAP;
+const DATE_RAIL_PADDING = space.sm;
+const DATE_RAIL_WIDTH = 84;
 
 export function DateRail({
   dates,
@@ -53,8 +57,10 @@ export function DateRail({
 
   return (
     <View
-      style={[styles.rail, { backgroundColor: colors.muted }]}
-      accessibilityRole="scrollbar"
+      style={[
+        styles.rail,
+        { backgroundColor: colors.muted, borderLeftColor: colors.border },
+      ]}
       accessibilityLabel="Date selector"
     >
       <FlatList
@@ -63,8 +69,8 @@ export function DateRail({
         keyExtractor={(item) => item}
         showsVerticalScrollIndicator={false}
         getItemLayout={(_, index) => ({
-          length: DATE_RAIL_ITEM_HEIGHT,
-          offset: DATE_RAIL_ITEM_HEIGHT * index,
+          length: DATE_RAIL_STRIDE,
+          offset: DATE_RAIL_PADDING + DATE_RAIL_STRIDE * index,
           index,
         })}
         onScrollToIndexFailed={({ index }) => {
@@ -88,46 +94,35 @@ export function DateRail({
               accessibilityLabel={
                 isToday ? `Today, ${monthDay}` : `${weekday}, ${monthDay}`
               }
-              onPress={() => onSelect(item)}
-              style={[
+              onPress={() => {
+                if (!isSelected) haptics.selection();
+                onSelect(item);
+              }}
+              style={({ pressed }) => [
                 styles.item,
-                isSelected && { backgroundColor: colors.card },
+                isSelected
+                  ? { backgroundColor: colors.card, borderColor: colors.border }
+                  : pressed && { backgroundColor: colors.background },
               ]}
             >
-              {isToday ? (
-                <Text
-                  style={[
-                    styles.today,
-                    { color: isSelected ? colors.primary : colors.mutedForeground },
-                  ]}
-                >
-                  Today
-                </Text>
-              ) : (
-                <Text
-                  style={[
-                    styles.weekday,
-                    {
-                      color: isSelected
-                        ? colors.foreground
-                        : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {weekday}
-                </Text>
-              )}
-              <Text
-                style={[
-                  styles.monthDay,
-                  {
-                    color: isSelected ? colors.foreground : colors.mutedForeground,
-                    fontWeight: isSelected ? "700" : "500",
-                  },
-                ]}
+              {isSelected ? (
+                <View style={[styles.indicator, { backgroundColor: colors.primary }]} />
+              ) : null}
+              <AppText
+                variant="caption"
+                weight={isToday || isSelected ? "700" : "600"}
+                tone={isToday ? "primary" : isSelected ? "default" : "muted"}
+                style={isToday ? styles.todayLabel : undefined}
+              >
+                {isToday ? "Today" : weekday}
+              </AppText>
+              <AppText
+                variant="footnote"
+                weight={isSelected ? "700" : "500"}
+                tone={isSelected ? "default" : "muted"}
               >
                 {monthDay}
-              </Text>
+              </AppText>
             </Pressable>
           );
         }}
@@ -140,22 +135,31 @@ const styles = StyleSheet.create({
   rail: {
     width: DATE_RAIL_WIDTH,
     alignSelf: "stretch",
+    borderLeftWidth: StyleSheet.hairlineWidth,
   },
-  railContent: { paddingVertical: 8 },
+  railContent: {
+    paddingVertical: DATE_RAIL_PADDING,
+    paddingHorizontal: space.xs,
+    gap: DATE_RAIL_ITEM_GAP,
+  },
   item: {
     height: DATE_RAIL_ITEM_HEIGHT,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    marginHorizontal: 4,
+    gap: space.xxs,
+    borderRadius: radius.sm,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    borderColor: "transparent",
+    overflow: "hidden",
   },
-  today: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
+  indicator: {
+    position: "absolute",
+    left: 0,
+    top: space.md,
+    bottom: space.md,
+    width: 3,
+    borderTopRightRadius: radius.full,
+    borderBottomRightRadius: radius.full,
   },
-  weekday: { fontSize: 12, fontWeight: "600" },
-  monthDay: { fontSize: 13, marginTop: 2 },
+  todayLabel: { textTransform: "uppercase", letterSpacing: 0.5 },
 });

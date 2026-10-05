@@ -18,124 +18,92 @@
 
 import type { GlobalScheduleMatchContract } from "@/lib/api/contracts/global-schedule";
 import { useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  formatMatchTime,
-  GENDER_LABELS,
-  MATCH_STATUS_LABELS,
-  REGION_LABELS,
-} from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useMemo } from "react";
+import { StyleSheet, View } from "react-native";
+import { GENDER_LABELS, REGION_LABELS } from "~/lib/format";
+import { AppText, EmptyState, ListGroup, space } from "~/ui";
+import { ScheduleMatchItem } from "~/tournament/schedule-match-item";
+
+// Group by the device's calendar day so headings agree with the local times shown.
+function localDayKey(iso: string): string {
+  const date = new Date(iso);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
 
 export function GlobalSchedulePanel({
   matches,
 }: {
   matches: GlobalScheduleMatchContract[];
 }) {
-  const colors = useThemeColors();
   const router = useRouter();
+
+  const days = useMemo(() => {
+    const groups: { key: string; label: string; matches: GlobalScheduleMatchContract[] }[] = [];
+    for (const match of matches) {
+      const key = localDayKey(match.scheduledTime);
+      let group = groups[groups.length - 1];
+      if (!group || group.key !== key) {
+        group = {
+          key,
+          label: new Date(match.scheduledTime).toLocaleDateString(undefined, {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+          }),
+          matches: [],
+        };
+        groups.push(group);
+      }
+      group.matches.push(match);
+    }
+    return groups;
+  }, [matches]);
 
   if (matches.length === 0) {
     return (
-      <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-        No scheduled matches yet. Games with a start time will appear here.
-      </Text>
+      <EmptyState
+        icon="calendar-outline"
+        title="No scheduled matches yet"
+        message="Matches show up here once hosts give them a start time."
+      />
     );
   }
 
-  let lastDay: string | null = null;
-
   return (
-    <View style={styles.list}>
-      {matches.map((match) => {
-        const day = match.scheduledTime.slice(0, 10);
-        const showDay = day !== lastDay;
-        lastDay = day;
-
-        return (
-          <View key={match.id} style={styles.group}>
-            {showDay ? (
-              <Text style={[styles.day, { color: colors.mutedForeground }]}>
-                {new Date(`${day}T12:00:00`).toLocaleDateString(undefined, {
-                  weekday: "long",
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Text>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                router.push(
-                  `/tournament/${match.tournamentSlug}/matches/${match.matchSlug}`
-                )
-              }
-              style={[
-                styles.row,
-                {
-                  borderColor:
-                    match.status === "in_progress"
-                      ? colors.primary
-                      : colors.border,
-                  backgroundColor:
-                    match.status === "in_progress"
-                      ? withAlpha(colors.primary, 0.05)
-                      : colors.card,
-                },
-              ]}
-            >
-              <View style={styles.top}>
-                <Text style={[styles.time, { color: colors.foreground }]}>
-                  {formatMatchTime(match.scheduledTime)}
-                </Text>
-                <Text style={[styles.status, { color: colors.mutedForeground }]}>
-                  {MATCH_STATUS_LABELS[match.status] ?? match.status}
-                </Text>
-              </View>
-              <Text style={[styles.tournament, { color: colors.primary }]}>
-                {match.tournamentName}
-              </Text>
-              <Text style={[styles.teams, { color: colors.foreground }]}>
-                {match.teamAName} vs {match.teamBName}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {match.contextLabel}
-                {match.courtName ? ` · ${match.courtName}` : ""}
-                {match.refTeamName ? ` · Ref ${match.refTeamName}` : ""}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {GENDER_LABELS[match.gender] ?? match.gender}
-                {" · "}
-                {REGION_LABELS[match.region] ?? match.region}
-              </Text>
-            </Pressable>
-          </View>
-        );
-      })}
+    <View style={styles.days}>
+      {days.map((day) => (
+        <View key={day.key} style={styles.day}>
+          <AppText variant="subhead" weight="600" tone="muted" accessibilityRole="header">
+            {day.label}
+          </AppText>
+          <ListGroup>
+            {day.matches.map((match) => (
+              <ScheduleMatchItem
+                key={match.id}
+                scheduledTime={match.scheduledTime}
+                status={match.status}
+                teamAName={match.teamAName}
+                teamBName={match.teamBName}
+                eyebrow={match.tournamentName}
+                details={[
+                  match.contextLabel,
+                  match.courtName,
+                  match.refTeamName ? `Ref: ${match.refTeamName}` : null,
+                  `${GENDER_LABELS[match.gender] ?? match.gender} · ${REGION_LABELS[match.region] ?? match.region}`,
+                ]}
+                onPress={() =>
+                  router.push(`/tournament/${match.tournamentSlug}/matches/${match.matchSlug}`)
+                }
+              />
+            ))}
+          </ListGroup>
+        </View>
+      ))}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 8 },
-  group: { gap: 8 },
-  day: { fontSize: 13, fontWeight: "700", marginTop: 4 },
-  row: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  top: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-  time: { fontSize: 15, fontWeight: "700" },
-  status: { fontSize: 12, fontWeight: "600" },
-  tournament: { fontSize: 13, fontWeight: "700" },
-  teams: { fontSize: 15, fontWeight: "600" },
-  meta: { fontSize: 13, lineHeight: 18 },
-  empty: { fontSize: 14, lineHeight: 20 },
+  days: { gap: space.xl },
+  day: { gap: space.sm },
 });

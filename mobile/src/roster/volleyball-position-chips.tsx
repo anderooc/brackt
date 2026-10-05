@@ -16,79 +16,48 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   VOLLEYBALL_POSITIONS,
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
-import { type ThemeColors, withAlpha } from "~/theme/colors";
+import type { ThemeColors } from "~/theme/colors";
+import { Chip, ChipRow } from "~/ui";
 
 export function VolleyballPositionChips({
   value,
   onChange,
   disabled = false,
-  colors,
 }: {
   value: string | null;
   onChange: (value: string | null) => void;
   disabled?: boolean;
-  colors: ThemeColors;
+  colors?: ThemeColors;
 }) {
   return (
-    <View style={styles.chips}>
-      <Pressable
+    <ChipRow>
+      <Chip
+        label="Not set"
+        selected={value === null}
         disabled={disabled}
-        onPress={() => onChange(null)}
-        style={chipStyle(value === null, colors)}
-      >
-        <Text style={chipTextStyle(value === null, colors)}>Not set</Text>
-      </Pressable>
+        onPress={() => {
+          if (value !== null) onChange(null);
+        }}
+      />
       {VOLLEYBALL_POSITIONS.map((position) => {
         const selected = value === position;
         return (
-          <Pressable
+          <Chip
             key={position}
+            label={VOLLEYBALL_POSITION_LABELS[position] ?? position}
+            selected={selected}
+            icon={selected ? "checkmark" : undefined}
             disabled={disabled}
-            onPress={() => onChange(position)}
-            style={chipStyle(selected, colors)}
-          >
-            <Text style={chipTextStyle(selected, colors)}>
-              {VOLLEYBALL_POSITION_LABELS[position]}
-            </Text>
-          </Pressable>
+            onPress={() => {
+              if (!selected) onChange(position);
+            }}
+          />
         );
       })}
-    </View>
+    </ChipRow>
   );
 }
-
-function chipStyle(selected: boolean, colors: ThemeColors) {
-  return [
-    styles.chip,
-    {
-      borderColor: selected ? colors.primary : colors.border,
-      backgroundColor: selected
-        ? withAlpha(colors.primary, 0.1)
-        : "transparent",
-      opacity: 1,
-    },
-  ];
-}
-
-function chipTextStyle(selected: boolean, colors: ThemeColors) {
-  return {
-    color: selected ? colors.primary : colors.mutedForeground,
-    fontWeight: "700" as const,
-    fontSize: 12,
-  };
-}
-
-const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-});

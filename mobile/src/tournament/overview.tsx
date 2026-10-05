@@ -18,17 +18,38 @@
 
 import type { TournamentDetailContract } from "@/lib/api/contracts/tournament";
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
-import { useRouter } from "expo-router";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter, type Href } from "expo-router";
+import { Linking, StyleSheet, View } from "react-native";
 import {
   DIVISION_FORMAT_LABELS,
   formatCalendarDate,
   formatDeadline,
   GENDER_LABELS,
   REGION_LABELS,
-  TOURNAMENT_STATUS_LABELS,
 } from "~/lib/format";
-import { useThemeColors, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Badge,
+  Button,
+  Card,
+  Icon,
+  ListGroup,
+  ListRow,
+  Section,
+  StatusBadge,
+  Tappable,
+  HIT_TARGET,
+  space,
+  type IconName,
+} from "~/ui";
+
+type LinkItem = {
+  href: Href;
+  title: string;
+  detail: string;
+  icon: IconName;
+};
 
 export function TournamentOverview({
   tournament,
@@ -37,12 +58,8 @@ export function TournamentOverview({
   tournament: TournamentDetailContract;
   participation: TournamentParticipationContract | null;
 }) {
-  const colors = useThemeColors();
   const router = useRouter();
-  const status =
-    TOURNAMENT_STATUS_LABELS[tournament.status] ?? tournament.status;
-  const gender = GENDER_LABELS[tournament.gender] ?? tournament.gender;
-  const region = REGION_LABELS[tournament.region] ?? tournament.region;
+  const slug = tournament.slug;
 
   const alreadyEntered = (participation?.myTeams.length ?? 0) > 0;
   const showRegister =
@@ -50,459 +67,348 @@ export function TournamentOverview({
     !alreadyEntered &&
     (participation == null || participation.canRegister);
 
+  const playLinks: LinkItem[] = [
+    {
+      href: `/tournament/${slug}/pools`,
+      title: "Pools",
+      detail: "Standings and pool matches",
+      icon: "grid-outline",
+    },
+    {
+      href: `/tournament/${slug}/bracket`,
+      title: "Bracket",
+      detail: "Elimination rounds",
+      icon: "git-network-outline",
+    },
+    {
+      href: `/tournament/${slug}/scoring`,
+      title: "Live scores",
+      detail: "What's on court now",
+      icon: "pulse-outline",
+    },
+  ];
+
+  const hostLinks: LinkItem[] = participation?.isOrganizer
+    ? [
+        {
+          href: `/tournament/${slug}/host`,
+          title: "Host dashboard",
+          detail: "Status, checklist, and tournament ops",
+          icon: "construct-outline",
+        },
+        {
+          href: `/tournament/${slug}/settings/pool`,
+          title: "Pool settings",
+          detail: "Match format, scoring, and tie-breaks",
+          icon: "settings-outline",
+        },
+        {
+          href: `/tournament/${slug}/settings/bracket`,
+          title: "Bracket settings",
+          detail: "Gold / silver / bronze structure",
+          icon: "settings-outline",
+        },
+      ]
+    : [];
+
+  const access = participation?.access;
+  const teamLinks: LinkItem[] = access
+    ? ([
+        access.packet
+          ? {
+              href: `/tournament/${slug}/packet` as Href,
+              title: "Packet",
+              detail: "Rules, schedule, and logistics",
+              icon: "document-text-outline" as const,
+            }
+          : null,
+        access.waiver
+          ? {
+              href: `/tournament/${slug}/waiver` as Href,
+              title: "Waiver",
+              detail: "Download and complete team waivers",
+              icon: "create-outline" as const,
+            }
+          : null,
+        access.payment
+          ? {
+              href: `/tournament/${slug}/payment` as Href,
+              title: "Payment",
+              detail: "Fee instructions and payment status",
+              icon: "card-outline" as const,
+            }
+          : null,
+        access.chat
+          ? {
+              href: `/tournament/${slug}/chat` as Href,
+              title: "Chat",
+              detail: "Announcements and team discussion",
+              icon: "chatbubbles-outline" as const,
+            }
+          : null,
+        access.email
+          ? {
+              href: `/tournament/${slug}/email` as Href,
+              title: "Email captains",
+              detail: "Message registered team captains",
+              icon: "mail-outline" as const,
+            }
+          : null,
+      ] as (LinkItem | null)[]).filter((link): link is LinkItem => link !== null)
+    : [];
+
   return (
     <View style={styles.stack}>
       <View style={styles.header}>
-        <Text style={[styles.date, { color: colors.primary }]}>
-          {formatCalendarDate(tournament.date)}
-        </Text>
-        <Text
-          style={[styles.title, { color: colors.foreground }]}
-          accessibilityRole="header"
-        >
+        <StatusBadge
+          kind="tournament"
+          status={tournament.status}
+          date={tournament.date}
+        />
+        <AppText variant="title" accessibilityRole="header">
           {tournament.name}
-        </Text>
-        <Venue tournament={tournament} colors={colors} />
-        {tournament.hostSchool ? (
-          <Text style={[styles.host, { color: colors.secondary }]}>
-            Hosted by {tournament.hostSchool.name}
-          </Text>
-        ) : null}
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Organized by {tournament.organizerName}
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {status} · {gender} · {region}
-        </Text>
+        </AppText>
       </View>
 
-      <PlayLinks slug={tournament.slug} colors={colors} />
-
-      {participation?.isOrganizer ? (
-        <HostLinks slug={tournament.slug} colors={colors} />
-      ) : null}
-
-      {participation ? (
-        <OpsLinks
-          slug={tournament.slug}
-          access={participation.access}
-          colors={colors}
+      {showRegister ? (
+        <Button
+          label="Register a team"
+          icon="add-circle-outline"
+          fullWidth
+          onPress={() => router.push(`/tournament/${slug}/register`)}
         />
       ) : null}
 
       {alreadyEntered ? (
-        <View style={[styles.entered, { borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Your teams
-          </Text>
-          {participation!.myTeams.map((team) => (
-            <Text
-              key={team.slug}
-              style={[styles.enteredRow, { color: colors.mutedForeground }]}
-            >
-              {team.name}
-              {" · "}
-              {team.status === "waitlisted"
-                ? "Waitlisted"
-                : team.status === "pending"
-                  ? "Pending"
-                  : team.status === "checked_in"
-                    ? "Checked in"
-                    : "Confirmed"}
-            </Text>
-          ))}
-        </View>
+        <Section title="Your teams">
+          <ListGroup>
+            {participation!.myTeams.map((team) => (
+              <ListRow
+                key={team.slug}
+                title={team.name}
+                icon="people-outline"
+                trailing={<StatusBadge kind="registration" status={team.status} />}
+              />
+            ))}
+          </ListGroup>
+        </Section>
       ) : null}
 
-      <Availability tournament={tournament} colors={colors} />
+      <KeyFacts tournament={tournament} />
 
-      {showRegister ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Register a team"
-          onPress={() =>
-            router.push(`/tournament/${tournament.slug}/register`)
-          }
-          style={[styles.register, { backgroundColor: colors.primary }]}
-        >
-          <Text style={[styles.registerLabel, { color: colors.primaryForeground }]}>
-            Register team
-          </Text>
-        </Pressable>
-      ) : null}
+      <Availability tournament={tournament} />
+
+      <LinkSection title="Follow play" links={playLinks} />
+      <LinkSection title="Host tools" links={hostLinks} />
+      <LinkSection title="Team tools" links={teamLinks} />
 
       {tournament.description ? (
-        <Text style={[styles.description, { color: colors.foreground }]}>
-          {tournament.description}
-        </Text>
+        <Section title="About">
+          <AppText variant="body">{tournament.description}</AppText>
+        </Section>
       ) : null}
 
-      <Divisions tournament={tournament} colors={colors} />
+      <Formats tournament={tournament} />
     </View>
   );
 }
 
-function Venue({
-  tournament,
-  colors,
-}: {
-  tournament: TournamentDetailContract;
-  colors: ThemeColors;
-}) {
-  const query = [tournament.location, tournament.address]
+function LinkSection({ title, links }: { title: string; links: LinkItem[] }) {
+  const router = useRouter();
+  if (links.length === 0) return null;
+  return (
+    <Section title={title}>
+      <ListGroup>
+        {links.map((link) => (
+          <ListRow
+            key={link.title}
+            title={link.title}
+            subtitle={link.detail}
+            icon={link.icon}
+            onPress={() => router.push(link.href)}
+          />
+        ))}
+      </ListGroup>
+    </Section>
+  );
+}
+
+function KeyFacts({ tournament }: { tournament: TournamentDetailContract }) {
+  const gender = GENDER_LABELS[tournament.gender] ?? tournament.gender;
+  const region = REGION_LABELS[tournament.region] ?? tournament.region;
+  const formats = [
+    ...new Set(
+      tournament.divisions.map(
+        (division) => DIVISION_FORMAT_LABELS[division.format] ?? division.format
+      )
+    ),
+  ].join(" · ");
+  const deadline = tournament.registrationAvailability.deadline;
+  const mapsQuery = [tournament.location, tournament.address]
     .filter(Boolean)
     .join(", ");
 
   return (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`Open ${tournament.location} in Maps`}
-      onPress={() =>
-        void Linking.openURL(
-          `https://maps.apple.com/?q=${encodeURIComponent(query)}`
-        )
-      }
-    >
-      <Text style={[styles.meta, { color: colors.secondary }]}>
-        {tournament.location}
-      </Text>
-      {tournament.address ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {tournament.address}
-        </Text>
+    <ListGroup>
+      <FactRow
+        icon="calendar-outline"
+        label={formatCalendarDate(tournament.date)}
+        detail={deadline ? `Registration closes ${formatDeadline(deadline)}` : null}
+      />
+      <FactRow
+        icon="location-outline"
+        label={tournament.location}
+        detail={tournament.address}
+        accessibilityLabel={`Open ${tournament.location} in Maps`}
+        onPress={() =>
+          void Linking.openURL(
+            `https://maps.apple.com/?q=${encodeURIComponent(mapsQuery)}`
+          )
+        }
+      />
+      <FactRow
+        icon="people-outline"
+        label={`${gender} · ${region}`}
+        detail={formats || null}
+      />
+      <FactRow
+        icon="business-outline"
+        label={
+          tournament.hostSchool
+            ? `Hosted by ${tournament.hostSchool.name}`
+            : `Organized by ${tournament.organizerName}`
+        }
+        detail={
+          tournament.hostSchool ? `Organized by ${tournament.organizerName}` : null
+        }
+      />
+    </ListGroup>
+  );
+}
+
+function FactRow({
+  icon,
+  label,
+  detail,
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: IconName;
+  label: string;
+  detail?: string | null;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const colors = useThemeColors();
+  const body = (
+    <>
+      <Icon name={icon} size={20} tone="muted" />
+      <View style={styles.factText}>
+        <AppText variant="callout" weight="500">
+          {label}
+        </AppText>
+        {detail ? (
+          <AppText variant="footnote" tone="muted">
+            {detail}
+          </AppText>
+        ) : null}
+      </View>
+      {onPress ? (
+        <Icon name="chevron-forward" size={18} color={colors.mutedForeground} />
       ) : null}
-    </Pressable>
+    </>
   );
-}
 
-function PlayLinks({
-  slug,
-  colors,
-}: {
-  slug: string;
-  colors: ThemeColors;
-}) {
-  const router = useRouter();
-  const links = [
-    {
-      href: `/tournament/${slug}/pools` as const,
-      title: "Pools",
-      detail: "Standings and group matches",
-    },
-    {
-      href: `/tournament/${slug}/bracket` as const,
-      title: "Bracket",
-      detail: "Elimination rounds",
-    },
-    {
-      href: `/tournament/${slug}/scoring` as const,
-      title: "Live scores",
-      detail: "What's on court now",
-    },
-  ];
-
+  if (!onPress) return <View style={styles.fact}>{body}</View>;
   return (
-    <View style={styles.play}>
-      {links.map((link) => (
-        <Pressable
-          key={link.href}
-          accessibilityRole="button"
-          accessibilityLabel={`${link.title}. ${link.detail}`}
-          onPress={() => router.push(link.href)}
-          style={[styles.playRow, { borderColor: colors.border }]}
-        >
-          <View style={styles.playText}>
-            <Text style={[styles.playTitle, { color: colors.foreground }]}>
-              {link.title}
-            </Text>
-            <Text style={[styles.playDetail, { color: colors.mutedForeground }]}>
-              {link.detail}
-            </Text>
-          </View>
-          <Text style={[styles.playChevron, { color: colors.primary }]}>›</Text>
-        </Pressable>
-      ))}
-    </View>
+    <Tappable
+      accessibilityRole="link"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      style={styles.fact}
+    >
+      {body}
+    </Tappable>
   );
 }
 
-function HostLinks({
-  slug,
-  colors,
-}: {
-  slug: string;
-  colors: ThemeColors;
-}) {
-  const router = useRouter();
-  const links = [
-    {
-      href: `/tournament/${slug}/host` as const,
-      title: "Host dashboard",
-      detail: "Status, checklist, and tournament ops",
-    },
-    {
-      href: `/tournament/${slug}/settings/pool` as const,
-      title: "Pool settings",
-      detail: "Match format, scoring, and tie-breaks",
-    },
-    {
-      href: `/tournament/${slug}/settings/bracket` as const,
-      title: "Bracket settings",
-      detail: "Gold / silver / bronze structure",
-    },
-  ];
-
-  return (
-    <View style={styles.play}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Host tools
-      </Text>
-      {links.map((link) => (
-        <Pressable
-          key={link.href}
-          accessibilityRole="button"
-          accessibilityLabel={`${link.title}. ${link.detail}`}
-          onPress={() => router.push(link.href)}
-          style={[styles.playRow, { borderColor: colors.border }]}
-        >
-          <View style={styles.playText}>
-            <Text style={[styles.playTitle, { color: colors.foreground }]}>
-              {link.title}
-            </Text>
-            <Text style={[styles.playDetail, { color: colors.mutedForeground }]}>
-              {link.detail}
-            </Text>
-          </View>
-          <Text style={[styles.playChevron, { color: colors.primary }]}>›</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function OpsLinks({
-  slug,
-  access,
-  colors,
-}: {
-  slug: string;
-  access: TournamentParticipationContract["access"];
-  colors: ThemeColors;
-}) {
-  const router = useRouter();
-  const links = [
-    access.packet
-      ? {
-          href: `/tournament/${slug}/packet` as const,
-          title: "Packet",
-          detail: "Rules, schedule, and logistics PDF",
-        }
-      : null,
-    access.waiver
-      ? {
-          href: `/tournament/${slug}/waiver` as const,
-          title: "Waiver",
-          detail: "Download and complete team waivers",
-        }
-      : null,
-    access.payment
-      ? {
-          href: `/tournament/${slug}/payment` as const,
-          title: "Payment",
-          detail: "Fee instructions and payment status",
-        }
-      : null,
-    access.email
-      ? {
-          href: `/tournament/${slug}/email` as const,
-          title: "Email",
-          detail: "Message registered captains",
-        }
-      : null,
-    access.chat
-      ? {
-          href: `/tournament/${slug}/chat` as const,
-          title: "Chat",
-          detail: "Announcements and team discussion",
-        }
-      : null,
-  ].filter(Boolean) as {
-    href: `/tournament/${string}/packet` | `/tournament/${string}/waiver` | `/tournament/${string}/payment` | `/tournament/${string}/email` | `/tournament/${string}/chat`;
-    title: string;
-    detail: string;
-  }[];
-
-  if (links.length === 0) return null;
-
-  return (
-    <View style={styles.play}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Team tools
-      </Text>
-      {links.map((link) => (
-        <Pressable
-          key={link.href}
-          accessibilityRole="button"
-          accessibilityLabel={`${link.title}. ${link.detail}`}
-          onPress={() => router.push(link.href)}
-          style={[styles.playRow, { borderColor: colors.border }]}
-        >
-          <View style={styles.playText}>
-            <Text style={[styles.playTitle, { color: colors.foreground }]}>
-              {link.title}
-            </Text>
-            <Text style={[styles.playDetail, { color: colors.mutedForeground }]}>
-              {link.detail}
-            </Text>
-          </View>
-          <Text style={[styles.playChevron, { color: colors.primary }]}>›</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function Availability({
-  tournament,
-  colors,
-}: {
-  tournament: TournamentDetailContract;
-  colors: ThemeColors;
-}) {
+function Availability({ tournament }: { tournament: TournamentDetailContract }) {
   const availability = tournament.registrationAvailability;
   const spotsLeft =
     availability.capacity === null
       ? null
       : Math.max(0, availability.capacity - availability.registeredCount);
 
-  const facts: { label: string; value: string }[] = [
-    { label: "Registered", value: String(availability.registeredCount) },
+  const stats: { label: string; value: number }[] = [
+    { label: "Registered", value: availability.registeredCount },
   ];
-  if (spotsLeft !== null) {
-    facts.push({ label: "Spots left", value: String(spotsLeft) });
-  }
+  if (spotsLeft !== null) stats.push({ label: "Spots left", value: spotsLeft });
   if (availability.waitlistCount > 0) {
-    facts.push({
-      label: "Waitlist",
-      value: String(availability.waitlistCount),
-    });
-  }
-  if (availability.deadline) {
-    facts.push({
-      label: "Deadline",
-      value: formatDeadline(availability.deadline),
-    });
+    stats.push({ label: "Waitlist", value: availability.waitlistCount });
   }
 
   return (
-    <View style={[styles.facts, { borderColor: colors.border }]}>
-      {facts.map((fact) => (
-        <View key={fact.label} style={styles.fact}>
-          <Text style={[styles.factValue, { color: colors.foreground }]}>
-            {fact.value}
-          </Text>
-          <Text style={[styles.factLabel, { color: colors.mutedForeground }]}>
-            {fact.label}
-          </Text>
+    <Card style={styles.stats}>
+      {stats.map((stat) => (
+        <View
+          key={stat.label}
+          style={styles.stat}
+          accessible
+          accessibilityLabel={`${stat.label}: ${stat.value}`}
+        >
+          <AppText variant="title" style={styles.tabular}>
+            {stat.value}
+          </AppText>
+          <AppText variant="footnote" tone="muted">
+            {stat.label}
+          </AppText>
         </View>
       ))}
-    </View>
+    </Card>
   );
 }
 
-function Divisions({
-  tournament,
-  colors,
-}: {
-  tournament: TournamentDetailContract;
-  colors: ThemeColors;
-}) {
+function Formats({ tournament }: { tournament: TournamentDetailContract }) {
   return (
-    <View style={styles.divisions}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Divisions
-      </Text>
+    <Section title="Pools and brackets">
       {tournament.divisions.length === 0 ? (
-        <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-          Divisions have not been posted yet. Check back closer to the event.
-        </Text>
+        <AppText variant="subhead" tone="muted">
+          Not posted yet. Check back closer to the event.
+        </AppText>
       ) : (
-        tournament.divisions.map((division) => (
-          <View key={division.name} style={styles.divisionRow}>
-            <View style={styles.divisionText}>
-              <Text style={[styles.divisionName, { color: colors.foreground }]}>
-                {division.name}
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-                {DIVISION_FORMAT_LABELS[division.format] ?? division.format}
-              </Text>
-            </View>
-            <Text style={[styles.released, { color: colors.mutedForeground }]}>
-              {division.poolsReleased ? "Pools posted" : "Pools not posted"}
-            </Text>
-          </View>
-        ))
+        <ListGroup>
+          {tournament.divisions.map((division) => (
+            <ListRow
+              key={division.name}
+              title={division.name}
+              subtitle={DIVISION_FORMAT_LABELS[division.format] ?? division.format}
+              trailing={
+                <Badge
+                  label={division.poolsReleased ? "Posted" : "Not posted"}
+                  tone={division.poolsReleased ? "success" : "neutral"}
+                />
+              }
+            />
+          ))}
+        </ListGroup>
       )}
-    </View>
+    </Section>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 24 },
-  header: { gap: 6 },
-  date: { fontSize: 14, fontWeight: "700" },
-  title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
-  meta: { fontSize: 15 },
-  host: { fontSize: 15, fontWeight: "600" },
-  play: { gap: 8 },
-  playRow: {
+  stack: { gap: space.xxl },
+  header: { gap: space.sm },
+  fact: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
+    gap: space.md,
+    minHeight: HIT_TARGET,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
-  playText: { flex: 1, gap: 2 },
-  playTitle: { fontSize: 16, fontWeight: "700" },
-  playDetail: { fontSize: 14 },
-  playChevron: { fontSize: 28, fontWeight: "300", lineHeight: 28 },
-  facts: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    paddingVertical: 16,
-    gap: 20,
-  },
-  fact: { minWidth: 72 },
-  factValue: { fontSize: 22, fontWeight: "700", letterSpacing: -0.3 },
-  factLabel: { fontSize: 13, marginTop: 2 },
-  register: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  registerLabel: { fontSize: 16, fontWeight: "700" },
-  entered: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 6,
-  },
-  enteredRow: { fontSize: 15, lineHeight: 22 },
-  description: { fontSize: 16, lineHeight: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 10 },
-  divisions: { gap: 4 },
-  divisionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingVertical: 12,
-    gap: 12,
-  },
-  divisionText: { flex: 1, gap: 2 },
-  divisionName: { fontSize: 16, fontWeight: "600" },
-  released: { fontSize: 13, paddingTop: 2 },
+  factText: { flex: 1, gap: space.xxs },
+  stats: { flexDirection: "row", flexWrap: "wrap", gap: space.xl },
+  stat: { minWidth: 72, gap: space.xxs },
+  tabular: { fontVariant: ["tabular-nums"] },
 });

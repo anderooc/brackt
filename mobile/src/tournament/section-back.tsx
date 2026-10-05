@@ -17,9 +17,9 @@
  */
 
 import { useRouter, type Href } from "expo-router";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import { goBackOrReplace } from "~/lib/navigation";
-import { useThemeColors } from "~/theme/colors";
+import { AppText, HIT_TARGET, Icon, space } from "~/ui";
 
 export function SectionBack({
   label = "Tournament",
@@ -28,19 +28,20 @@ export function SectionBack({
   label?: string;
   fallbackHref?: Href;
 }) {
-  const colors = useThemeColors();
   const router = useRouter();
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Back to ${label}`}
-      hitSlop={10}
+      hitSlop={{ left: space.md, right: space.md }}
       onPress={() => goBackOrReplace(router, fallbackHref ?? "/")}
-      style={styles.row}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.5 : 1 }]}
     >
-      <Text style={[styles.chevron, { color: colors.primary }]}>‹</Text>
-      <Text style={[styles.label, { color: colors.primary }]}>{label}</Text>
+      <Icon name="chevron-back" size={22} tone="primary" />
+      <AppText variant="body" tone="primary" weight="500">
+        {label}
+      </AppText>
     </Pressable>
   );
 }
@@ -50,9 +51,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    gap: 2,
-    marginBottom: 8,
+    minHeight: HIT_TARGET,
+    marginLeft: -space.xs,
+    marginBottom: space.xs,
   },
-  chevron: { fontSize: 28, fontWeight: "400", lineHeight: 28, marginTop: -2 },
-  label: { fontSize: 16, fontWeight: "600" },
 });

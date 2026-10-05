@@ -17,15 +17,7 @@
  */
 
 import type { TeamGender, TeamRegion } from "@/types";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { Modal, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   GENDER_LABELS,
@@ -33,7 +25,17 @@ import {
   TEAM_GENDER_VALUES,
   TEAM_REGION_VALUES,
 } from "~/lib/format";
-import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
+import {
+  AppText,
+  Chip,
+  ChipRow,
+  HeaderButton,
+  ListGroup,
+  Section,
+  space,
+  SwitchRow,
+} from "~/ui";
 
 export function ListFiltersSheet({
   visible,
@@ -77,35 +79,20 @@ export function ListFiltersSheet({
         edges={["top", "bottom"]}
       >
         <View style={styles.header}>
-          <Text
-            style={[styles.title, { color: colors.foreground }]}
-            accessibilityRole="header"
-          >
-            Filters
-          </Text>
-          <View style={styles.headerActions}>
+          <View style={styles.headerSide}>
             {hasActive ? (
-              <Pressable
-                accessibilityRole="button"
+              <HeaderButton
+                label="Clear all"
                 accessibilityLabel="Clear all filters"
                 onPress={onClear}
-                hitSlop={8}
-              >
-                <Text style={[styles.headerLink, { color: colors.mutedForeground }]}>
-                  Clear all
-                </Text>
-              </Pressable>
+              />
             ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Done"
-              onPress={onClose}
-              hitSlop={8}
-            >
-              <Text style={[styles.headerLink, { color: colors.primary, fontWeight: "700" }]}>
-                Done
-              </Text>
-            </Pressable>
+          </View>
+          <AppText variant="headline" accessibilityRole="header">
+            Filters
+          </AppText>
+          <View style={[styles.headerSide, styles.headerSideEnd]}>
+            <HeaderButton label="Done" emphasis onPress={onClose} />
           </View>
         </View>
 
@@ -113,142 +100,57 @@ export function ListFiltersSheet({
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
         >
-          <View
-            style={[
-              styles.switchCard,
-              { backgroundColor: colors.muted, borderColor: colors.border },
-            ]}
-          >
+          <ListGroup>
             <SwitchRow
               label="Hide past events"
               description="Only show today and upcoming dates"
               value={hideArchived}
               onValueChange={onHideArchivedChange}
-              colors={colors}
             />
-            <View style={[styles.switchRule, { backgroundColor: colors.border }]} />
             <SwitchRow
               label="Registration open"
               description="Only tournaments accepting sign-ups"
               value={registrationOpenOnly}
               onValueChange={onRegistrationOpenOnlyChange}
-              colors={colors}
             />
-          </View>
+          </ListGroup>
 
-          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            Gender
-          </Text>
-          <View style={styles.chipGrid}>
-            {TEAM_GENDER_VALUES.map((value) => (
-              <FilterChip
-                key={value}
-                label={GENDER_LABELS[value]}
-                pressed={genderFilter.has(value)}
-                onPress={() => onToggleGender(value)}
-                tone={value === "mens" ? "primary" : "secondary"}
-                colors={colors}
-              />
-            ))}
-          </View>
+          <Section title="Gender">
+            <ChipRow>
+              {TEAM_GENDER_VALUES.map((value) => {
+                const selected = genderFilter.has(value);
+                return (
+                  <Chip
+                    key={value}
+                    label={GENDER_LABELS[value]}
+                    selected={selected}
+                    icon={selected ? "checkmark" : undefined}
+                    onPress={() => onToggleGender(value)}
+                  />
+                );
+              })}
+            </ChipRow>
+          </Section>
 
-          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            Region
-          </Text>
-          <View style={styles.chipGrid}>
-            {TEAM_REGION_VALUES.map((value) => (
-              <FilterChip
-                key={value}
-                label={REGION_LABELS[value]}
-                pressed={regionFilter.has(value)}
-                onPress={() => onToggleRegion(value)}
-                tone="neutral"
-                colors={colors}
-              />
-            ))}
-          </View>
+          <Section title="Region">
+            <ChipRow>
+              {TEAM_REGION_VALUES.map((value) => {
+                const selected = regionFilter.has(value);
+                return (
+                  <Chip
+                    key={value}
+                    label={REGION_LABELS[value]}
+                    selected={selected}
+                    icon={selected ? "checkmark" : undefined}
+                    onPress={() => onToggleRegion(value)}
+                  />
+                );
+              })}
+            </ChipRow>
+          </Section>
         </ScrollView>
       </SafeAreaView>
     </Modal>
-  );
-}
-
-function SwitchRow({
-  label,
-  description,
-  value,
-  onValueChange,
-  colors,
-}: {
-  label: string;
-  description: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
-  colors: ThemeColors;
-}) {
-  return (
-    <View style={styles.switchRow}>
-      <View style={styles.switchCopy}>
-        <Text style={[styles.switchLabel, { color: colors.foreground }]}>
-          {label}
-        </Text>
-        <Text style={[styles.switchDescription, { color: colors.mutedForeground }]}>
-          {description}
-        </Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        accessibilityLabel={label}
-        trackColor={{ false: colors.border, true: colors.primary }}
-        thumbColor={colors.card}
-      />
-    </View>
-  );
-}
-
-function FilterChip({
-  label,
-  pressed,
-  onPress,
-  tone,
-  colors,
-}: {
-  label: string;
-  pressed: boolean;
-  onPress: () => void;
-  tone: "primary" | "secondary" | "neutral";
-  colors: ThemeColors;
-}) {
-  const accent =
-    tone === "secondary"
-      ? colors.secondary
-      : tone === "primary"
-        ? colors.primary
-        : colors.foreground;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected: pressed }}
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        {
-          borderColor: pressed ? accent : colors.border,
-          backgroundColor: pressed ? withAlpha(accent, 0.12) : "transparent",
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.chipLabel,
-          { color: pressed ? accent : colors.mutedForeground },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -258,47 +160,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingHorizontal: space.lg,
+    paddingTop: space.xs,
+    paddingBottom: space.sm,
   },
-  title: { fontSize: 22, fontWeight: "700" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 16 },
-  headerLink: { fontSize: 16, fontWeight: "600" },
-  body: { paddingHorizontal: 20, paddingBottom: 32, gap: 14 },
-  switchCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+  headerSide: { flex: 1, flexDirection: "row" },
+  headerSideEnd: { justifyContent: "flex-end" },
+  body: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.xxxl,
+    gap: space.xxl,
   },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-  },
-  switchCopy: { flex: 1, gap: 3 },
-  switchLabel: { fontSize: 15, fontWeight: "600" },
-  switchDescription: { fontSize: 13, lineHeight: 18 },
-  switchRule: { height: StyleSheet.hairlineWidth },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.3,
-    marginTop: 4,
-  },
-  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    width: "48%",
-    flexGrow: 1,
-    minHeight: 40,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chipLabel: { fontSize: 13, fontWeight: "600", textAlign: "center" },
 });
