@@ -17,38 +17,47 @@
  */
 
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, Text } from "react-native";
+import { useRef, useState } from "react";
+import type { TextInput } from "react-native";
 import { signUpAccount } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
-  AuthFieldLabel,
+  AuthActions,
   AuthInput,
   AuthLink,
   AuthScreen,
-  authStyles,
+  useExitAuthFlow,
 } from "~/components/auth-screen";
-import { goBackOrReplace } from "~/lib/navigation";
+import { FormField } from "~/components/create-form";
 import { useThemeColors } from "~/theme/colors";
+import { AppText, Banner, Button, haptics } from "~/ui";
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default function SignUpScreen() {
   const colors = useThemeColors();
   const router = useRouter();
+  const exitAuthFlow = useExitAuthFlow();
   const { signIn } = useSession();
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const passwordTooShort = password.length < MIN_PASSWORD_LENGTH;
   const canSubmit =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
-    password.length >= 8 &&
+    !passwordTooShort &&
     !isSubmitting;
 
   async function onSubmit() {
+    setPasswordTouched(true);
     if (!canSubmit) return;
 
     setIsSubmitting(true);
@@ -60,8 +69,10 @@ export default function SignUpScreen() {
         fullName: fullName.trim(),
       });
       await signIn(email.trim(), password);
-      goBackOrReplace(router, "/");
+      haptics.success();
+      exitAuthFlow();
     } catch (cause) {
+      haptics.error();
       setError(cause instanceof Error ? cause.message : "Could not create account.");
     } finally {
       setIsSubmitting(false);
@@ -69,83 +80,94 @@ export default function SignUpScreen() {
   }
 
   return (
-    <AuthScreen scroll>
-      <Text style={[authStyles.heading, { color: colors.foreground }]}>
-        Create account
-      </Text>
-      <Text style={[authStyles.subheading, { color: colors.mutedForeground }]}>
-        Create your brackt account with a school or institutional email.
-      </Text>
-
-      <AuthFieldLabel>Full name</AuthFieldLabel>
-      <AuthInput
-        value={fullName}
-        onChangeText={setFullName}
-        placeholder="Jane Smith"
-        autoCapitalize="words"
-        textContentType="name"
-      />
-
-      <AuthFieldLabel hint="Must be an institutional address (e.g. .edu).">
-        School email
-      </AuthFieldLabel>
-      <AuthInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@university.edu"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        keyboardType="email-address"
-        textContentType="username"
-      />
-
-      <AuthFieldLabel>Password</AuthFieldLabel>
-      <AuthInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="At least 8 characters"
-        secureTextEntry
-        autoCapitalize="none"
-        autoComplete="new-password"
-        textContentType="newPassword"
-        onSubmitEditing={onSubmit}
-      />
-
-      <Text style={[authStyles.hint, { color: colors.mutedForeground }]}>
-        After signing up, add gender, position, and jersey number under Profile →
-        Edit profile.
-      </Text>
-
+    <AuthScreen lead="Use your school or institutional email so teams and schools can find you.">
       {error ? (
-        <Text style={[authStyles.error, { color: colors.destructive }]}>
-          {error}
-        </Text>
+        <Banner tone="error" title="Couldn't create account" message={error} />
       ) : null}
 
-      <Pressable
-        onPress={onSubmit}
-        disabled={!canSubmit}
-        style={[
-          authStyles.button,
-          {
-            backgroundColor: colors.primary,
-            opacity: canSubmit ? 1 : 0.5,
-          },
-        ]}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text
-            style={[authStyles.buttonLabel, { color: colors.primaryForeground }]}
-          >
-            Create account
-          </Text>
-        )}
-      </Pressable>
+      <FormField label="Full name" colors={colors}>
+        <AuthInput
+          value={fullName}
+          onChangeText={setFullName}
+          placeholder="Jane Smith"
+          accessibilityLabel="Full name"
+          autoCapitalize="words"
+          autoComplete="name"
+          textContentType="name"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => emailRef.current?.focus()}
+        />
+      </FormField>
 
-      <AuthLink label="Already have an account? Sign in" onPress={() => router.push("/sign-in")} />
+      <FormField
+        label="School email"
+        hint="Must be an institutional address, like a .edu email."
+        colors={colors}
+      >
+        <AuthInput
+          ref={emailRef}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@university.edu"
+          accessibilityLabel="School email"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="username"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+      </FormField>
+
+      <FormField
+        label="Password"
+        hint={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+        error={
+          passwordTouched && password.length > 0 && passwordTooShort
+            ? `Use at least ${MIN_PASSWORD_LENGTH} characters.`
+            : null
+        }
+        colors={colors}
+      >
+        <AuthInput
+          ref={passwordRef}
+          value={password}
+          onChangeText={setPassword}
+          onBlur={() => setPasswordTouched(true)}
+          invalid={passwordTouched && password.length > 0 && passwordTooShort}
+          placeholder="Create a password"
+          accessibilityLabel="Password"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="new-password"
+          textContentType="newPassword"
+          passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+          returnKeyType="done"
+          onSubmitEditing={() => void onSubmit()}
+        />
+      </FormField>
+
+      <AppText variant="footnote" tone="muted">
+        You can add your gender, position, and jersey number later in Profile.
+      </AppText>
+
+      <AuthActions>
+        <Button
+          label="Create account"
+          onPress={() => void onSubmit()}
+          loading={isSubmitting}
+          disabled={!canSubmit}
+          fullWidth
+        />
+        <AuthLink
+          label="Already have an account? Sign in"
+          onPress={() => router.dismissTo("/sign-in")}
+        />
+      </AuthActions>
     </AuthScreen>
   );
 }

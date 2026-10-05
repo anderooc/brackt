@@ -18,16 +18,17 @@
 
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text } from "react-native";
 import { requestPasswordReset } from "~/api/endpoints";
 import { MOBILE_PASSWORD_RESET_REDIRECT } from "~/auth/recovery-link";
 import {
+  AuthActions,
   AuthInput,
   AuthLink,
   AuthScreen,
-  authStyles,
 } from "~/components/auth-screen";
+import { FormField } from "~/components/create-form";
 import { useThemeColors } from "~/theme/colors";
+import { Banner, Button, haptics } from "~/ui";
 
 export default function ForgotPasswordScreen() {
   const colors = useThemeColors();
@@ -50,11 +51,13 @@ export default function ForgotPasswordScreen() {
         email: email.trim(),
         redirectTo: MOBILE_PASSWORD_RESET_REDIRECT,
       });
+      haptics.success();
       setSuccessMessage(
         result.message ??
           "If an account exists for that email, we sent a link to reset your password."
       );
     } catch (cause) {
+      haptics.error();
       setError(
         cause instanceof Error ? cause.message : "Could not send reset email."
       );
@@ -63,73 +66,55 @@ export default function ForgotPasswordScreen() {
     }
   }
 
-  return (
-    <AuthScreen>
-      <Text style={[authStyles.heading, { color: colors.foreground }]}>
-        Reset password
-      </Text>
-      <Text style={[authStyles.subheading, { color: colors.mutedForeground }]}>
-        Enter your account email and we&apos;ll send a reset link.
-      </Text>
+  const backToSignIn = () => router.dismissTo("/sign-in");
 
-      {successMessage ? (
-        <>
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            {successMessage}
-          </Text>
-          <AuthLink label="Back to sign in" onPress={() => router.push("/sign-in")} />
-        </>
-      ) : (
-        <>
-          <AuthInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@university.edu"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="username"
-            onSubmitEditing={onSubmit}
-          />
-
-          {error ? (
-            <Text style={[authStyles.error, { color: colors.destructive }]}>
-              {error}
-            </Text>
-          ) : null}
-
-          <Pressable
-            onPress={onSubmit}
-            disabled={!canSubmit}
-            style={[
-              authStyles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: canSubmit ? 1 : 0.5,
-              },
-            ]}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text
-                style={[
-                  authStyles.buttonLabel,
-                  { color: colors.primaryForeground },
-                ]}
-              >
-                Send reset link
-              </Text>
-            )}
-          </Pressable>
-
+  if (successMessage) {
+    return (
+      <AuthScreen>
+        <Banner tone="success" title="Check your email" message={successMessage} />
+        <AuthActions>
+          <Button label="Back to sign in" onPress={backToSignIn} fullWidth />
           <AuthLink
-            label="Remember your password? Sign in"
-            onPress={() => router.push("/sign-in")}
+            label="Use a different email"
+            onPress={() => setSuccessMessage(null)}
           />
-        </>
-      )}
+        </AuthActions>
+      </AuthScreen>
+    );
+  }
+
+  return (
+    <AuthScreen lead="Enter your account email and we'll send you a link to choose a new password.">
+      {error ? (
+        <Banner tone="error" title="Couldn't send link" message={error} />
+      ) : null}
+
+      <FormField label="Email" colors={colors}>
+        <AuthInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@university.edu"
+          accessibilityLabel="Email"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="username"
+          returnKeyType="send"
+          onSubmitEditing={() => void onSubmit()}
+        />
+      </FormField>
+
+      <AuthActions>
+        <Button
+          label="Send reset link"
+          onPress={() => void onSubmit()}
+          loading={isSubmitting}
+          disabled={!canSubmit}
+          fullWidth
+        />
+        <AuthLink label="Back to sign in" onPress={backToSignIn} />
+      </AuthActions>
     </AuthScreen>
   );
 }

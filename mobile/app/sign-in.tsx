@@ -17,22 +17,26 @@
  */
 
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import type { TextInput } from "react-native";
 import { useSession } from "~/auth/session";
 import {
+  AuthActions,
   AuthInput,
   AuthLink,
   AuthScreen,
-  authStyles,
+  useExitAuthFlow,
 } from "~/components/auth-screen";
-import { goBackOrReplace } from "~/lib/navigation";
+import { FormField } from "~/components/create-form";
 import { useThemeColors } from "~/theme/colors";
+import { Banner, Button, haptics } from "~/ui";
 
 export default function SignInScreen() {
   const colors = useThemeColors();
   const router = useRouter();
+  const exitAuthFlow = useExitAuthFlow();
   const { signIn } = useSession();
+  const passwordRef = useRef<TextInput>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,8 +52,10 @@ export default function SignInScreen() {
     setError(null);
     try {
       await signIn(email, password);
-      goBackOrReplace(router, "/");
+      haptics.success();
+      exitAuthFlow();
     } catch (cause) {
+      haptics.error();
       setError(cause instanceof Error ? cause.message : "Could not sign in.");
     } finally {
       setIsSubmitting(false);
@@ -57,72 +63,62 @@ export default function SignInScreen() {
   }
 
   return (
-    <AuthScreen>
-      <Text style={[authStyles.heading, { color: colors.foreground }]}>
-        Sign in to brackt
-      </Text>
+    <AuthScreen lead="Welcome back. Sign in with the email you used to create your brackt account.">
+      {error ? (
+        <Banner tone="error" title="Couldn't sign in" message={error} />
+      ) : null}
 
-      <AuthInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@university.edu"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        keyboardType="email-address"
-        textContentType="username"
-      />
+      <FormField label="Email" colors={colors}>
+        <AuthInput
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@university.edu"
+          accessibilityLabel="Email"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="username"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordRef.current?.focus()}
+        />
+      </FormField>
 
-      <AuthInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Password"
-        secureTextEntry
-        autoCapitalize="none"
-        autoComplete="current-password"
-        textContentType="password"
-        onSubmitEditing={onSubmit}
-      />
+      <FormField label="Password" colors={colors}>
+        <AuthInput
+          ref={passwordRef}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Password"
+          accessibilityLabel="Password"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          onSubmitEditing={() => void onSubmit()}
+        />
+      </FormField>
 
-      <View style={{ alignItems: "flex-end" }}>
+      <AuthActions>
+        <Button
+          label="Sign in"
+          onPress={() => void onSubmit()}
+          loading={isSubmitting}
+          disabled={!canSubmit}
+          fullWidth
+        />
         <AuthLink
           label="Forgot password?"
           onPress={() => router.push("/forgot-password")}
         />
-      </View>
-
-      {error ? (
-        <Text style={[authStyles.error, { color: colors.destructive }]}>
-          {error}
-        </Text>
-      ) : null}
-
-      <Pressable
-        onPress={onSubmit}
-        disabled={!canSubmit}
-        style={[
-          authStyles.button,
-          {
-            backgroundColor: colors.primary,
-            opacity: canSubmit ? 1 : 0.5,
-          },
-        ]}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text
-            style={[authStyles.buttonLabel, { color: colors.primaryForeground }]}
-          >
-            Sign in
-          </Text>
-        )}
-      </Pressable>
-
-      <AuthLink
-        label="Don't have an account? Sign up"
-        onPress={() => router.push("/sign-up")}
-      />
+        <AuthLink
+          label="Create an account"
+          onPress={() => router.push("/sign-up")}
+        />
+      </AuthActions>
     </AuthScreen>
   );
 }
