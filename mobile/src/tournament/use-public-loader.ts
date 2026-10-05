@@ -16,7 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "~/api/client";
 
 export function messageFor(cause: unknown, fallback: string): string {
@@ -66,5 +67,22 @@ export function usePublicLoader<T>(
   const refresh = useCallback(() => reload(undefined, "refresh"), [reload]);
   const poll = useCallback(() => reload(undefined, "silent"), [reload]);
 
-  return { data, error, isRefreshing, reload, refresh, poll };
+  // Coming back to a screen (after registering, editing settings, etc.) should
+  // show current data. The first focus is covered by the mount effect above.
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+      void poll();
+    }, [poll])
+  );
+  const clearError = useCallback(() => setError(null), []);
+
+  /** Error from a refresh while earlier data is still on screen; show inline, not full-screen. */
+  const refreshError = data !== null ? error : null;
+
+  return { data, error, refreshError, isRefreshing, reload, refresh, poll, clearError };
 }

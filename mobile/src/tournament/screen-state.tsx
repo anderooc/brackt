@@ -16,14 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useThemeColors } from "~/theme/colors";
+import { EmptyState, SkeletonList, type IconName } from "~/ui";
 
-export function LoadingScreen() {
+export function LoadingScreen({ rows = 5 }: { rows?: number } = {}) {
   const colors = useThemeColors();
   return (
-    <View style={[styles.centered, { backgroundColor: colors.background }]}>
-      <ActivityIndicator color={colors.primary} />
+    <View style={[styles.fill, { backgroundColor: colors.background }]}>
+      <SkeletonList rows={rows} />
     </View>
   );
 }
@@ -32,48 +33,33 @@ export function ErrorScreen({
   title,
   message,
   onRetry,
+  icon = "cloud-offline-outline",
 }: {
   title: string;
   message: string;
-  onRetry: () => void;
+  onRetry?: () => void;
+  icon?: IconName;
 }) {
   const colors = useThemeColors();
   return (
-    <View style={[styles.centered, { backgroundColor: colors.background }]}>
-      <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-        {title}
-      </Text>
-      <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-        {message}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onRetry}
-        style={[styles.retry, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.primary, fontWeight: "600" }}>
-          Try again
-        </Text>
-      </Pressable>
+    <View
+      style={[styles.fill, styles.centered, { backgroundColor: colors.background }]}
+    >
+      <EmptyState
+        icon={icon}
+        title={title}
+        message={message}
+        action={
+          onRetry
+            ? { label: "Try again", icon: "refresh", onPress: onRetry }
+            : undefined
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 32,
-    gap: 10,
-  },
-  emptyTitle: { fontSize: 20, fontWeight: "700" },
-  emptyBody: { fontSize: 15, textAlign: "center" },
-  retry: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  },
+  fill: { flex: 1 },
+  centered: { justifyContent: "center" },
 });

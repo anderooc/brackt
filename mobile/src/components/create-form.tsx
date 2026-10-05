@@ -16,25 +16,29 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import {
-  ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type TextInputProps,
+  type TextStyle,
 } from "react-native";
-import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import type { ThemeColors } from "~/theme/colors";
+import { Button, Chip, ChipRow, radius, space, type } from "~/ui";
 
 export function FormField({
   label,
   hint,
+  error,
   children,
   colors,
 }: {
   label: string;
   hint?: string;
+  error?: string | null;
   children: ReactNode;
   colors: ThemeColors;
 }) {
@@ -42,7 +46,9 @@ export function FormField({
     <View style={styles.field}>
       <Text style={[styles.label, { color: colors.foreground }]}>{label}</Text>
       {children}
-      {hint ? (
+      {error ? (
+        <Text style={[styles.hint, { color: colors.destructive }]}>{error}</Text>
+      ) : hint ? (
         <Text style={[styles.hint, { color: colors.mutedForeground }]}>
           {hint}
         </Text>
@@ -52,51 +58,49 @@ export function FormField({
 }
 
 export function FormTextInput({
-  value,
-  onChangeText,
-  placeholder,
   colors,
   multiline,
-  keyboardType,
-  autoCapitalize,
-  maxLength,
   editable = true,
   style,
-}: {
+  accessibilityLabel,
+  placeholder,
+  onFocus,
+  onBlur,
+  ref,
+  ...rest
+}: Omit<TextInputProps, "style" | "value" | "onChangeText"> & {
   value: string;
   onChangeText: (value: string) => void;
-  placeholder?: string;
   colors: ThemeColors;
-  multiline?: boolean;
-  keyboardType?:
-    | "default"
-    | "url"
-    | "numbers-and-punctuation"
-    | "decimal-pad";
-  autoCapitalize?: "none" | "sentences" | "words";
-  maxLength?: number;
-  editable?: boolean;
-  style?: object;
+  style?: StyleProp<TextStyle>;
+  ref?: Ref<TextInput>;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <TextInput
-      value={value}
-      onChangeText={onChangeText}
+      {...rest}
+      ref={ref}
       placeholder={placeholder}
       placeholderTextColor={colors.mutedForeground}
       multiline={multiline}
-      keyboardType={keyboardType}
-      autoCapitalize={autoCapitalize}
-      maxLength={maxLength}
       editable={editable}
+      accessibilityLabel={accessibilityLabel ?? placeholder}
+      onFocus={(event) => {
+        setFocused(true);
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocused(false);
+        onBlur?.(event);
+      }}
       style={[
         styles.input,
         multiline && styles.textarea,
         style,
         {
           color: colors.foreground,
-          borderColor: colors.border,
-          backgroundColor: colors.card,
+          borderColor: focused ? colors.primary : colors.border,
+          backgroundColor: editable ? colors.card : colors.muted,
         },
       ]}
     />
@@ -117,35 +121,16 @@ export function ChipPicker<T extends string>({
   labels: Record<string, string>;
 }) {
   return (
-    <View style={styles.chipRow}>
-      {options.map((option) => {
-        const selected = value === option;
-        return (
-          <Pressable
-            key={option}
-            onPress={() => onChange(option)}
-            style={[
-              styles.chip,
-              {
-                borderColor: selected ? colors.primary : colors.border,
-                backgroundColor: selected
-                  ? withAlpha(colors.primary, 0.1)
-                  : "transparent",
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: selected ? colors.primary : colors.foreground,
-                fontWeight: selected ? "700" : "500",
-              }}
-            >
-              {labels[option] ?? option}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <ChipRow>
+      {options.map((option) => (
+        <Chip
+          key={option}
+          label={labels[option] ?? option}
+          selected={value === option}
+          onPress={() => onChange(option)}
+        />
+      ))}
+    </ChipRow>
   );
 }
 
@@ -154,60 +139,40 @@ export function FormSubmitButton({
   busy,
   disabled,
   onPress,
-  colors,
+  variant = "primary",
 }: {
   label: string;
   busy: boolean;
   disabled?: boolean;
   onPress: () => void;
-  colors: ThemeColors;
+  colors?: ThemeColors;
+  variant?: "primary" | "outline" | "destructive";
 }) {
   return (
-    <Pressable
-      disabled={busy || disabled}
+    <Button
+      label={label}
+      loading={busy}
+      disabled={disabled}
       onPress={onPress}
-      style={[
-        styles.submit,
-        {
-          backgroundColor: colors.primary,
-          opacity: busy || disabled ? 0.5 : 1,
-        },
-      ]}
-    >
-      {busy ? (
-        <ActivityIndicator color={colors.primaryForeground} />
-      ) : (
-        <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-          {label}
-        </Text>
-      )}
-    </Pressable>
+      variant={variant}
+      fullWidth
+      style={styles.submit}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  field: { gap: 8 },
-  label: { fontSize: 15, fontWeight: "700" },
-  hint: { fontSize: 13, lineHeight: 18 },
+  field: { gap: space.sm },
+  label: { ...type.subhead, fontWeight: "600" },
+  hint: { ...type.footnote },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md + 2,
+    paddingVertical: space.md,
+    minHeight: 48,
     fontSize: 16,
   },
-  textarea: { minHeight: 96, textAlignVertical: "top" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  submit: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
-  },
+  textarea: { minHeight: 104, textAlignVertical: "top" },
+  submit: { marginTop: space.sm },
 });

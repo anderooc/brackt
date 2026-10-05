@@ -36,6 +36,10 @@ export interface ThemeColors {
   mutedForeground: string;
   border: string;
   destructive: string;
+  success: string;
+  warning: string;
+  info: string;
+  live: string;
 }
 
 const light: ThemeColors = {
@@ -49,6 +53,10 @@ const light: ThemeColors = {
   mutedForeground: "#395170",
   border: "#bacce5",
   destructive: "#e7000b",
+  success: "#137d41",
+  warning: "#905d00",
+  info: "#195bb0",
+  live: "#cf1743",
 };
 
 const dark: ThemeColors = {
@@ -62,6 +70,10 @@ const dark: ThemeColors = {
   mutedForeground: "#98a6b8",
   border: "#2a313d",
   destructive: "#ff6e70",
+  success: "#61da92",
+  warning: "#f3bd5c",
+  info: "#73b6fa",
+  live: "#ff6879",
 };
 
 export function useThemeColors(): ThemeColors {
