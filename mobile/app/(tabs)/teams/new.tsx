@@ -19,7 +19,6 @@
 import type { CreateOptionsContract } from "@/lib/api/contracts/create-options";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { createTeam, fetchCreateOptions } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
@@ -34,9 +33,10 @@ import {
   TEAM_GENDER_VALUES,
   TEAM_REGION_VALUES,
 } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, Card, Icon, ListGroup, ListRow, ScreenScroll, haptics } from "~/ui";
 
 const STANDALONE = "__standalone__";
 
@@ -116,9 +116,11 @@ export default function CreateTeamScreen() {
         schoolId: selectedSchool?.id ?? null,
         university: selectedSchool ? undefined : university.trim(),
       });
+      haptics.success();
       router.replace(`/teams/${result.slug}`);
     } catch (cause) {
       setError(messageFor(cause, "Could not create team."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -130,29 +132,24 @@ export default function CreateTeamScreen() {
       (gender != null && region != null && university.trim().length > 0));
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={[styles.lead, { color: colors.mutedForeground }]}>
-        You&apos;ll be added as captain. School-linked teams inherit gender and
-        region from the school.
-      </Text>
+    <ScreenScroll gap={20}>
+      <AppText variant="callout" tone="muted">
+        You’ll be added as captain. Teams linked to a school use the school’s
+        gender and region.
+      </AppText>
 
-      <FormField label="Part of a school" colors={colors}>
+      <FormField label="School" colors={colors}>
         {options?.manageableSchools.length === 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            You&apos;re not a president or officer of any school yet. You can
-            still create a standalone team by entering your university below.
-          </Text>
+          <AppText variant="subhead" tone="muted">
+            You’re not a president or officer of any school yet. You can still
+            create a standalone team by entering your university below.
+          </AppText>
         ) : (
-          <View style={styles.schoolList}>
+          <ListGroup>
             <SchoolOption
-              label="None — standalone team"
+              label="No school (standalone team)"
               selected={selectedSchoolId === STANDALONE}
               onPress={() => setSelectedSchoolId(STANDALONE)}
-              colors={colors}
             />
             {options?.manageableSchools.map((school) => (
               <SchoolOption
@@ -160,10 +157,9 @@ export default function CreateTeamScreen() {
                 label={school.name}
                 selected={selectedSchoolId === school.id}
                 onPress={() => setSelectedSchoolId(school.id)}
-                colors={colors}
               />
             ))}
-          </View>
+          </ListGroup>
         )}
       </FormField>
 
@@ -172,23 +168,21 @@ export default function CreateTeamScreen() {
           value={name}
           onChangeText={setName}
           placeholder="Club Volleyball A"
+          autoCapitalize="words"
+          maxLength={120}
           colors={colors}
         />
       </FormField>
 
       {selectedSchool ? (
-        <View style={[styles.inherited, { borderColor: colors.border }]}>
-          <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-            Gender & region
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            {GENDER_LABELS[selectedSchool.gender]} ·{" "}
-            {REGION_LABELS[selectedSchool.region]}
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Inherited from {selectedSchool.name}
-          </Text>
-        </View>
+        <Card>
+          <AppText variant="subhead" weight="600">
+            {GENDER_LABELS[selectedSchool.gender]} · {REGION_LABELS[selectedSchool.region]}
+          </AppText>
+          <AppText variant="footnote" tone="muted">
+            Gender and region come from {selectedSchool.name}.
+          </AppText>
+        </Card>
       ) : (
         <>
           <FormField label="University" colors={colors}>
@@ -196,6 +190,8 @@ export default function CreateTeamScreen() {
               value={university}
               onChangeText={setUniversity}
               placeholder="State University"
+              autoCapitalize="words"
+              maxLength={120}
               colors={colors}
             />
           </FormField>
@@ -217,23 +213,22 @@ export default function CreateTeamScreen() {
               labels={REGION_LABELS}
             />
           </FormField>
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            Standalone teams are submitted for admin approval before they can
-            register for tournaments.
-          </Text>
+          <Banner
+            tone="info"
+            message="Standalone teams need admin approval before they can register for tournaments."
+          />
         </>
       )}
 
-      {error ? <Text style={{ color: colors.destructive }}>{error}</Text> : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
       <FormSubmitButton
         label="Create team"
         busy={busy}
         disabled={!valid}
         onPress={() => void onSubmit()}
-        colors={colors}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
@@ -241,52 +236,24 @@ function SchoolOption({
   label,
   selected,
   onPress,
-  colors,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
-  colors: ReturnType<typeof useThemeColors>;
 }) {
   return (
-    <Pressable
+    <ListRow
+      title={label}
       onPress={onPress}
-      style={[
-        styles.schoolOption,
-        {
-          borderColor: selected ? colors.primary : colors.border,
-          backgroundColor: selected
-            ? withAlpha(colors.primary, 0.08)
-            : "transparent",
-        },
-      ]}
-    >
-      <Text
-        style={{
-          color: selected ? colors.primary : colors.foreground,
-          fontWeight: selected ? "700" : "500",
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
+      chevron={false}
+      accessibilityLabel={`${label}${selected ? ", selected" : ""}`}
+      trailing={
+        <Icon
+          name={selected ? "checkmark-circle" : "ellipse-outline"}
+          size={22}
+          tone={selected ? "primary" : "muted"}
+        />
+      }
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  lead: { fontSize: 15, lineHeight: 22 },
-  schoolList: { gap: 8 },
-  schoolOption: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  inherited: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 4,
-  },
-});

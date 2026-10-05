@@ -27,18 +27,7 @@ import {
   useRouter,
 } from "expo-router";
 import { useCallback, useLayoutEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Linking, StyleSheet, View } from "react-native";
 import {
   addSchoolMember,
   cancelSchoolJoin,
@@ -54,6 +43,7 @@ import {
   updateSchoolMemberRole,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField, FormTextInput } from "~/components/create-form";
 import {
   GENDER_LABELS,
   REGION_LABELS,
@@ -62,9 +52,29 @@ import {
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
 import { VolleyballPositionChips } from "~/roster/volleyball-position-chips";
-import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  HeaderButton,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  SegmentedControl,
+  haptics,
+  space,
+  statusTone,
+} from "~/ui";
 
 type TabId = "roster" | "teams";
 
@@ -75,7 +85,7 @@ export default function SchoolDetailScreen() {
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [tab, setTab] = useState<TabId>("roster");
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState<"member" | "officer">("member");
@@ -86,7 +96,7 @@ export default function SchoolDetailScreen() {
     (signal?: AbortSignal) => fetchSchool(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh, reload } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, reload, poll } = usePublicLoader(
     load,
     "Could not load this school."
   );
@@ -94,49 +104,17 @@ export default function SchoolDetailScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: data?.name ?? "School",
-      headerBackTitle: "Find",
-      headerLeft: () => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to find schools"
-          onPress={() => router.replace("/schools")}
-          hitSlop={8}
-          style={{ paddingHorizontal: 4, paddingVertical: 6 }}
-        >
-          <Text
-            style={{
-              color: colors.primary,
-              fontWeight: "600",
-              fontSize: 16,
-            }}
-          >
-            ‹ Find
-          </Text>
-        </Pressable>
-      ),
       headerRight: data?.viewer.canManageSchool
         ? () => (
-            <Pressable
-              accessibilityRole="button"
+            <HeaderButton
+              label="Edit"
               accessibilityLabel="Edit school"
               onPress={() => router.push(`/schools/${slug}/edit`)}
-              hitSlop={8}
-              style={{ paddingHorizontal: 4, paddingVertical: 6 }}
-            >
-              <Text
-                style={{
-                  color: colors.primary,
-                  fontWeight: "600",
-                  fontSize: 16,
-                }}
-              >
-                Edit
-              </Text>
-            </Pressable>
+            />
           )
         : undefined,
     });
-  }, [colors.primary, data?.name, data?.viewer.canManageSchool, navigation, router, slug]);
+  }, [data?.name, data?.viewer.canManageSchool, navigation, router, slug]);
 
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
@@ -144,8 +122,7 @@ export default function SchoolDetailScreen() {
     return (
       <ErrorScreen
         title="School unavailable"
-        message="Missing school link."
-        onRetry={() => {}}
+        message="This link is missing the school. Go back and pick a school from the list."
       />
     );
   }
@@ -160,16 +137,18 @@ export default function SchoolDetailScreen() {
     );
   }
 
-  async function runAction(action: () => Promise<void>) {
-    setBusy(true);
+  async function runAction(key: string, action: () => Promise<void>) {
+    setBusyKey(key);
     setActionError(null);
     try {
       await action();
-      await refresh();
+      await poll();
+      haptics.success();
     } catch (cause) {
       setActionError(messageFor(cause, "Something went wrong."));
+      haptics.error();
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   }
 
@@ -180,7 +159,7 @@ export default function SchoolDetailScreen() {
         text: "Remove",
         style: "destructive",
         onPress: () =>
-          void runAction(async () => {
+          void runAction(`remove:${membershipId}`, async () => {
             await removeSchoolMember(slug!, membershipId);
           }),
       },
@@ -196,7 +175,7 @@ export default function SchoolDetailScreen() {
         {
           text: "Transfer",
           onPress: () =>
-            void runAction(async () => {
+            void runAction(`president:${member.membershipId}`, async () => {
               await transferSchoolPresidency(slug!, member.membershipId);
             }),
         },
@@ -218,7 +197,7 @@ export default function SchoolDetailScreen() {
         text: "Leave",
         style: "destructive",
         onPress: () =>
-          void runAction(async () => {
+          void runAction("leave", async () => {
             await leaveSchool(slug!);
             router.replace("/schools");
           }),
@@ -240,29 +219,100 @@ export default function SchoolDetailScreen() {
     (member) => member.role === "officer"
   ).length;
 
-  return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <Header school={data} colors={colors} />
+  const busy = busyKey !== null;
+  const verification = statusTone("verification", data.verificationStatus);
 
-      {data.viewer.canManageSchool &&
-      data.verificationStatus !== "verified" ? (
+  function saveJersey(member: SchoolMemberContract) {
+    void runAction(`jersey:${member.membershipId}`, async () => {
+      const raw = jerseyValue(member.membershipId, member.jerseyNumber).trim();
+      const jerseyNumber = raw === "" ? null : Number.parseInt(raw, 10);
+      await updateSchoolMemberJersey(slug!, member.membershipId, jerseyNumber);
+      setJerseyDrafts((prev) => {
+        const next = { ...prev };
+        delete next[member.membershipId];
+        return next;
+      });
+    });
+  }
+
+  const rosterHandlers = {
+    busyKey,
+    jerseyValue,
+    onJerseyDraftChange: (membershipId: string, value: string) =>
+      setJerseyDrafts((prev) => ({ ...prev, [membershipId]: value.replace(/\D/g, "") })),
+    onJerseySave: saveJersey,
+    onPositionChange: (member: SchoolMemberContract, position: string | null) =>
+      void runAction(`position:${member.membershipId}`, async () => {
+        await updateSchoolMemberPosition(slug!, member.membershipId, position);
+      }),
+    onTransferPresidency: confirmTransferPresidency,
+    onRemove: confirmRemove,
+  };
+
+  return (
+    <ScreenScroll refreshing={isRefreshing} onRefresh={refresh} gap={space.xl}>
+      <View style={styles.hero}>
+        <AppText variant="title">{data.name}</AppText>
+        <AppText variant="subhead" tone="muted">
+          {[
+            data.university,
+            `${GENDER_LABELS[data.gender] ?? data.gender} · ${REGION_LABELS[data.region] ?? data.region}`,
+            data.domainHint ? `@${data.domainHint}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n")}
+        </AppText>
+        <View style={styles.badgeRow}>
+          <Badge
+            label={
+              SCHOOL_VERIFICATION_LABELS[data.verificationStatus] ??
+              data.verificationStatus
+            }
+            tone={verification.tone}
+          />
+          {data.viewer.isMember ? (
+            <Badge
+              label={
+                data.viewer.role
+                  ? `You · ${SCHOOL_ROLE_LABELS[data.viewer.role] ?? data.viewer.role}`
+                  : "You’re on this roster"
+              }
+              tone="info"
+            />
+          ) : null}
+        </View>
+        {data.description ? (
+          <AppText variant="callout" style={styles.description}>
+            {data.description}
+          </AppText>
+        ) : null}
+        {data.websiteUrl ? (
+          <Button
+            label="Website"
+            icon="open-outline"
+            variant="ghost"
+            size="sm"
+            onPress={() => void Linking.openURL(data.websiteUrl!)}
+            style={styles.websiteButton}
+          />
+        ) : null}
+      </View>
+
+      {actionError ? (
+        <Banner
+          tone="error"
+          message={actionError}
+          onDismiss={() => setActionError(null)}
+        />
+      ) : null}
+
+      {data.viewer.canManageSchool && data.verificationStatus !== "verified" ? (
         <VerificationPanel
           school={data}
-          colors={colors}
-          busy={busy}
+          busy={busyKey === "verify"}
+          disabled={busy}
           onSubmit={() =>
-            void runAction(async () => {
+            void runAction("verify", async () => {
               const result = await submitSchoolVerification(slug!);
               Alert.alert(
                 "Submitted for verification",
@@ -275,483 +325,272 @@ export default function SchoolDetailScreen() {
         />
       ) : null}
 
-      {data.viewer.isMember ? (
-        <Text style={[styles.badge, { color: colors.primary }]}>
-          You’re on this roster
-          {data.viewer.role
-            ? ` · ${SCHOOL_ROLE_LABELS[data.viewer.role] ?? data.viewer.role}`
-            : ""}
-        </Text>
-      ) : null}
-
       {data.viewer.hasPendingJoinRequest ? (
-        <View style={styles.actions}>
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            Join request pending officer approval.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
+        <Card>
+          <View style={styles.inlineTitle}>
+            <Icon name="time-outline" size={18} tone="warning" />
+            <AppText variant="callout" weight="600">
+              Join request pending
+            </AppText>
+          </View>
+          <AppText variant="footnote" tone="muted">
+            An officer needs to approve your request.
+          </AppText>
+          <Button
+            label="Cancel request"
+            variant="outline"
+            size="sm"
+            loading={busyKey === "cancel-join"}
             disabled={busy}
             onPress={() =>
-              void runAction(async () => {
+              void runAction("cancel-join", async () => {
                 await cancelSchoolJoin(slug!);
               })
             }
-            style={[styles.secondaryBtn, { borderColor: colors.border }]}
-          >
-            {busy ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                Cancel request
-              </Text>
-            )}
-          </Pressable>
-        </View>
+          />
+        </Card>
       ) : null}
 
       {data.viewer.canRequestToJoin ? (
-        <Pressable
-          accessibilityRole="button"
+        <Button
+          label="Request to join"
+          icon="person-add-outline"
+          fullWidth
+          loading={busyKey === "join"}
           disabled={busy}
           onPress={() =>
-            void runAction(async () => {
+            void runAction("join", async () => {
               await requestSchoolJoin(slug!);
             })
           }
-          style={[
-            styles.primaryBtn,
-            { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text
-              style={{ color: colors.primaryForeground, fontWeight: "700" }}
-            >
-              Request to join
-            </Text>
-          )}
-        </Pressable>
+        />
       ) : null}
 
       {!data.viewer.isMember &&
       !data.viewer.hasPendingJoinRequest &&
       data.viewer.joinBlockedReason ? (
-        <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-          {data.viewer.joinBlockedReason}
-        </Text>
+        <Banner tone="info" message={data.viewer.joinBlockedReason} />
       ) : null}
 
-      {data.viewer.canLeave ? (
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={confirmLeave}
-          style={[styles.secondaryBtn, { borderColor: colors.border }]}
-        >
-          <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-            Leave school
-          </Text>
-        </Pressable>
-      ) : null}
-
-      {actionError ? (
-        <Text style={{ color: colors.destructive }}>{actionError}</Text>
-      ) : null}
-
-      <View
-        style={[styles.tabs, { borderBottomColor: colors.border }]}
-        accessibilityRole="tablist"
-      >
-        {(
-          [
-            { id: "roster", label: `Roster (${data.memberCount})` },
-            { id: "teams", label: `Teams (${data.teams.length})` },
-          ] as const
-        ).map((item) => {
-          const selected = tab === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              onPress={() => setTab(item.id)}
-              style={[
-                styles.tab,
-                selected ? { borderBottomColor: colors.primary } : null,
-              ]}
-            >
-              <Text
-                style={{
-                  color: selected ? colors.primary : colors.mutedForeground,
-                  fontWeight: selected ? "700" : "600",
-                }}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <SegmentedControl
+        accessibilityLabel="School sections"
+        options={[
+          { id: "roster", label: "Roster", count: data.memberCount },
+          { id: "teams", label: "Teams", count: data.teams.length },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === "roster" ? (
         <>
           {data.viewer.canManageRoster && data.joinRequests.length > 0 ? (
-            <View style={styles.manageBlock}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Join requests ({data.joinRequests.length})
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                Matching school emails. Approve to add them to the roster.
-              </Text>
-              {data.joinRequests.map((request) => (
-                <View
-                  key={request.id}
-                  style={[styles.memberRow, { borderColor: colors.border }]}
-                >
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text
-                      style={{ color: colors.foreground, fontWeight: "700" }}
-                    >
-                      {request.fullName}
-                    </Text>
-                    <Text
-                      style={{ color: colors.mutedForeground, fontSize: 13 }}
-                    >
-                      {request.email}
-                    </Text>
+            <Section
+              title={`Join requests (${data.joinRequests.length})`}
+              description="People with a matching school email. Approve to add them to the roster."
+            >
+              <ListGroup>
+                {data.joinRequests.map((request) => (
+                  <View key={request.id} style={styles.memberRow}>
+                    <View style={styles.memberText}>
+                      <AppText variant="callout" weight="600">
+                        {request.fullName}
+                      </AppText>
+                      <AppText variant="footnote" tone="muted">
+                        {request.email}
+                      </AppText>
+                    </View>
+                    <View style={styles.rowActions}>
+                      <Button
+                        label="Decline"
+                        variant="ghost"
+                        size="sm"
+                        loading={busyKey === `reject:${request.id}`}
+                        disabled={busy}
+                        onPress={() =>
+                          void runAction(`reject:${request.id}`, async () => {
+                            await resolveSchoolJoinRequest(slug!, request.id, "reject");
+                          })
+                        }
+                      />
+                      <Button
+                        label="Approve"
+                        size="sm"
+                        loading={busyKey === `approve:${request.id}`}
+                        disabled={busy}
+                        onPress={() =>
+                          void runAction(`approve:${request.id}`, async () => {
+                            await resolveSchoolJoinRequest(slug!, request.id, "approve");
+                          })
+                        }
+                      />
+                    </View>
                   </View>
-                  <View style={styles.inlineActions}>
-                    <Pressable
-                      disabled={busy}
-                      onPress={() =>
-                        void runAction(async () => {
-                          await resolveSchoolJoinRequest(
-                            slug!,
-                            request.id,
-                            "approve"
-                          );
-                        })
-                      }
-                    >
-                      <Text
-                        style={{ color: colors.primary, fontWeight: "700" }}
-                      >
-                        Approve
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      disabled={busy}
-                      onPress={() =>
-                        void runAction(async () => {
-                          await resolveSchoolJoinRequest(
-                            slug!,
-                            request.id,
-                            "reject"
-                          );
-                        })
-                      }
-                    >
-                      <Text
-                        style={{ color: colors.destructive, fontWeight: "700" }}
-                      >
-                        Decline
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          {data.viewer.canManageRoster ? (
-            <View style={[styles.addBox, { borderColor: colors.border }]}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                Add member
-              </Text>
-              <TextInput
-                value={addEmail}
-                onChangeText={setAddEmail}
-                placeholder="Email"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                style={[
-                  styles.input,
-                  {
-                    color: colors.foreground,
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-              />
-              <View style={styles.roleRow}>
-                {(["member", "officer"] as const).map((role) => {
-                  const selected = addRole === role;
-                  return (
-                    <Pressable
-                      key={role}
-                      onPress={() => setAddRole(role)}
-                      style={[
-                        styles.roleChip,
-                        {
-                          borderColor: selected
-                            ? colors.primary
-                            : colors.border,
-                          backgroundColor: selected
-                            ? withAlpha(colors.primary, 0.1)
-                            : "transparent",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: selected
-                            ? colors.primary
-                            : colors.mutedForeground,
-                          fontWeight: "700",
-                        }}
-                      >
-                        {SCHOOL_ROLE_LABELS[role] ?? role}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {addRole === "officer" ? (
-                <TextInput
-                  value={addTitle}
-                  onChangeText={setAddTitle}
-                  placeholder="Title (optional, e.g. VP)"
-                  placeholderTextColor={colors.mutedForeground}
-                  maxLength={60}
-                  style={[
-                    styles.input,
-                    {
-                      color: colors.foreground,
-                      borderColor: colors.border,
-                      backgroundColor: colors.card,
-                    },
-                  ]}
-                />
-              ) : null}
-              <Pressable
-                disabled={busy || !addEmail.trim()}
-                onPress={() =>
-                  void runAction(async () => {
-                    await addSchoolMember(slug!, {
-                      email: addEmail.trim(),
-                      role: addRole,
-                      title:
-                        addRole === "officer" && addTitle.trim()
-                          ? addTitle.trim()
-                          : null,
-                    });
-                    setAddEmail("");
-                    setAddRole("member");
-                    setAddTitle("");
-                  })
-                }
-                style={[
-                  styles.primaryBtn,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity: busy || !addEmail.trim() ? 0.5 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={{ color: colors.primaryForeground, fontWeight: "700" }}
-                >
-                  Add to roster
-                </Text>
-              </Pressable>
-            </View>
+                ))}
+              </ListGroup>
+            </Section>
           ) : null}
 
           {data.members.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground }}>
-              No members on the roster yet.
-            </Text>
+            <EmptyState
+              compact
+              icon="people-outline"
+              title="No one on the roster yet"
+              message={
+                data.viewer.canManageRoster
+                  ? "Add members by email below."
+                  : "Members will appear here once officers add them."
+              }
+            />
           ) : (
             <>
               {data.viewer.canManageRoster && plainOfficerCount < 1 ? (
-                <Text
-                  style={{
-                    color: colors.foreground,
-                    fontSize: 13,
-                    padding: 12,
-                    borderRadius: 10,
-                    backgroundColor: withAlpha(colors.primary, 0.08),
-                  }}
-                >
-                  Add at least one officer before submitting for verification.
-                </Text>
+                <Banner
+                  tone="info"
+                  message="Add at least one officer before submitting for verification."
+                />
               ) : null}
               <RosterSection
                 title={`Officers (${rosterOfficers.length})`}
                 emptyMessage="No officers yet."
                 members={rosterOfficers}
-                colors={colors}
-                busy={busy}
                 showPresidentLabel
-                jerseyValue={jerseyValue}
-                onJerseyDraftChange={(membershipId, value) =>
-                  setJerseyDrafts((prev) => ({
-                    ...prev,
-                    [membershipId]: value,
-                  }))
-                }
-                onJerseySave={(member) =>
-                  void runAction(async () => {
-                    const raw = jerseyValue(
-                      member.membershipId,
-                      member.jerseyNumber
-                    ).trim();
-                    const jerseyNumber =
-                      raw === "" ? null : Number.parseInt(raw, 10);
-                    await updateSchoolMemberJersey(
-                      slug!,
-                      member.membershipId,
-                      jerseyNumber
-                    );
-                    setJerseyDrafts((prev) => {
-                      const next = { ...prev };
-                      delete next[member.membershipId];
-                      return next;
-                    });
-                  })
-                }
-                onPositionChange={(member, position) =>
-                  void runAction(async () => {
-                    await updateSchoolMemberPosition(
-                      slug!,
-                      member.membershipId,
-                      position
-                    );
-                  })
-                }
+                {...rosterHandlers}
                 onMakeMember={(member) =>
-                  void runAction(async () => {
-                    await updateSchoolMemberRole(
-                      slug!,
-                      member.membershipId,
-                      "member"
-                    );
+                  void runAction(`role:${member.membershipId}`, async () => {
+                    await updateSchoolMemberRole(slug!, member.membershipId, "member");
                   })
                 }
-                onTransferPresidency={confirmTransferPresidency}
-                onRemove={confirmRemove}
               />
               <RosterSection
                 title={`Members (${rosterMembers.length})`}
                 emptyMessage="No members yet."
                 members={rosterMembers}
-                colors={colors}
-                busy={busy}
-                jerseyValue={jerseyValue}
-                onJerseyDraftChange={(membershipId, value) =>
-                  setJerseyDrafts((prev) => ({
-                    ...prev,
-                    [membershipId]: value,
-                  }))
-                }
-                onJerseySave={(member) =>
-                  void runAction(async () => {
-                    const raw = jerseyValue(
-                      member.membershipId,
-                      member.jerseyNumber
-                    ).trim();
-                    const jerseyNumber =
-                      raw === "" ? null : Number.parseInt(raw, 10);
-                    await updateSchoolMemberJersey(
-                      slug!,
-                      member.membershipId,
-                      jerseyNumber
-                    );
-                    setJerseyDrafts((prev) => {
-                      const next = { ...prev };
-                      delete next[member.membershipId];
-                      return next;
-                    });
-                  })
-                }
-                onPositionChange={(member, position) =>
-                  void runAction(async () => {
-                    await updateSchoolMemberPosition(
-                      slug!,
-                      member.membershipId,
-                      position
-                    );
-                  })
-                }
+                {...rosterHandlers}
                 onMakeOfficer={(member) =>
-                  void runAction(async () => {
-                    await updateSchoolMemberRole(
-                      slug!,
-                      member.membershipId,
-                      "officer"
-                    );
+                  void runAction(`role:${member.membershipId}`, async () => {
+                    await updateSchoolMemberRole(slug!, member.membershipId, "officer");
                   })
                 }
-                onTransferPresidency={confirmTransferPresidency}
-                onRemove={confirmRemove}
               />
             </>
           )}
+
+          {data.viewer.canManageRoster ? (
+            <Section title="Add a member">
+              <Card>
+                <FormField label="Email" colors={colors}>
+                  <FormTextInput
+                    value={addEmail}
+                    onChangeText={setAddEmail}
+                    placeholder="name@school.edu"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    returnKeyType="done"
+                    colors={colors}
+                  />
+                </FormField>
+                <FormField label="Role" colors={colors}>
+                  <ChipRow>
+                    {(["member", "officer"] as const).map((role) => (
+                      <Chip
+                        key={role}
+                        label={SCHOOL_ROLE_LABELS[role] ?? role}
+                        selected={addRole === role}
+                        onPress={() => setAddRole(role)}
+                      />
+                    ))}
+                  </ChipRow>
+                </FormField>
+                {addRole === "officer" ? (
+                  <FormField label="Title" hint="Optional, e.g. VP or Treasurer" colors={colors}>
+                    <FormTextInput
+                      value={addTitle}
+                      onChangeText={setAddTitle}
+                      placeholder="Officer title"
+                      maxLength={60}
+                      autoCapitalize="words"
+                      colors={colors}
+                    />
+                  </FormField>
+                ) : null}
+                <Button
+                  label="Add to roster"
+                  icon="person-add-outline"
+                  fullWidth
+                  loading={busyKey === "add"}
+                  disabled={busy || !addEmail.trim()}
+                  onPress={() =>
+                    void runAction("add", async () => {
+                      await addSchoolMember(slug!, {
+                        email: addEmail.trim(),
+                        role: addRole,
+                        title:
+                          addRole === "officer" && addTitle.trim()
+                            ? addTitle.trim()
+                            : null,
+                      });
+                      setAddEmail("");
+                      setAddRole("member");
+                      setAddTitle("");
+                    })
+                  }
+                />
+              </Card>
+            </Section>
+          ) : null}
         </>
       ) : (
-        <>
-          {data.viewer.canManageRoster ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                router.push({
-                  pathname: "/teams/new",
-                  params: { schoolSlug: data.slug },
-                })
-              }
-              style={[styles.secondaryBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                New team
-              </Text>
-            </Pressable>
-          ) : null}
+        <Section
+          action={
+            data.viewer.canManageRoster
+              ? {
+                  label: "New team",
+                  onPress: () =>
+                    router.push({
+                      pathname: "/teams/new",
+                      params: { schoolSlug: data.slug },
+                    }),
+                }
+              : undefined
+          }
+        >
           {data.teams.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground }}>
-              No teams linked to this school yet.
-            </Text>
+            <EmptyState
+              compact
+              icon="people-outline"
+              title="No teams yet"
+              message="Teams linked to this school will show up here."
+            />
           ) : (
-            data.teams.map((team) => (
-              <Pressable
-                key={team.slug}
-                accessibilityRole="button"
-                onPress={() => router.push(`/teams/${team.slug}`)}
-                style={[styles.memberRow, { borderColor: colors.border }]}
-              >
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                    {team.name}
-                  </Text>
-                  <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                    {GENDER_LABELS[team.gender] ?? team.gender}
-                    {" · "}
-                    {REGION_LABELS[team.region] ?? team.region}
-                    {" · "}
-                    {team.memberCount} member{team.memberCount === 1 ? "" : "s"}
-                  </Text>
-                </View>
-                <Text style={{ color: colors.primary, fontSize: 22 }}>›</Text>
-              </Pressable>
-            ))
+            <ListGroup>
+              {data.teams.map((team) => (
+                <ListRow
+                  key={team.slug}
+                  icon="people-outline"
+                  title={team.name}
+                  subtitle={`${GENDER_LABELS[team.gender] ?? team.gender} ${REGION_LABELS[team.region] ?? team.region} · ${team.memberCount} member${team.memberCount === 1 ? "" : "s"}`}
+                  onPress={() => router.push(`/teams/${team.slug}`)}
+                />
+              ))}
+            </ListGroup>
           )}
-        </>
+        </Section>
       )}
-    </ScrollView>
+
+      {data.viewer.canLeave ? (
+        <Button
+          label="Leave school"
+          variant="destructiveOutline"
+          fullWidth
+          loading={busyKey === "leave"}
+          disabled={busy}
+          onPress={confirmLeave}
+        />
+      ) : null}
+    </ScreenScroll>
   );
 }
 
@@ -759,8 +598,7 @@ function RosterSection({
   title,
   emptyMessage,
   members,
-  colors,
-  busy,
+  busyKey,
   showPresidentLabel = false,
   jerseyValue,
   onJerseyDraftChange,
@@ -774,366 +612,243 @@ function RosterSection({
   title: string;
   emptyMessage: string;
   members: SchoolMemberContract[];
-  colors: ThemeColors;
-  busy: boolean;
+  busyKey: string | null;
   showPresidentLabel?: boolean;
   jerseyValue: (membershipId: string, current: number | null) => string;
   onJerseyDraftChange: (membershipId: string, value: string) => void;
   onJerseySave: (member: SchoolMemberContract) => void;
-  onPositionChange: (
-    member: SchoolMemberContract,
-    position: string | null
-  ) => void;
+  onPositionChange: (member: SchoolMemberContract, position: string | null) => void;
   onMakeOfficer?: (member: SchoolMemberContract) => void;
   onMakeMember?: (member: SchoolMemberContract) => void;
   onTransferPresidency?: (member: SchoolMemberContract) => void;
   onRemove: (membershipId: string, name: string) => void;
 }) {
+  const colors = useThemeColors();
+  const busy = busyKey !== null;
+
   return (
-    <View style={styles.rosterSection}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        {title}
-      </Text>
+    <Section title={title}>
       {members.length === 0 ? (
-        <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
+        <AppText variant="subhead" tone="muted">
           {emptyMessage}
-        </Text>
+        </AppText>
       ) : (
-        members.map((member) => {
-          const meta = [
-            showPresidentLabel && member.role === "president"
-              ? SCHOOL_ROLE_LABELS.president
-              : null,
-            member.title,
-            !member.canEditPosition && member.volleyballPosition
-              ? VOLLEYBALL_POSITION_LABELS[member.volleyballPosition] ??
-                member.volleyballPosition
-              : null,
-            !member.canEditJersey && member.jerseyNumber != null
-              ? `#${member.jerseyNumber}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ");
+        <ListGroup>
+          {members.map((member) => {
+            const id = member.membershipId;
+            const meta = [
+              member.title,
+              !member.canEditPosition && member.volleyballPosition
+                ? VOLLEYBALL_POSITION_LABELS[member.volleyballPosition] ??
+                  member.volleyballPosition
+                : null,
+              !member.canEditJersey && member.jerseyNumber != null
+                ? `#${member.jerseyNumber}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            const canMakeOfficer = member.canChangeRole && onMakeOfficer;
+            const canMakeMember = member.canChangeRole && onMakeMember;
+            const hasActions =
+              canMakeOfficer ||
+              canMakeMember ||
+              (member.canTransferPresidencyTo && onTransferPresidency) ||
+              member.canRemove;
 
-          const roleAction =
-            member.canChangeRole && onMakeOfficer ? (
-              <Pressable disabled={busy} onPress={() => onMakeOfficer(member)}>
-                <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                  Make officer
-                </Text>
-              </Pressable>
-            ) : member.canChangeRole && onMakeMember ? (
-              <Pressable disabled={busy} onPress={() => onMakeMember(member)}>
-                <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                  Make member
-                </Text>
-              </Pressable>
-            ) : null;
+            return (
+              <View key={id} style={styles.memberBlock}>
+                <View style={styles.memberHeader}>
+                  <View style={styles.memberText}>
+                    <AppText variant="callout" weight="600">
+                      {member.fullName}
+                      {member.isViewer ? (
+                        <AppText variant="callout" tone="muted">
+                          {" "}
+                          (you)
+                        </AppText>
+                      ) : null}
+                    </AppText>
+                    {meta ? (
+                      <AppText variant="footnote" tone="muted">
+                        {meta}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  {showPresidentLabel && member.role === "president" ? (
+                    <Badge label={SCHOOL_ROLE_LABELS.president ?? "President"} tone="info" />
+                  ) : null}
+                </View>
 
-          return (
-            <View
-              key={member.membershipId}
-              style={[styles.memberRow, { borderColor: colors.border }]}
-            >
-              <View style={{ flex: 1, gap: 8 }}>
-                <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                  {member.fullName}
-                  {member.isViewer ? " (you)" : ""}
-                </Text>
-                {meta ? (
-                  <Text
-                    style={{ color: colors.mutedForeground, fontSize: 13 }}
-                  >
-                    {meta}
-                  </Text>
-                ) : null}
                 {member.canEditPosition ? (
                   <VolleyballPositionChips
                     value={member.volleyballPosition}
                     onChange={(position) => onPositionChange(member, position)}
                     disabled={busy}
-                    colors={colors}
                   />
                 ) : null}
+
                 {member.canEditJersey ? (
                   <View style={styles.jerseyRow}>
-                    <TextInput
-                      value={jerseyValue(
-                        member.membershipId,
-                        member.jerseyNumber
-                      )}
-                      onChangeText={(value) =>
-                        onJerseyDraftChange(member.membershipId, value)
-                      }
+                    <AppText variant="subhead" tone="muted">
+                      Jersey
+                    </AppText>
+                    <FormTextInput
+                      value={jerseyValue(id, member.jerseyNumber)}
+                      onChangeText={(value) => onJerseyDraftChange(id, value)}
                       placeholder="#"
-                      placeholderTextColor={colors.mutedForeground}
+                      accessibilityLabel={`Jersey number for ${member.fullName}`}
                       keyboardType="number-pad"
                       maxLength={2}
-                      style={[
-                        styles.jerseyInput,
-                        {
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                          backgroundColor: colors.card,
-                        },
-                      ]}
+                      returnKeyType="done"
+                      onSubmitEditing={() => onJerseySave(member)}
+                      colors={colors}
+                      style={styles.jerseyInput}
                     />
-                    <Pressable
-                      disabled={busy}
+                    <Button
+                      label="Save"
+                      variant="outline"
+                      size="sm"
+                      loading={busyKey === `jersey:${id}`}
+                      disabled={
+                        busy ||
+                        jerseyValue(id, member.jerseyNumber) ===
+                          (member.jerseyNumber == null ? "" : String(member.jerseyNumber))
+                      }
                       onPress={() => onJerseySave(member)}
-                    >
-                      <Text
-                        style={{ color: colors.primary, fontWeight: "700" }}
-                      >
-                        Save #
-                      </Text>
-                    </Pressable>
+                    />
+                  </View>
+                ) : null}
+
+                {hasActions ? (
+                  <View style={styles.memberActions}>
+                    {canMakeOfficer ? (
+                      <Button
+                        label="Make officer"
+                        variant="outline"
+                        size="sm"
+                        loading={busyKey === `role:${id}`}
+                        disabled={busy}
+                        onPress={() => onMakeOfficer!(member)}
+                      />
+                    ) : canMakeMember ? (
+                      <Button
+                        label="Make member"
+                        variant="outline"
+                        size="sm"
+                        loading={busyKey === `role:${id}`}
+                        disabled={busy}
+                        onPress={() => onMakeMember!(member)}
+                      />
+                    ) : null}
+                    {member.canTransferPresidencyTo && onTransferPresidency ? (
+                      <Button
+                        label="Make president"
+                        variant="outline"
+                        size="sm"
+                        loading={busyKey === `president:${id}`}
+                        disabled={busy}
+                        onPress={() => onTransferPresidency(member)}
+                      />
+                    ) : null}
+                    {member.canRemove ? (
+                      <Button
+                        label="Remove"
+                        variant="destructiveOutline"
+                        size="sm"
+                        loading={busyKey === `remove:${id}`}
+                        disabled={busy}
+                        onPress={() => onRemove(id, member.fullName)}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
               </View>
-              <View style={styles.inlineActions}>
-                {member.canTransferPresidencyTo && onTransferPresidency ? (
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => onTransferPresidency(member)}
-                  >
-                    <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                      President
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {roleAction}
-                {member.canRemove ? (
-                  <Pressable
-                    disabled={busy}
-                    onPress={() => onRemove(member.membershipId, member.fullName)}
-                  >
-                    <Text
-                      style={{ color: colors.destructive, fontWeight: "700" }}
-                    >
-                      Remove
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          );
-        })
+            );
+          })}
+        </ListGroup>
       )}
-    </View>
+    </Section>
   );
 }
 
 function VerificationPanel({
   school,
-  colors,
   busy,
+  disabled,
   onSubmit,
 }: {
   school: SchoolDetailContract;
-  colors: ThemeColors;
   busy: boolean;
+  disabled: boolean;
   onSubmit: () => void;
 }) {
   const blockedReason = school.viewer.verificationBlockedReason;
   const canSubmit = school.viewer.canSubmitForVerification;
 
   return (
-    <View
-      style={[
-        styles.verifyPanel,
-        {
-          borderColor: colors.border,
-          backgroundColor: withAlpha(colors.primary, 0.05),
-        },
-      ]}
-    >
-      <Text style={[styles.verifyTitle, { color: colors.foreground }]}>
-        School verification
-      </Text>
+    <Card>
+      <View style={styles.inlineTitle}>
+        <Icon name="shield-checkmark-outline" size={18} tone="primary" />
+        <AppText variant="headline">School verification</AppText>
+      </View>
+      <AppText variant="footnote" tone="muted">
+        Verified schools get a badge on their page and can host tournaments.
+      </AppText>
       {school.domainMatched ? (
-        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
-          Domain match on file — officers&apos; emails matched @{school.domainHint}
-        </Text>
+        <AppText variant="footnote" tone="success" weight="600">
+          Officer emails matched @{school.domainHint}
+        </AppText>
       ) : school.viewer.emailDomainMatches && school.domainHint ? (
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Your email matches @{school.domainHint}. Officer emails on file will be
+        <AppText variant="footnote" tone="muted">
+          Your email matches @{school.domainHint}. Officer emails on file are
           checked when you submit.
-        </Text>
+        </AppText>
       ) : null}
       {blockedReason && !canSubmit ? (
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+        <AppText variant="footnote" tone="warning">
           {blockedReason}
-        </Text>
+        </AppText>
       ) : null}
       {canSubmit ? (
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
-          onPress={onSubmit}
-          style={[
-            styles.primaryBtn,
-            {
-              backgroundColor: colors.primary,
-              opacity: busy ? 0.5 : 1,
-              alignSelf: "flex-start",
-            },
-          ]}
-        >
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            {school.verificationStatus === "rejected"
+        <Button
+          label={
+            school.verificationStatus === "rejected"
               ? "Resubmit for verification"
-              : "Submit for verification"}
-          </Text>
-        </Pressable>
+              : "Submit for verification"
+          }
+          size="sm"
+          loading={busy}
+          disabled={disabled}
+          onPress={onSubmit}
+        />
       ) : null}
-    </View>
-  );
-}
-
-function Header({
-  school,
-  colors,
-}: {
-  school: SchoolDetailContract;
-  colors: ThemeColors;
-}) {
-  return (
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: colors.foreground }]}>
-        {school.name}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {school.university}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {GENDER_LABELS[school.gender] ?? school.gender}
-        {" · "}
-        {REGION_LABELS[school.region] ?? school.region}
-      </Text>
-      <Text
-        style={[
-          styles.verify,
-          {
-            color:
-              school.verificationStatus === "verified"
-                ? colors.primary
-                : colors.mutedForeground,
-            backgroundColor: withAlpha(colors.primary, 0.08),
-          },
-        ]}
-      >
-        {SCHOOL_VERIFICATION_LABELS[school.verificationStatus] ??
-          school.verificationStatus}
-      </Text>
-      {school.domainHint ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          @{school.domainHint}
-        </Text>
-      ) : null}
-      {school.websiteUrl ? (
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => void Linking.openURL(school.websiteUrl!)}
-        >
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Website
-          </Text>
-        </Pressable>
-      ) : null}
-      {school.description ? (
-        <Text style={[styles.description, { color: colors.foreground }]}>
-          {school.description}
-        </Text>
-      ) : null}
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 14 },
-  header: { gap: 6 },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4 },
-  meta: { fontSize: 14, lineHeight: 20 },
-  verify: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  description: { fontSize: 15, lineHeight: 22, marginTop: 6 },
-  verifyPanel: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  verifyTitle: { fontSize: 16, fontWeight: "700" },
-  badge: { fontSize: 14, fontWeight: "700" },
-  actions: { gap: 10 },
-  manageBlock: { gap: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: "700" },
-  primaryBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  secondaryBtn: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  tabs: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    marginTop: 4,
-  },
-  tab: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  addBox: { borderWidth: 1, borderRadius: 12, padding: 14, gap: 10 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  roleRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  roleChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  rosterSection: { gap: 10 },
-  jerseyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  jerseyInput: {
-    width: 56,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 16,
-    fontWeight: "700",
-    textAlign: "center",
-  },
+  hero: { gap: space.xs },
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs },
+  description: { marginTop: space.sm },
+  websiteButton: { marginLeft: -space.md },
+  inlineTitle: { flexDirection: "row", alignItems: "center", gap: space.sm },
   memberRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: space.md,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
   },
-  inlineActions: { gap: 10, alignItems: "flex-end" },
+  memberText: { flex: 1, minWidth: 0, gap: space.xxs },
+  rowActions: { flexDirection: "row", gap: space.sm },
+  memberBlock: {
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.md,
+  },
+  memberHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  jerseyInput: { width: 64, minHeight: 40, textAlign: "center", fontWeight: "600" },
+  memberActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
 });

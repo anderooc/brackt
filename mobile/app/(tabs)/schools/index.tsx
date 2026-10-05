@@ -17,17 +17,9 @@
  */
 
 import type { SchoolListItemContract } from "@/lib/api/contracts/school";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { fetchSchools } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
@@ -36,8 +28,22 @@ import {
   REGION_LABELS,
   SCHOOL_VERIFICATION_LABELS,
 } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import {
+  AppText,
+  Badge,
+  Banner,
+  EmptyState,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  radius,
+  space,
+  statusTone,
+} from "~/ui";
 
 export default function SchoolsScreen() {
   const colors = useThemeColors();
@@ -90,23 +96,25 @@ export default function SchoolsScreen() {
     [debouncedQuery]
   );
 
-  useEffect(() => {
-    if (!session) return;
-    const controller = new AbortController();
-    void loadMine(controller.signal)
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(
-          cause instanceof ApiClientError
-            ? cause.message
-            : "Could not load schools."
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setReady(true);
-      });
-    return () => controller.abort();
-  }, [session, loadMine]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      const controller = new AbortController();
+      void loadMine(controller.signal)
+        .catch((cause: unknown) => {
+          if (controller.signal.aborted) return;
+          setError(
+            cause instanceof ApiClientError
+              ? cause.message
+              : "Could not load schools."
+          );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setReady(true);
+        });
+      return () => controller.abort();
+    }, [session, loadMine])
+  );
 
   useEffect(() => {
     if (!session || !ready) return;
@@ -151,152 +159,119 @@ export default function SchoolsScreen() {
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <View style={styles.toolbar}>
+    <ScreenScroll
+      gap={space.xl}
+      refreshing={isRefreshing}
+      onRefresh={async () => {
+        setIsRefreshing(true);
+        try {
+          await loadMine();
+          if (hasSearch) await loadSearch();
+        } finally {
+          setIsRefreshing(false);
+        }
+      }}
+    >
+      <View
+        style={[
+          styles.search,
+          { backgroundColor: colors.muted },
+        ]}
+      >
+        <Icon name="search" size={18} tone="muted" />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search schools…"
+          placeholder="Search by school or university"
           placeholderTextColor={colors.mutedForeground}
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
           clearButtonMode="while-editing"
           accessibilityLabel="Search schools"
-          style={[
-            styles.search,
-            {
-              color: colors.foreground,
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-          ]}
+          style={[styles.searchInput, { color: colors.foreground }]}
         />
-        {mySchool ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push(`/schools/${mySchool.slug}`)}
-            style={[
-              styles.mine,
-              {
-                borderColor: colors.primary,
-                backgroundColor: withAlpha(colors.primary, 0.1),
-              },
-            ]}
-          >
-            <Text style={{ color: colors.primary, fontWeight: "700" }}>
-              Your school · {mySchool.name}
-            </Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push("/schools/new")}
-            style={[styles.createBtn, { backgroundColor: colors.primary }]}
-          >
-            <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-              Create school
-            </Text>
-          </Pressable>
-        )}
+        {isSearching ? <ActivityIndicator size="small" color={colors.mutedForeground} /> : null}
       </View>
 
-      <FlatList
-        data={hasSearch ? sorted : []}
-        keyExtractor={(item) => item.slug}
-        contentContainerStyle={styles.list}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={async () => {
-              setIsRefreshing(true);
-              try {
-                await loadMine();
-                if (hasSearch) await loadSearch();
-              } finally {
-                setIsRefreshing(false);
-              }
-            }}
-            tintColor={colors.primary}
+      {error ? <Banner tone="error" message={error} /> : null}
+
+      {!hasSearch ? (
+        <Section title={mySchool ? "Your school" : "Get started"}>
+          <ListGroup>
+            {mySchool ? (
+              <ListRow
+                icon="school"
+                iconTone="secondary"
+                title={mySchool.name}
+                onPress={() => router.push(`/schools/${mySchool.slug}`)}
+              />
+            ) : (
+              <ListRow
+                icon="add-circle-outline"
+                title="Create a school"
+                subtitle="Set up your club’s page if it isn’t listed"
+                onPress={() => router.push("/schools/new")}
+              />
+            )}
+          </ListGroup>
+          <AppText variant="footnote" tone="muted">
+            Search above to find your club and request to join its roster.
+          </AppText>
+        </Section>
+      ) : sorted.length === 0 ? (
+        isSearching ? null : (
+          <EmptyState
+            icon="search-outline"
+            title="No schools found"
+            message={`Nothing matches “${debouncedQuery}”. Check the spelling, or create the school if it isn’t listed.`}
+            action={
+              mySchool
+                ? undefined
+                : { label: "Create school", icon: "add", onPress: () => router.push("/schools/new") }
+            }
           />
-        }
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-            {isSearching
-              ? "Searching…"
-              : hasSearch
-                ? "No schools match that search."
-                : "Search by school or university name to browse programs."}
-          </Text>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push(`/schools/${item.slug}`)}
-            style={[styles.row, { borderColor: colors.border }]}
-          >
-            <View style={styles.rowText}>
-              <Text style={[styles.name, { color: colors.foreground }]}>
-                {item.name}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {item.university}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {GENDER_LABELS[item.gender] ?? item.gender}
-                {" · "}
-                {REGION_LABELS[item.region] ?? item.region}
-                {" · "}
-                {item.teamCount} team{item.teamCount === 1 ? "" : "s"}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {SCHOOL_VERIFICATION_LABELS[item.verificationStatus] ??
-                  item.verificationStatus}
-                {item.matchesViewerEmail ? " · Matches your email" : ""}
-              </Text>
-            </View>
-            <Text style={{ color: colors.primary, fontSize: 22 }}>›</Text>
-          </Pressable>
-        )}
-      />
-    </View>
+        )
+      ) : (
+        <ListGroup>
+          {sorted.map((item) => (
+            <ListRow
+              key={item.slug}
+              title={item.name}
+              subtitle={`${item.university}\n${GENDER_LABELS[item.gender] ?? item.gender} ${REGION_LABELS[item.region] ?? item.region} · ${item.teamCount} team${item.teamCount === 1 ? "" : "s"}`}
+              numberOfLines={3}
+              meta={
+                <View style={styles.badges}>
+                  <Badge
+                    label={
+                      SCHOOL_VERIFICATION_LABELS[item.verificationStatus] ??
+                      item.verificationStatus
+                    }
+                    tone={statusTone("verification", item.verificationStatus).tone}
+                  />
+                  {item.matchesViewerEmail ? (
+                    <Badge label="Matches your email" tone="info" />
+                  ) : null}
+                </View>
+              }
+              onPress={() => router.push(`/schools/${item.slug}`)}
+            />
+          ))}
+        </ListGroup>
+      )}
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  toolbar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, gap: 10 },
   search: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  mine: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  createBtn: {
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  list: { paddingHorizontal: 16, paddingBottom: 40, gap: 10 },
-  empty: { paddingTop: 40, textAlign: "center", fontSize: 15, lineHeight: 22 },
-  row: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: space.sm,
+    minHeight: 44,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
   },
-  rowText: { flex: 1, gap: 2 },
-  name: { fontSize: 17, fontWeight: "700" },
-  meta: { fontSize: 13, lineHeight: 18 },
+  searchInput: { flex: 1, fontSize: 16, paddingVertical: space.sm },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: space.xs, marginTop: space.xs },
 });

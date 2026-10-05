@@ -18,7 +18,7 @@
 
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+
 import { fetchSchool, updateSchool } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
@@ -36,6 +36,7 @@ import {
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, ScreenScroll, haptics } from "~/ui";
 
 export default function EditSchoolScreen() {
   const colors = useThemeColors();
@@ -85,8 +86,7 @@ export default function EditSchoolScreen() {
     return (
       <ErrorScreen
         title="School unavailable"
-        message="Missing school link."
-        onRetry={() => {}}
+        message="This link is missing the school. Go back and pick a school from the list."
       />
     );
   }
@@ -122,9 +122,11 @@ export default function EditSchoolScreen() {
         websiteUrl: websiteUrl.trim() || null,
         description: description.trim() || null,
       });
-      router.replace(`/schools/${result.slug}`);
+      haptics.success();
+      router.dismissTo(`/schools/${result.slug}`);
     } catch (cause) {
       setError(messageFor(cause, "Could not save changes."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -137,15 +139,11 @@ export default function EditSchoolScreen() {
     region != null;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={[styles.lead, { color: colors.mutedForeground }]}>
+    <ScreenScroll gap={20}>
+      <AppText variant="callout" tone="muted">
         Renaming the school updates its URL. Existing teams keep their gender and
         region; only new teams inherit the values below.
-      </Text>
+      </AppText>
 
       <FormField label="School / club name" colors={colors}>
         <FormTextInput
@@ -154,6 +152,8 @@ export default function EditSchoolScreen() {
           placeholder="State University Volleyball Club"
           colors={colors}
           maxLength={120}
+          autoCapitalize="words"
+          returnKeyType="next"
         />
       </FormField>
 
@@ -164,6 +164,7 @@ export default function EditSchoolScreen() {
           placeholder="State University"
           colors={colors}
           maxLength={120}
+          autoCapitalize="words"
         />
       </FormField>
 
@@ -198,6 +199,8 @@ export default function EditSchoolScreen() {
           placeholder="state.edu"
           colors={colors}
           autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
           maxLength={120}
         />
       </FormField>
@@ -225,7 +228,7 @@ export default function EditSchoolScreen() {
         />
       </FormField>
 
-      {error ? <Text style={{ color: colors.destructive }}>{error}</Text> : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
       <FormSubmitButton
         label="Save changes"
@@ -234,11 +237,6 @@ export default function EditSchoolScreen() {
         onPress={() => void onSubmit()}
         colors={colors}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  lead: { fontSize: 15, lineHeight: 22 },
-});

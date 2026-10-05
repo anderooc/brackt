@@ -18,7 +18,7 @@
 
 import { Redirect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+
 import { createSchool, fetchCreateOptions } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
@@ -36,6 +36,8 @@ import {
 import { useThemeColors } from "~/theme/colors";
 import { LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { View } from "react-native";
+import { AppText, Banner, EmptyState, ScreenScroll, haptics } from "~/ui";
 
 export default function CreateSchoolScreen() {
   const colors = useThemeColors();
@@ -91,9 +93,11 @@ export default function CreateSchoolScreen() {
         websiteUrl: websiteUrl.trim() || null,
         description: description.trim() || null,
       });
+      haptics.success();
       router.replace(`/schools/${result.slug}`);
     } catch (cause) {
       setError(messageFor(cause, "Could not create school."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -101,13 +105,13 @@ export default function CreateSchoolScreen() {
 
   if (!canCreate) {
     return (
-      <View style={[styles.blocked, { backgroundColor: colors.background }]}>
-        <Text style={[styles.blockedTitle, { color: colors.foreground }]}>
-          Already in a school
-        </Text>
-        <Text style={{ color: colors.mutedForeground, textAlign: "center" }}>
-          Leave your current school before creating a new one.
-        </Text>
+      <View style={{ flex: 1, justifyContent: "center", backgroundColor: colors.background }}>
+        <EmptyState
+          icon="school-outline"
+          title="You’re already in a school"
+          message="Leave your current school before creating a new one."
+          action={{ label: "Back to schools", onPress: () => router.back() }}
+        />
       </View>
     );
   }
@@ -119,15 +123,11 @@ export default function CreateSchoolScreen() {
     region != null;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={[styles.lead, { color: colors.mutedForeground }]}>
+    <ScreenScroll gap={20}>
+      <AppText variant="callout" tone="muted">
         You&apos;ll be added as president. Teams created under this school
         inherit its gender and region.
-      </Text>
+      </AppText>
 
       <FormField label="School / club name" colors={colors}>
         <FormTextInput
@@ -136,6 +136,8 @@ export default function CreateSchoolScreen() {
           placeholder="State University Volleyball Club"
           colors={colors}
           maxLength={120}
+          autoCapitalize="words"
+          returnKeyType="next"
         />
       </FormField>
 
@@ -146,6 +148,7 @@ export default function CreateSchoolScreen() {
           placeholder="State University"
           colors={colors}
           maxLength={120}
+          autoCapitalize="words"
         />
       </FormField>
 
@@ -180,6 +183,8 @@ export default function CreateSchoolScreen() {
           placeholder="state.edu"
           colors={colors}
           autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
           maxLength={120}
         />
       </FormField>
@@ -207,7 +212,7 @@ export default function CreateSchoolScreen() {
         />
       </FormField>
 
-      {error ? <Text style={{ color: colors.destructive }}>{error}</Text> : null}
+      {error ? <Banner tone="error" message={error} /> : null}
 
       <FormSubmitButton
         label="Create school"
@@ -216,19 +221,6 @@ export default function CreateSchoolScreen() {
         onPress={() => void onSubmit()}
         colors={colors}
       />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 16 },
-  lead: { fontSize: 15, lineHeight: 22 },
-  blocked: {
-    flex: 1,
-    padding: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  blockedTitle: { fontSize: 20, fontWeight: "700" },
-});

@@ -17,30 +17,27 @@
  */
 
 import type { TeamListItemContract } from "@/lib/api/contracts/team";
-import { Redirect, useNavigation, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Redirect, useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useCallback, useLayoutEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { fetchTeams } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import {
-  GENDER_LABELS,
-  REGION_LABELS,
-  TEAM_ROLE_LABELS,
-  TEAM_VERIFICATION_LABELS,
-} from "~/lib/format";
-import { useThemeColors } from "~/theme/colors";
+import { GENDER_LABELS, REGION_LABELS, TEAM_ROLE_LABELS } from "~/lib/format";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import {
+  Badge,
+  Banner,
+  EmptyState,
+  IconButton,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  space,
+  StatusBadge,
+} from "~/ui";
 
 export default function TeamsScreen() {
-  const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
@@ -63,149 +60,107 @@ export default function TeamsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!session) return;
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [session, load]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      const controller = new AbortController();
+      void load(controller.signal);
+      return () => controller.abort();
+    }, [session, load])
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable
-          accessibilityRole="button"
+        <IconButton
+          icon="add"
           accessibilityLabel="Create team"
           onPress={() => router.push("/teams/new")}
-          hitSlop={8}
-          style={{ paddingHorizontal: 4, paddingVertical: 6 }}
-        >
-          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 16 }}>
-            New
-          </Text>
-        </Pressable>
+        />
       ),
     });
-  }, [colors.primary, navigation, router]);
+  }, [navigation, router]);
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await load();
+    setIsRefreshing(false);
+  }, [load]);
 
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
   if (teams === null && error === null) return <LoadingScreen />;
-  if (teams === null && error) {
+  if (teams === null) {
     return (
       <ErrorScreen
         title="Couldn’t load teams"
-        message={error}
+        message={error ?? "Could not load your teams."}
         onRetry={() => void load()}
       />
     );
   }
 
   return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <FlatList
-        data={teams ?? []}
-        keyExtractor={(item) => item.slug}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={async () => {
-              setIsRefreshing(true);
-              await load();
-              setIsRefreshing(false);
-            }}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              No teams yet
-            </Text>
-            <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-              Create a team to manage your roster and register for tournaments.
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push("/teams/new")}
-              style={[styles.createBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-                Create team
-              </Text>
-            </Pressable>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push(`/teams/${item.slug}`)}
-            style={[styles.row, { borderColor: colors.border }]}
-          >
-            <View style={styles.rowText}>
-              <Text style={[styles.name, { color: colors.foreground }]}>
-                {item.name}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {item.university}
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {TEAM_ROLE_LABELS[item.role] ?? item.role}
-                {" · "}
-                {GENDER_LABELS[item.gender] ?? item.gender}
-                {" · "}
-                {REGION_LABELS[item.region] ?? item.region}
-              </Text>
-              {item.school ? (
-                <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                  {item.school.name}
-                </Text>
-              ) : item.verificationStatus !== "verified" ? (
-                <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                  {TEAM_VERIFICATION_LABELS[item.verificationStatus] ??
-                    item.verificationStatus}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={{ color: colors.primary, fontSize: 22 }}>›</Text>
-          </Pressable>
-        )}
-      />
-    </View>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void onRefresh()} gap={space.lg}>
+      {error ? (
+        <Banner
+          title="Couldn’t refresh"
+          message={error}
+          action={{ label: "Try again", onPress: () => void onRefresh() }}
+          onDismiss={() => setError(null)}
+        />
+      ) : null}
+
+      {teams.length === 0 ? (
+        <EmptyState
+          icon="people-outline"
+          title="No teams yet"
+          message="Create a team to manage your roster and register for tournaments."
+          action={{
+            label: "Create team",
+            icon: "add",
+            onPress: () => router.push("/teams/new"),
+          }}
+        />
+      ) : (
+        <ListGroup>
+          {teams.map((team) => {
+            const subtitle = [
+              team.school?.name ?? team.university,
+              `${GENDER_LABELS[team.gender] ?? team.gender} · ${REGION_LABELS[team.region] ?? team.region}`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+            return (
+              <ListRow
+                key={team.slug}
+                icon="people-outline"
+                title={team.name}
+                subtitle={subtitle}
+                numberOfLines={3}
+                onPress={() => router.push(`/teams/${team.slug}`)}
+                meta={
+                  <View style={styles.badges}>
+                    <Badge label={TEAM_ROLE_LABELS[team.role] ?? team.role} />
+                    {!team.school && team.verificationStatus !== "verified" ? (
+                      <StatusBadge kind="verification" status={team.verificationStatus} />
+                    ) : null}
+                  </View>
+                }
+              />
+            );
+          })}
+        </ListGroup>
+      )}
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  list: { padding: 16, paddingBottom: 40, gap: 10 },
-  empty: { paddingTop: 48, paddingHorizontal: 16, gap: 8 },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  emptyBody: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: "center",
-  },
-  createBtn: {
-    marginTop: 12,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    alignSelf: "center",
-  },
-  row: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
+  badges: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    flexWrap: "wrap",
+    gap: space.xs,
+    marginTop: space.xs,
   },
-  rowText: { flex: 1, gap: 2 },
-  name: { fontSize: 17, fontWeight: "700" },
-  meta: { fontSize: 13, lineHeight: 18 },
 });

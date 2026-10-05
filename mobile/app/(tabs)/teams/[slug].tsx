@@ -16,24 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type { TeamDetailContract } from "@/lib/api/contracts/team";
+import type {
+  TeamDetailContract,
+  TeamMemberContract,
+  TeamRosterCandidateContract,
+} from "@/lib/api/contracts/team";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
-  Redirect,
-  useLocalSearchParams,
-  useNavigation,
-  useRouter,
-} from "expo-router";
-import { useCallback, useLayoutEffect, useState } from "react";
-import {
-  ActivityIndicator,
   Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
+  type TextInputProps,
 } from "react-native";
 import {
   addTeamMember,
@@ -44,27 +39,46 @@ import {
   updateTeamMemberPosition,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField } from "~/components/create-form";
 import {
   GENDER_LABELS,
   REGION_LABELS,
   SCHOOL_ROLE_LABELS,
   TEAM_ROLE_LABELS,
-  TEAM_VERIFICATION_LABELS,
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
 import { VolleyballPositionChips } from "~/roster/volleyball-position-chips";
-import { useThemeColors, withAlpha } from "~/theme/colors";
-import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import { useThemeColors } from "~/theme/colors";
+import { LoadingScreen, ErrorScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  haptics,
+  HIT_TARGET,
+  Icon,
+  ListGroup,
+  ListRow,
+  radius,
+  ScreenScroll,
+  Section,
+  space,
+  StatusBadge,
+  type,
+} from "~/ui";
+
+type Notice = { tone: "success" | "error"; message: string };
 
 export default function TeamDetailScreen() {
   const colors = useThemeColors();
-  const navigation = useNavigation();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [addEmail, setAddEmail] = useState("");
   const [addJersey, setAddJersey] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
@@ -83,21 +97,22 @@ export default function TeamDetailScreen() {
     "Could not load this team."
   );
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title: data?.name ?? "Team",
-    });
-  }, [data?.name, navigation]);
-
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
   if (!slug) {
     return (
-      <ErrorScreen
-        title="Team unavailable"
-        message="Missing team link."
-        onRetry={() => {}}
-      />
+      <View style={[styles.fill, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="link-outline"
+          title="Team unavailable"
+          message="This team link is missing or incomplete."
+          action={{
+            label: "Back to teams",
+            icon: "chevron-back",
+            onPress: () => router.replace("/teams"),
+          }}
+        />
+      </View>
     );
   }
   if (data === null && error === null) return <LoadingScreen />;
@@ -111,31 +126,82 @@ export default function TeamDetailScreen() {
     );
   }
 
-  async function runAction(action: () => Promise<void>) {
-    setBusy(true);
-    setActionError(null);
+  const team = data;
+  const teamSlug = slug;
+
+  async function runAction(
+    key: string,
+    action: () => Promise<void>,
+    success?: string
+  ): Promise<boolean> {
+    setBusyKey(key);
+    setNotice(null);
     try {
       await action();
+      haptics.success();
+      if (success) setNotice({ tone: "success", message: success });
       await refresh();
+      return true;
     } catch (cause) {
-      setActionError(messageFor(cause, "Something went wrong."));
+      haptics.error();
+      setNotice({ tone: "error", message: messageFor(cause, "Something went wrong.") });
+      return false;
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   }
 
-  function confirmRemove(membershipId: string, name: string) {
-    Alert.alert("Remove player", `Remove ${name} from this team?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () =>
-          void runAction(async () => {
-            await removeTeamMember(slug!, membershipId);
-          }),
-      },
-    ]);
+  function confirmRemove(member: TeamMemberContract) {
+    Alert.alert(
+      member.isViewer ? "Leave team?" : "Remove player?",
+      member.isViewer
+        ? "You’ll be removed from this roster."
+        : `Remove ${member.fullName} from this team?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: member.isViewer ? "Leave" : "Remove",
+          style: "destructive",
+          onPress: () =>
+            void runAction(
+              `remove:${member.membershipId}`,
+              () => removeTeamMember(teamSlug, member.membershipId).then(() => undefined),
+              member.isViewer ? "You left the team." : `Removed ${member.fullName}.`
+            ),
+        },
+      ]
+    );
+  }
+
+  function confirmDelete() {
+    Alert.alert(
+      "Delete team?",
+      `This permanently removes ${team.name} and its roster. This can’t be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete team",
+          style: "destructive",
+          onPress: () =>
+            void (async () => {
+              setBusyKey("delete");
+              setNotice(null);
+              try {
+                await deleteTeam(teamSlug, deleteConfirmName);
+                haptics.success();
+                router.replace("/teams");
+              } catch (cause) {
+                haptics.error();
+                setNotice({
+                  tone: "error",
+                  message: messageFor(cause, "Could not delete this team."),
+                });
+                setBusyKey(null);
+              }
+            })(),
+        },
+      ]
+    );
   }
 
   function jerseyValue(membershipId: string, current: number | null) {
@@ -143,8 +209,19 @@ export default function TeamDetailScreen() {
     return current == null ? "" : String(current);
   }
 
+  function clearDraft(
+    setter: typeof setJerseyDrafts,
+    key: string
+  ) {
+    setter((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   const candidateQuery = candidateSearch.trim().toLowerCase();
-  const filteredCandidates = data.rosterCandidates.filter((candidate) => {
+  const filteredCandidates = team.rosterCandidates.filter((candidate) => {
     if (!candidateQuery) return true;
     const haystack = [
       candidate.fullName,
@@ -163,533 +240,586 @@ export default function TeamDetailScreen() {
   });
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={refresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <Header
-        team={data}
-        colors={colors}
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <Hero
+        team={team}
         onSchoolPress={(schoolSlug) => router.push(`/schools/${schoolSlug}`)}
       />
 
-      {data.viewer.isMember ? (
-        <Text style={[styles.badge, { color: colors.primary }]}>
-          You’re on this roster
-          {data.viewer.role
-            ? ` · ${TEAM_ROLE_LABELS[data.viewer.role] ?? data.viewer.role}`
-            : ""}
-        </Text>
+      {error ? (
+        <Banner
+          title="Couldn’t refresh"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
+        />
+      ) : null}
+      {notice ? (
+        <Banner
+          tone={notice.tone}
+          message={notice.message}
+          onDismiss={() => setNotice(null)}
+        />
       ) : null}
 
-      {actionError ? (
-        <Text style={{ color: colors.destructive }}>{actionError}</Text>
-      ) : null}
-
-      {data.viewer.canManage ? (
-        <View style={[styles.addBox, { borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            Add player
-          </Text>
-          {data.school && data.rosterCandidates.length > 0 ? (
-            <View style={{ gap: 8 }}>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                From school roster
-              </Text>
-              <TextInput
-                value={candidateSearch}
-                onChangeText={setCandidateSearch}
-                placeholder="Search by name, email, or position"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.foreground,
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-              />
-              {filteredCandidates.length === 0 ? (
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  No matching school roster members.
-                </Text>
-              ) : (
-                filteredCandidates.map((candidate) => {
-                  const meta = [
-                    candidate.schoolRole
-                      ? SCHOOL_ROLE_LABELS[candidate.schoolRole] ??
-                        candidate.schoolRole
-                      : null,
-                    candidate.volleyballPosition
-                      ? VOLLEYBALL_POSITION_LABELS[
-                          candidate.volleyballPosition
-                        ] ?? candidate.volleyballPosition
-                      : null,
-                    candidate.jerseyNumber != null
-                      ? `#${candidate.jerseyNumber}`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
-
-                  return (
-                    <View
-                      key={candidate.userId}
-                      style={[styles.candidate, { borderColor: colors.border }]}
-                    >
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <Text
-                          style={{ color: colors.foreground, fontWeight: "700" }}
-                        >
-                          {candidate.fullName}
-                        </Text>
-                        <Text
-                          style={{ color: colors.mutedForeground, fontSize: 12 }}
-                        >
-                          {candidate.email}
-                        </Text>
-                        {meta ? (
-                          <Text
-                            style={{
-                              color: colors.mutedForeground,
-                              fontSize: 12,
-                            }}
-                          >
-                            {meta}
-                          </Text>
-                        ) : null}
-                        <View style={styles.jerseyRow}>
-                          <TextInput
-                            value={candidateJerseys[candidate.userId] ?? ""}
-                            onChangeText={(value) =>
-                              setCandidateJerseys((prev) => ({
-                                ...prev,
-                                [candidate.userId]: value,
-                              }))
-                            }
-                            placeholder="Jersey #"
-                            placeholderTextColor={colors.mutedForeground}
-                            keyboardType="number-pad"
-                            maxLength={2}
-                            style={[
-                              styles.jerseyInput,
-                              {
-                                color: colors.foreground,
-                                borderColor: colors.border,
-                                backgroundColor: colors.card,
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <Pressable
-                        disabled={busy}
-                        onPress={() =>
-                          void runAction(async () => {
-                            const raw =
-                              candidateJerseys[candidate.userId]?.trim() ?? "";
-                            await addTeamMember(slug!, {
-                              userId: candidate.userId,
-                              jerseyNumber: raw === "" ? null : raw,
-                            });
-                            setCandidateJerseys((prev) => {
-                              const next = { ...prev };
-                              delete next[candidate.userId];
-                              return next;
-                            });
-                          })
-                        }
-                      >
-                        <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                          Add
-                        </Text>
-                      </Pressable>
-                    </View>
+      <Section
+        title="Roster"
+        description={
+          team.members.length === 1 ? "1 player" : `${team.members.length} players`
+        }
+      >
+        {team.members.length === 0 ? (
+          <EmptyState
+            compact
+            icon="person-add-outline"
+            title="No players yet"
+            message={
+              team.viewer.canManage
+                ? "Add players below to build your roster."
+                : "Players will appear here once they’re added."
+            }
+          />
+        ) : (
+          <ListGroup>
+            {team.members.map((member) => (
+              <MemberRow
+                key={member.membershipId}
+                member={member}
+                jersey={jerseyValue(member.membershipId, member.jerseyNumber)}
+                busyKey={busyKey}
+                onJerseyChange={(value) =>
+                  setJerseyDrafts((prev) => ({ ...prev, [member.membershipId]: value.replace(/\D/g, "") }))
+                }
+                onSaveJersey={() => {
+                  const raw = jerseyValue(member.membershipId, member.jerseyNumber).trim();
+                  void runAction(
+                    `jersey:${member.membershipId}`,
+                    async () => {
+                      await updateTeamMemberJersey(
+                        teamSlug,
+                        member.membershipId,
+                        raw === "" ? null : Number.parseInt(raw, 10)
+                      );
+                      clearDraft(setJerseyDrafts, member.membershipId);
+                    },
+                    `Saved jersey for ${member.fullName}.`
                   );
-                })
-              )}
-            </View>
-          ) : null}
-
-          {!data.school ? (
-            <>
-              <TextInput
-                value={addEmail}
-                onChangeText={setAddEmail}
-                placeholder="Player email"
-                placeholderTextColor={colors.mutedForeground}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                style={[
-                  styles.input,
-                  {
-                    color: colors.foreground,
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-              />
-              <TextInput
-                value={addJersey}
-                onChangeText={setAddJersey}
-                placeholder="Jersey # (optional)"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="number-pad"
-                maxLength={2}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.foreground,
-                    borderColor: colors.border,
-                    backgroundColor: colors.card,
-                  },
-                ]}
-              />
-              <Pressable
-                disabled={busy || !addEmail.trim()}
-                onPress={() =>
-                  void runAction(async () => {
-                    const raw = addJersey.trim();
-                    await addTeamMember(slug!, {
-                      email: addEmail.trim(),
-                      jerseyNumber: raw === "" ? null : raw,
-                    });
-                    setAddEmail("");
-                    setAddJersey("");
+                }}
+                onPositionChange={(position) =>
+                  void runAction(`position:${member.membershipId}`, async () => {
+                    await updateTeamMemberPosition(
+                      teamSlug,
+                      member.membershipId,
+                      position
+                    );
                   })
                 }
-                style={[
-                  styles.primaryBtn,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity: busy || !addEmail.trim() ? 0.5 : 1,
-                  },
-                ]}
-              >
-                {busy ? (
-                  <ActivityIndicator color={colors.primaryForeground} />
+                onRemove={() => confirmRemove(member)}
+              />
+            ))}
+          </ListGroup>
+        )}
+      </Section>
+
+      {team.viewer.canManage ? (
+        <Section
+          title="Add player"
+          description={
+            team.school
+              ? `From the ${team.school.name} roster`
+              : "Invite by the email they signed up with"
+          }
+        >
+          {team.school ? (
+            team.rosterCandidates.length === 0 ? (
+              <EmptyState
+                compact
+                icon="checkmark-done-outline"
+                title="Everyone’s on this team"
+                message="Add people to the school roster first, then add them here."
+                action={{
+                  label: "Open school",
+                  icon: "school-outline",
+                  onPress: () => router.push(`/schools/${team.school!.slug}`),
+                }}
+              />
+            ) : (
+              <>
+                <SearchInput
+                  value={candidateSearch}
+                  onChangeText={setCandidateSearch}
+                  placeholder="Search by name, email, or position"
+                />
+                {filteredCandidates.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon="search-outline"
+                    title="No matches"
+                    message="No school roster members match that search."
+                  />
                 ) : (
-                  <Text
-                    style={{
-                      color: colors.primaryForeground,
-                      fontWeight: "700",
-                    }}
-                  >
-                    Add by email
-                  </Text>
+                  <ListGroup>
+                    {filteredCandidates.map((candidate) => (
+                      <CandidateRow
+                        key={candidate.userId}
+                        candidate={candidate}
+                        jersey={candidateJerseys[candidate.userId] ?? ""}
+                        busy={busyKey === `add:${candidate.userId}`}
+                        onJerseyChange={(value) =>
+                          setCandidateJerseys((prev) => ({
+                            ...prev,
+                            [candidate.userId]: value,
+                          }))
+                        }
+                        onAdd={() => {
+                          const raw = candidateJerseys[candidate.userId]?.trim() ?? "";
+                          void runAction(
+                            `add:${candidate.userId}`,
+                            async () => {
+                              await addTeamMember(teamSlug, {
+                                userId: candidate.userId,
+                                jerseyNumber: raw === "" ? null : raw,
+                              });
+                              clearDraft(setCandidateJerseys, candidate.userId);
+                            },
+                            `Added ${candidate.fullName} to the roster.`
+                          );
+                        }}
+                      />
+                    ))}
+                  </ListGroup>
                 )}
-              </Pressable>
-            </>
-          ) : data.rosterCandidates.length === 0 ? (
-            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Everyone on the school roster is already on this team. Add people
-              to the school first.
-            </Text>
-          ) : null}
-        </View>
+              </>
+            )
+          ) : (
+            <View style={styles.form}>
+              <FormField label="Player email" colors={colors}>
+                <InlineInput
+                  value={addEmail}
+                  onChangeText={setAddEmail}
+                  placeholder="name@school.edu"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  accessibilityLabel="Player email"
+                />
+              </FormField>
+              <FormField label="Jersey number" hint="Optional" colors={colors}>
+                <InlineInput
+                  value={addJersey}
+                  onChangeText={setAddJersey}
+                  placeholder="12"
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  accessibilityLabel="Jersey number"
+                  style={styles.jerseyField}
+                />
+              </FormField>
+              <Button
+                label="Add player"
+                icon="person-add-outline"
+                fullWidth
+                loading={busyKey === "add:email"}
+                disabled={!addEmail.trim() || busyKey === "add:email"}
+                onPress={() => {
+                  const email = addEmail.trim();
+                  const raw = addJersey.trim();
+                  void runAction(
+                    "add:email",
+                    async () => {
+                      await addTeamMember(teamSlug, {
+                        email,
+                        jerseyNumber: raw === "" ? null : raw,
+                      });
+                      setAddEmail("");
+                      setAddJersey("");
+                    },
+                    `Added ${email} to the roster.`
+                  );
+                }}
+              />
+            </View>
+          )}
+        </Section>
       ) : null}
 
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Roster ({data.members.length})
-      </Text>
-
-      {data.members.length === 0 ? (
-        <Text style={{ color: colors.mutedForeground }}>
-          No players on this roster yet.
-        </Text>
-      ) : (
-        data.members.map((member) => (
-          <View
-            key={member.membershipId}
-            style={[styles.memberRow, { borderColor: colors.border }]}
-          >
-            <View style={{ flex: 1, gap: 6 }}>
-              <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                {member.fullName}
-                {member.isViewer ? " (you)" : ""}
-              </Text>
-              <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                {[
-                  TEAM_ROLE_LABELS[member.role] ?? member.role,
-                  !member.canEditPosition && member.volleyballPosition
-                    ? VOLLEYBALL_POSITION_LABELS[member.volleyballPosition] ??
-                      member.volleyballPosition
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </Text>
-              {member.canEditPosition ? (
-                <VolleyballPositionChips
-                  value={member.volleyballPosition}
-                  onChange={(position) =>
-                    void runAction(async () => {
-                      await updateTeamMemberPosition(
-                        slug!,
-                        member.membershipId,
-                        position
-                      );
-                    })
-                  }
-                  disabled={busy}
-                  colors={colors}
-                />
-              ) : null}
-              {member.canEditJersey ? (
-                <View style={styles.jerseyRow}>
-                  <TextInput
-                    value={jerseyValue(
-                      member.membershipId,
-                      member.jerseyNumber
-                    )}
-                    onChangeText={(value) =>
-                      setJerseyDrafts((prev) => ({
-                        ...prev,
-                        [member.membershipId]: value,
-                      }))
-                    }
-                    placeholder="#"
-                    placeholderTextColor={colors.mutedForeground}
-                    keyboardType="number-pad"
-                    style={[
-                      styles.jerseyInput,
-                      {
-                        color: colors.foreground,
-                        borderColor: colors.border,
-                        backgroundColor: colors.card,
-                      },
-                    ]}
-                  />
-                  <Pressable
-                    disabled={busy}
-                    onPress={() =>
-                      void runAction(async () => {
-                        const raw = jerseyValue(
-                          member.membershipId,
-                          member.jerseyNumber
-                        ).trim();
-                        const jerseyNumber =
-                          raw === "" ? null : Number.parseInt(raw, 10);
-                        await updateTeamMemberJersey(
-                          slug!,
-                          member.membershipId,
-                          jerseyNumber
-                        );
-                        setJerseyDrafts((prev) => {
-                          const next = { ...prev };
-                          delete next[member.membershipId];
-                          return next;
-                        });
-                      })
-                    }
-                  >
-                    <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                      Save #
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : member.jerseyNumber != null ? (
-                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                  #{member.jerseyNumber}
-                </Text>
-              ) : null}
-            </View>
-            {member.canRemove ? (
-              <Pressable
-                disabled={busy}
-                onPress={() =>
-                  confirmRemove(member.membershipId, member.fullName)
-                }
-              >
-                <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-                  Remove
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ))
-      )}
-
-      {data.viewer.canManage ? (
-        <View style={[styles.addBox, { borderColor: colors.destructive }]}>
-          <Text style={[styles.sectionTitle, { color: colors.destructive }]}>
-            Delete team
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Type the team name exactly to confirm. This cannot be undone.
-          </Text>
-          <TextInput
+      {team.viewer.canManage ? (
+        <Section
+          title="Delete team"
+          description="Type the team name exactly to confirm. This can’t be undone."
+        >
+          <InlineInput
             value={deleteConfirmName}
             onChangeText={setDeleteConfirmName}
-            placeholder={data.name}
-            placeholderTextColor={colors.mutedForeground}
-            autoCapitalize="words"
-            style={[
-              styles.input,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-              },
-            ]}
+            placeholder={team.name}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+            accessibilityLabel="Type the team name to confirm"
           />
-          <Pressable
-            accessibilityRole="button"
-            disabled={busy || deleteConfirmName.trim() !== data.name.trim()}
-            onPress={() =>
-              Alert.alert("Delete team?", "This permanently removes the team.", [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () =>
-                    void runAction(async () => {
-                      await deleteTeam(slug!, deleteConfirmName);
-                      router.replace("/teams");
-                    }),
-                },
-              ])
-            }
-            style={[
-              styles.primaryBtn,
-              {
-                backgroundColor: colors.destructive,
-                opacity:
-                  busy || deleteConfirmName.trim() !== data.name.trim()
-                    ? 0.5
-                    : 1,
-              },
-            ]}
-          >
-            <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-              Delete team
-            </Text>
-          </Pressable>
-        </View>
+          <Button
+            label="Delete team"
+            icon="trash-outline"
+            variant="destructiveOutline"
+            fullWidth
+            loading={busyKey === "delete"}
+            disabled={deleteConfirmName.trim() !== team.name.trim()}
+            onPress={confirmDelete}
+          />
+        </Section>
       ) : null}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
-function Header({
+function Hero({
   team,
-  colors,
   onSchoolPress,
 }: {
   team: TeamDetailContract;
-  colors: ReturnType<typeof useThemeColors>;
   onSchoolPress: (slug: string) => void;
 }) {
+  const meta = [
+    GENDER_LABELS[team.gender] ?? team.gender,
+    REGION_LABELS[team.region] ?? team.region,
+    team.season,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
-    <View style={styles.header}>
-      <Text style={[styles.title, { color: colors.foreground }]}>
-        {team.name}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {team.university}
-      </Text>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {GENDER_LABELS[team.gender] ?? team.gender}
-        {" · "}
-        {REGION_LABELS[team.region] ?? team.region}
-        {team.season ? ` · ${team.season}` : ""}
-      </Text>
-      {team.isStandalone ? (
-        <Text
-          style={[
-            styles.verify,
-            {
-              color:
-                team.verificationStatus === "verified"
-                  ? colors.primary
-                  : colors.mutedForeground,
-              backgroundColor: withAlpha(colors.primary, 0.08),
-            },
-          ]}
-        >
-          {TEAM_VERIFICATION_LABELS[team.verificationStatus] ??
-            team.verificationStatus}
-        </Text>
-      ) : null}
+    <View style={styles.hero}>
+      <View style={styles.heroText}>
+        <AppText variant="title" accessibilityRole="header">
+          {team.name}
+        </AppText>
+        <AppText variant="subhead" tone="muted">
+          {team.university}
+        </AppText>
+        <AppText variant="subhead" tone="muted">
+          {meta}
+        </AppText>
+      </View>
+      <View style={styles.badges}>
+        {team.isStandalone ? (
+          <StatusBadge kind="verification" status={team.verificationStatus} />
+        ) : null}
+        {team.viewer.isMember ? (
+          <Badge
+            tone="info"
+            label={
+              team.viewer.role
+                ? `You · ${TEAM_ROLE_LABELS[team.viewer.role] ?? team.viewer.role}`
+                : "You’re on this roster"
+            }
+          />
+        ) : null}
+      </View>
       {team.school ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onSchoolPress(team.school!.slug)}
-        >
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            {team.school.name}
-          </Text>
-        </Pressable>
+        <ListGroup>
+          <ListRow
+            icon="school-outline"
+            title={team.school.name}
+            subtitle="School"
+            onPress={() => onSchoolPress(team.school!.slug)}
+            trailing={
+              <StatusBadge kind="verification" status={team.school.verificationStatus} />
+            }
+          />
+        </ListGroup>
       ) : null}
     </View>
   );
 }
 
+function MemberRow({
+  member,
+  jersey,
+  busyKey,
+  onJerseyChange,
+  onSaveJersey,
+  onPositionChange,
+  onRemove,
+}: {
+  member: TeamMemberContract;
+  jersey: string;
+  busyKey: string | null;
+  onJerseyChange: (value: string) => void;
+  onSaveJersey: () => void;
+  onPositionChange: (position: string | null) => void;
+  onRemove: () => void;
+}) {
+  const positionLabel = member.volleyballPosition
+    ? VOLLEYBALL_POSITION_LABELS[member.volleyballPosition] ?? member.volleyballPosition
+    : null;
+  const savedJersey = member.jerseyNumber == null ? "" : String(member.jerseyNumber);
+  const jerseyDirty = jersey.trim() !== savedJersey;
+  const jerseyBusy = busyKey === `jersey:${member.membershipId}`;
+  const positionBusy = busyKey === `position:${member.membershipId}`;
+  const removeBusy = busyKey === `remove:${member.membershipId}`;
+
+  return (
+    <View style={styles.memberRow}>
+      <View style={styles.memberTop}>
+        <JerseyBadge number={member.jerseyNumber} />
+        <View style={styles.memberText}>
+          <AppText variant="callout" weight="600" numberOfLines={2}>
+            {member.fullName}
+            {member.isViewer ? (
+              <AppText variant="callout" tone="muted">
+                {" "}(you)
+              </AppText>
+            ) : null}
+          </AppText>
+          <View style={styles.badges}>
+            <Badge label={TEAM_ROLE_LABELS[member.role] ?? member.role} />
+            {!member.canEditPosition && positionLabel ? (
+              <Badge label={positionLabel} tone="info" />
+            ) : null}
+          </View>
+        </View>
+        {member.canRemove ? (
+          <Button
+            label={member.isViewer ? "Leave" : "Remove"}
+            variant="destructiveOutline"
+            size="sm"
+            accessibilityLabel={
+              member.isViewer ? "Leave team" : `Remove ${member.fullName}`
+            }
+            loading={removeBusy}
+            onPress={onRemove}
+          />
+        ) : null}
+      </View>
+
+      {member.canEditPosition ? (
+        <View style={styles.editBlock}>
+          <AppText variant="footnote" tone="muted" weight="600">
+            Position
+          </AppText>
+          <VolleyballPositionChips
+            value={member.volleyballPosition}
+            onChange={onPositionChange}
+            disabled={positionBusy}
+          />
+        </View>
+      ) : null}
+
+      {member.canEditJersey ? (
+        <View style={styles.jerseyRow}>
+          <AppText variant="footnote" tone="muted" weight="600">
+            Jersey
+          </AppText>
+          <InlineInput
+            value={jersey}
+            onChangeText={onJerseyChange}
+            placeholder="#"
+            keyboardType="number-pad"
+            maxLength={2}
+            accessibilityLabel={`Jersey number for ${member.fullName}`}
+            style={styles.jerseyField}
+          />
+          {jerseyDirty || jerseyBusy ? (
+            <Button
+              label="Save"
+              variant="outline"
+              size="sm"
+              accessibilityLabel={`Save jersey number for ${member.fullName}`}
+              loading={jerseyBusy}
+              onPress={onSaveJersey}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function CandidateRow({
+  candidate,
+  jersey,
+  busy,
+  onJerseyChange,
+  onAdd,
+}: {
+  candidate: TeamRosterCandidateContract;
+  jersey: string;
+  busy: boolean;
+  onJerseyChange: (value: string) => void;
+  onAdd: () => void;
+}) {
+  const role = candidate.schoolRole
+    ? SCHOOL_ROLE_LABELS[candidate.schoolRole] ?? candidate.schoolRole
+    : null;
+  const position = candidate.volleyballPosition
+    ? VOLLEYBALL_POSITION_LABELS[candidate.volleyballPosition] ??
+      candidate.volleyballPosition
+    : null;
+
+  return (
+    <View style={styles.memberRow}>
+      <View style={styles.memberTop}>
+        <View style={styles.memberText}>
+          <AppText variant="callout" weight="600" numberOfLines={1}>
+            {candidate.fullName}
+          </AppText>
+          <AppText variant="footnote" tone="muted" numberOfLines={1}>
+            {candidate.email}
+          </AppText>
+          {role || position ? (
+            <View style={styles.badges}>
+              {role ? <Badge label={role} /> : null}
+              {position ? <Badge label={position} tone="info" /> : null}
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.jerseyRow}>
+        <InlineInput
+          value={jersey}
+          onChangeText={onJerseyChange}
+          placeholder={
+            candidate.jerseyNumber != null ? `#${candidate.jerseyNumber}` : "Jersey #"
+          }
+          keyboardType="number-pad"
+          maxLength={2}
+          accessibilityLabel={`Jersey number for ${candidate.fullName}`}
+          style={styles.candidateJersey}
+        />
+        <Button
+          label="Add"
+          icon="add"
+          variant="outline"
+          size="sm"
+          accessibilityLabel={`Add ${candidate.fullName}`}
+          loading={busy}
+          onPress={onAdd}
+        />
+      </View>
+    </View>
+  );
+}
+
+function JerseyBadge({ number }: { number: number | null }) {
+  const colors = useThemeColors();
+  return (
+    <View
+      style={[styles.jerseyBadge, { backgroundColor: colors.muted }]}
+      accessibilityLabel={number != null ? `Jersey ${number}` : "No jersey number"}
+    >
+      {number != null ? (
+        <AppText variant="subhead" weight="700">
+          {number}
+        </AppText>
+      ) : (
+        <Icon name="person-outline" size={16} tone="muted" />
+      )}
+    </View>
+  );
+}
+
+function SearchInput(props: Omit<TextInputProps, "style">) {
+  const colors = useThemeColors();
+  return (
+    <View
+      style={[
+        styles.search,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      <Icon name="search" size={18} tone="muted" />
+      <TextInput
+        autoCapitalize="none"
+        autoCorrect={false}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
+        placeholderTextColor={colors.mutedForeground}
+        accessibilityLabel={props.placeholder}
+        {...props}
+        style={[styles.searchInput, { color: colors.foreground }]}
+      />
+    </View>
+  );
+}
+
+function InlineInput({
+  style,
+  ...props
+}: TextInputProps) {
+  const colors = useThemeColors();
+  const [focused, setFocused] = useState(false);
+  return (
+    <TextInput
+      placeholderTextColor={colors.mutedForeground}
+      {...props}
+      onFocus={(event) => {
+        setFocused(true);
+        props.onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocused(false);
+        props.onBlur?.(event);
+      }}
+      style={[
+        styles.input,
+        {
+          color: colors.foreground,
+          backgroundColor: colors.card,
+          borderColor: focused ? colors.primary : colors.border,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  content: { padding: 20, paddingBottom: 40, gap: 14 },
-  header: { gap: 6 },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4 },
-  meta: { fontSize: 14, lineHeight: 20 },
-  verify: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  badge: { fontSize: 14, fontWeight: "700" },
-  sectionTitle: { fontSize: 17, fontWeight: "700", marginTop: 4 },
-  addBox: { borderWidth: 1, borderRadius: 12, padding: 14, gap: 10 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  primaryBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  candidate: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  fill: { flex: 1, justifyContent: "center" },
+  hero: { gap: space.md },
+  heroText: { gap: space.xs },
+  badges: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
+  form: { gap: space.lg },
   memberRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.md,
   },
-  jerseyRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  jerseyInput: {
-    width: 64,
+  memberTop: { flexDirection: "row", alignItems: "center", gap: space.md },
+  memberText: { flex: 1, minWidth: 0, gap: space.xs },
+  editBlock: { gap: space.sm },
+  jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.md },
+  jerseyBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  input: {
+    ...type.body,
+    minHeight: HIT_TARGET,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 15,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  jerseyField: { width: 72, textAlign: "center" },
+  candidateJersey: { flex: 1 },
+  search: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    minHeight: HIT_TARGET,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+  },
+  searchInput: {
+    ...type.body,
+    flex: 1,
+    minHeight: HIT_TARGET,
+    paddingVertical: 0,
   },
 });
