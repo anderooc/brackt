@@ -48,8 +48,8 @@ export const loginSchema = z.object({
 const optionalEnum = <T extends readonly string[]>(values: T) =>
   z
     .union([z.enum(values), z.literal("")])
-    .optional()
-    .transform((value) => (value === "" || value === undefined ? null : value));
+    .nullish()
+    .transform((value) => (value === "" || value == null ? null : value));
 
 export const updateProfileSchema = z.object({
   fullName: z.string().trim().min(1, "Name is required").max(120),
