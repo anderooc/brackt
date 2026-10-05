@@ -17,28 +17,79 @@
  */
 
 import type { NotificationItemContract } from "@/lib/api/contracts/notifications";
-import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Redirect, useNavigation, useRouter } from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { fetchNotifications, markNotificationsRead } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { FormSubmitButton } from "~/components/create-form";
 import { formatRelativeTime } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
 import { useNotificationsRealtimeRevision } from "~/notifications/NotificationsRealtimeProvider";
+import {
+  AppText,
+  Banner,
+  EmptyState,
+  haptics,
+  HeaderButton,
+  Icon,
+  ListGroup,
+  radius,
+  ScreenScroll,
+  space,
+  Tappable,
+} from "~/ui";
+
+function NotificationRow({
+  item,
+  onPress,
+}: {
+  item: NotificationItemContract;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+  const isUnread = !item.readAt;
+  const when = item.createdAt ? formatRelativeTime(item.createdAt) : "";
+  const meta = [item.kindLabel, when].filter(Boolean).join(" · ");
+
+  return (
+    <Tappable
+      onPress={onPress}
+      accessibilityLabel={[isUnread ? "Unread" : null, item.title, item.body, meta]
+        .filter(Boolean)
+        .join(". ")}
+      accessibilityHint={item.mobileHref ? "Opens the related page" : undefined}
+      style={styles.row}
+    >
+      <View style={styles.dotColumn}>
+        {isUnread ? (
+          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+        ) : null}
+      </View>
+      <View style={styles.rowText}>
+        <AppText variant="caption" tone="muted" numberOfLines={1}>
+          {meta}
+        </AppText>
+        <AppText variant="callout" weight={isUnread ? "700" : "400"}>
+          {item.title}
+        </AppText>
+        {item.body ? (
+          <AppText variant="footnote" tone="muted" numberOfLines={3}>
+            {item.body}
+          </AppText>
+        ) : null}
+      </View>
+      {item.mobileHref ? (
+        <Icon name="chevron-forward" size={18} tone="muted" />
+      ) : null}
+    </Tappable>
+  );
+}
 
 export default function NotificationsScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
+  const navigation = useNavigation();
   const { session, isLoading: sessionLoading } = useSession();
   const [items, setItems] = useState<NotificationItemContract[] | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -102,7 +153,9 @@ export default function NotificationsScreen() {
     try {
       const result = await markNotificationsRead();
       setUnreadCount(result.unreadCount);
+      haptics.success();
     } catch (cause) {
+      haptics.error();
       setActionError(messageFor(cause, "Could not mark notifications read."));
       void refresh();
     } finally {
@@ -120,6 +173,21 @@ export default function NotificationsScreen() {
     [markOne, router]
   );
 
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight:
+        unread > 0
+          ? () => (
+              <HeaderButton
+                label="Mark all read"
+                disabled={busy}
+                onPress={() => void markAll()}
+              />
+            )
+          : undefined,
+    });
+  }, [navigation, unread, busy, markAll]);
+
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
   if (error && !notifications) {
@@ -127,160 +195,77 @@ export default function NotificationsScreen() {
       <ErrorScreen
         title="Notifications unavailable"
         message={error}
-        onRetry={() => void refresh()}
+        onRetry={() => void reload()}
       />
     );
   }
-  if (!notifications) return <LoadingScreen />;
+  if (!notifications) return <LoadingScreen rows={6} />;
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setItems(null);
-            void refresh();
-          }}
-          tintColor={colors.primary}
-        />
-      }
+    <ScreenScroll
+      refreshing={isRefreshing}
+      onRefresh={() => void refresh()}
+      gap={space.lg}
     >
-      <View style={[styles.hero, { borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Inbox
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {unread > 0
-            ? `${unread} unread notification${unread === 1 ? "" : "s"}`
-            : "You're all caught up"}
-        </Text>
-      </View>
-
-      {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
+        />
       ) : null}
-
-      {unread > 0 ? (
-        <FormSubmitButton
-          label="Mark all as read"
-          busy={busy}
-          disabled={busy}
-          onPress={() => void markAll()}
-          colors={colors}
+      {actionError ? (
+        <Banner
+          tone="error"
+          message={actionError}
+          onDismiss={() => setActionError(null)}
         />
       ) : null}
 
       {notifications.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          No notifications yet. Tournament updates, host messages, registration
-          changes, and school join requests will appear here.
-        </Text>
+        <EmptyState
+          icon="notifications-outline"
+          title="No notifications yet"
+          message="Tournament updates, host messages, registration changes, and school join requests will show up here."
+        />
       ) : (
-        <View style={styles.list}>
-          {notifications.map((item) => {
-            const isUnread = !item.readAt;
-            return (
-              <Pressable
+        <>
+          <AppText variant="footnote" tone="muted">
+            {unread > 0
+              ? `${unread} unread notification${unread === 1 ? "" : "s"}`
+              : "You're all caught up."}
+          </AppText>
+          <ListGroup>
+            {notifications.map((item) => (
+              <NotificationRow
                 key={item.id}
-                accessibilityRole="button"
+                item={item}
                 onPress={() => openItem(item)}
-                style={[
-                  styles.card,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: isUnread
-                      ? withAlpha(colors.primary, 0.06)
-                      : "transparent",
-                  },
-                ]}
-              >
-                <View style={styles.cardHeader}>
-                  {isUnread ? (
-                    <View
-                      style={[
-                        styles.dot,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    />
-                  ) : (
-                    <View style={styles.dotSpacer} />
-                  )}
-                  <Text
-                    style={[styles.kind, { color: colors.mutedForeground }]}
-                  >
-                    {item.kindLabel}
-                    {item.createdAt
-                      ? ` · ${formatRelativeTime(item.createdAt)}`
-                      : ""}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.itemTitle,
-                    {
-                      color: colors.foreground,
-                      fontWeight: isUnread ? "800" : "700",
-                    },
-                  ]}
-                >
-                  {item.title}
-                </Text>
-                {item.body ? (
-                  <Text style={[styles.body, { color: colors.mutedForeground }]}>
-                    {item.body}
-                  </Text>
-                ) : null}
-                {item.mobileHref ? (
-                  <Text style={[styles.link, { color: colors.primary }]}>
-                    Open →
-                  </Text>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
+              />
+            ))}
+          </ListGroup>
+        </>
       )}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
-  hero: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    gap: 4,
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    paddingVertical: space.md,
+    paddingRight: space.lg,
+    paddingLeft: space.sm,
+    minHeight: 56,
   },
-  title: { fontSize: 22, fontWeight: "800" },
-  meta: { fontSize: 14, lineHeight: 20 },
-  error: { fontSize: 13 },
-  empty: { fontSize: 14, lineHeight: 22 },
-  list: { gap: 10 },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
+  dotColumn: {
+    width: space.md,
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingTop: space.xl + space.xxs,
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dot: { width: 8, height: 8, borderRadius: 999 },
-  dotSpacer: { width: 8, height: 8 },
-  kind: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    flex: 1,
-  },
-  itemTitle: { fontSize: 15, lineHeight: 21 },
-  body: { fontSize: 14, lineHeight: 20 },
-  link: { fontSize: 13, fontWeight: "700", marginTop: 2 },
+  dot: { width: space.sm, height: space.sm, borderRadius: radius.full },
+  rowText: { flex: 1, minWidth: 0, gap: space.xxs },
 });

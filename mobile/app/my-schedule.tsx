@@ -16,18 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Redirect, useFocusEffect } from "expo-router";
+import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fetchPersonalSchedule } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { useThemeColors } from "~/theme/colors";
 import { PersonalSchedulePanel } from "~/tournament/personal-schedule-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, EmptyState, ScreenScroll, space } from "~/ui";
+
+const FALLBACK_ERROR = "Could not load your schedule.";
 
 export default function MyScheduleScreen() {
-  const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const [matches, setMatches] = useState<
     Awaited<ReturnType<typeof fetchPersonalSchedule>>["matches"]
@@ -49,12 +50,28 @@ export default function MyScheduleScreen() {
       const controller = new AbortController();
       void load(controller.signal).catch((cause) => {
         if (controller.signal.aborted) return;
-        setError(messageFor(cause, "Could not load your schedule."));
+        setError(messageFor(cause, FALLBACK_ERROR));
         setReady(true);
       });
       return () => controller.abort();
     }, [session, load])
   );
+
+  const retry = useCallback(() => {
+    setError(null);
+    setReady(false);
+    void load().catch((cause) => {
+      setError(messageFor(cause, FALLBACK_ERROR));
+      setReady(true);
+    });
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    void load()
+      .catch((cause) => setError(messageFor(cause, FALLBACK_ERROR)))
+      .finally(() => setIsRefreshing(false));
+  }, [load]);
 
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
@@ -64,39 +81,40 @@ export default function MyScheduleScreen() {
       <ErrorScreen
         title="Could not load schedule"
         message={error}
-        onRetry={() => void load()}
+        onRetry={retry}
       />
     );
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setIsRefreshing(true);
-            void load()
-              .catch((cause) =>
-                setError(messageFor(cause, "Could not load your schedule."))
-              )
-              .finally(() => setIsRefreshing(false));
+    <ScreenScroll refreshing={isRefreshing} onRefresh={onRefresh} gap={space.lg}>
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: onRefresh }}
+        />
+      ) : null}
+      {matches.length === 0 ? (
+        <EmptyState
+          icon="calendar-outline"
+          title="No upcoming matches"
+          message="Games for your teams, reffing assignments, and scorekeeping shifts show up here once a host posts the schedule."
+          action={{
+            label: "Browse tournaments",
+            icon: "trophy-outline",
+            onPress: () => router.push("/tournaments"),
           }}
         />
-      }
-    >
-      <Text style={[styles.lead, { color: colors.mutedForeground }]}>
-        Upcoming matches for your teams, reffing assignments, and officiating
-        roles.
-      </Text>
-      <PersonalSchedulePanel matches={matches} />
-    </ScrollView>
+      ) : (
+        <>
+          <AppText variant="subhead" tone="muted">
+            Upcoming matches for your teams, plus your reffing and scorekeeping
+            assignments.
+          </AppText>
+          <PersonalSchedulePanel matches={matches} />
+        </>
+      )}
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 32 },
-  lead: { fontSize: 14, lineHeight: 20 },
-});

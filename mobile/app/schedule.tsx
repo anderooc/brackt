@@ -18,16 +18,16 @@
 
 import { Redirect, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text } from "react-native";
 import { fetchGlobalSchedule } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { useThemeColors } from "~/theme/colors";
 import { GlobalSchedulePanel } from "~/tournament/global-schedule-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, ScreenScroll, space } from "~/ui";
+
+const FALLBACK_ERROR = "Could not load schedule.";
 
 export default function ScheduleScreen() {
-  const colors = useThemeColors();
   const { session, isLoading: sessionLoading } = useSession();
   const [matches, setMatches] = useState<
     Awaited<ReturnType<typeof fetchGlobalSchedule>>["matches"]
@@ -49,12 +49,28 @@ export default function ScheduleScreen() {
       const controller = new AbortController();
       void load(controller.signal).catch((cause) => {
         if (controller.signal.aborted) return;
-        setError(messageFor(cause, "Could not load schedule."));
+        setError(messageFor(cause, FALLBACK_ERROR));
         setReady(true);
       });
       return () => controller.abort();
     }, [session, load])
   );
+
+  const retry = useCallback(() => {
+    setError(null);
+    setReady(false);
+    void load().catch((cause) => {
+      setError(messageFor(cause, FALLBACK_ERROR));
+      setReady(true);
+    });
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    void load()
+      .catch((cause) => setError(messageFor(cause, FALLBACK_ERROR)))
+      .finally(() => setIsRefreshing(false));
+  }, [load]);
 
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
@@ -64,42 +80,26 @@ export default function ScheduleScreen() {
       <ErrorScreen
         title="Could not load schedule"
         message={error}
-        onRetry={() => void load()}
+        onRetry={retry}
       />
     );
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setIsRefreshing(true);
-            void load()
-              .catch((cause) =>
-                setError(messageFor(cause, "Could not load schedule."))
-              )
-              .finally(() => setIsRefreshing(false));
-          }}
-        />
-      }
-    >
-      <Text style={[styles.lead, { color: colors.mutedForeground }]}>
-        All scheduled matches across tournaments.
-      </Text>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={onRefresh} gap={space.lg}>
       {error ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text>
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: onRefresh }}
+        />
+      ) : null}
+      {matches.length > 0 ? (
+        <AppText variant="subhead" tone="muted">
+          Scheduled matches across every tournament.
+        </AppText>
       ) : null}
       <GlobalSchedulePanel matches={matches} />
-    </ScrollView>
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 32 },
-  lead: { fontSize: 14, lineHeight: 20 },
-  error: { fontSize: 13 },
-});
