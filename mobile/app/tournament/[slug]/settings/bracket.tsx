@@ -17,19 +17,9 @@
  */
 
 import type { TournamentBracketSettingsContract } from "@/lib/api/contracts/tournament-ops";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   fetchTournamentBracketSettings,
   regenerateTournamentHostBrackets,
@@ -37,12 +27,27 @@ import {
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { BRACKET_COUNT_OPTIONS } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { FormField, FormTextInput } from "~/components/create-form";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  Banner,
+  BottomBar,
+  Button,
+  Card,
+  Icon,
+  ListGroup,
+  ListRow,
+  Section,
+  haptics,
+  space,
+  ScreenScroll,
+} from "~/ui";
 
 export default function BracketSettingsScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [draft, setDraft] = useState<TournamentBracketSettingsContract | null>(
@@ -73,8 +78,7 @@ export default function BracketSettingsScreen() {
     return (
       <ErrorScreen
         title="Tournament unavailable"
-        message="Missing tournament link."
-        onRetry={() => {}}
+        message="This link is missing the tournament. Go back and open it again."
       />
     );
   }
@@ -104,298 +108,210 @@ export default function BracketSettingsScreen() {
       });
       setDraft(next);
       setSaved(true);
+      haptics.success();
       await refresh();
     } catch (cause) {
       setActionError(messageFor(cause, "Could not save bracket settings."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
   }
 
   const locked = draft.locked && !draft.canRegenerate;
+  const dirty =
+    data.bracketCount !== draft.bracketCount ||
+    data.goldTeamCount !== draft.goldTeamCount ||
+    data.silverTeamCount !== draft.silverTeamCount;
+
+  function updateCount(key: "goldTeamCount" | "silverTeamCount", text: string) {
+    setSaved(false);
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            [key]: text.trim() === "" ? null : Number.parseInt(text, 10) || null,
+          }
+        : prev
+    );
+  }
+
+  function confirmRegenerate() {
+    haptics.warning();
+    Alert.alert(
+      "Regenerate brackets?",
+      "This clears current bracket matches and re-seeds from pool standings.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Regenerate",
+          style: "destructive",
+          onPress: () => {
+            setRegenerating(true);
+            setActionError(null);
+            void regenerateTournamentHostBrackets(slug!)
+              .then((result) => {
+                setDraft(result.settings);
+                setSaved(true);
+                haptics.success();
+                void refresh();
+              })
+              .catch((cause) => {
+                setActionError(messageFor(cause, "Could not regenerate brackets."));
+                haptics.error();
+              })
+              .finally(() => setRegenerating(false));
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Bracket settings
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          How pool teams advance into gold / silver / bronze after pool play.
-        </Text>
-
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
         {!draft.hasPoolToBracket ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 15 }}>
-            Add a pool-to-bracket division on the web Setup tab before configuring
-            bracket tiers.
-          </Text>
+          <Card>
+            <ListRow
+              icon="grid-outline"
+              title="Add pools first"
+              subtitle="Bracket tiers need at least one pool that feeds into brackets. Pools are added in Setup."
+              onPress={() => router.push(`/tournament/${slug}/host/setup`)}
+            />
+          </Card>
         ) : null}
 
         {locked ? (
-          <Text style={{ color: colors.destructive, fontSize: 14 }}>
-            {draft.regenerateBlockedReason ??
-              "Bracket settings are locked while bracket play is in progress."}
-          </Text>
+          <Banner
+            tone="warning"
+            title="Locked"
+            message={
+              draft.regenerateBlockedReason ??
+              "Bracket settings are locked while bracket play is in progress."
+            }
+          />
         ) : null}
-
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          Structure
-        </Text>
-        {BRACKET_COUNT_OPTIONS.map((option) => {
-          const selected = draft.bracketCount === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              disabled={locked}
-              onPress={() =>
-                setDraft((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        bracketCount: option.value,
-                        goldTeamCount:
-                          option.value >= 2 ? (prev.goldTeamCount ?? 4) : null,
-                        silverTeamCount:
-                          option.value === 3
-                            ? (prev.silverTeamCount ?? 4)
-                            : null,
-                      }
-                    : prev
-                )
-              }
-              style={[
-                styles.option,
-                {
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected
-                    ? withAlpha(colors.primary, 0.1)
-                    : "transparent",
-                  opacity: locked ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Section
+          title="Structure"
+          description="How pool teams advance into gold, silver, and bronze after pool play."
+        >
+          <ListGroup>
+            {BRACKET_COUNT_OPTIONS.map((option) => {
+              const selected = draft.bracketCount === option.value;
+              return (
+                <ListRow
+                  key={option.value}
+                  title={option.label}
+                  disabled={locked}
+                  chevron={false}
+                  accessibilityLabel={`${option.label}${selected ? ", selected" : ""}`}
+                  trailing={
+                    <Icon
+                      name={selected ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      tone={selected ? "primary" : "muted"}
+                    />
+                  }
+                  onPress={() => {
+                    setSaved(false);
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            bracketCount: option.value,
+                            goldTeamCount:
+                              option.value >= 2 ? (prev.goldTeamCount ?? 4) : null,
+                            silverTeamCount:
+                              option.value === 3 ? (prev.silverTeamCount ?? 4) : null,
+                          }
+                        : prev
+                    );
+                  }}
+                />
+              );
+            })}
+          </ListGroup>
+        </Section>
 
         {draft.bracketCount >= 2 ? (
-          <>
-            <Text style={[styles.section, { color: colors.foreground }]}>
-              Gold teams
-            </Text>
-            <TextInput
-              editable={!locked}
-              keyboardType="number-pad"
-              value={
-                draft.goldTeamCount == null ? "" : String(draft.goldTeamCount)
-              }
-              onChangeText={(text) =>
-                setDraft((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        goldTeamCount:
-                          text.trim() === ""
-                            ? null
-                            : Number.parseInt(text, 10) || null,
-                      }
-                    : prev
-                )
-              }
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="e.g. 8"
-              placeholderTextColor={colors.mutedForeground}
-            />
-          </>
-        ) : null}
-
-        {draft.bracketCount === 3 ? (
-          <>
-            <Text style={[styles.section, { color: colors.foreground }]}>
-              Silver teams
-            </Text>
-            <TextInput
-              editable={!locked}
-              keyboardType="number-pad"
-              value={
-                draft.silverTeamCount == null
-                  ? ""
-                  : String(draft.silverTeamCount)
-              }
-              onChangeText={(text) =>
-                setDraft((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        silverTeamCount:
-                          text.trim() === ""
-                            ? null
-                            : Number.parseInt(text, 10) || null,
-                      }
-                    : prev
-                )
-              }
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder="e.g. 8"
-              placeholderTextColor={colors.mutedForeground}
-            />
-          </>
-        ) : null}
-
-        {draft.totalBracketTeams > 0 ? (
-          <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>
-            {draft.totalBracketTeams} teams currently in pool play for brackets.
-          </Text>
-        ) : null}
-
-        {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
-        ) : null}
-        {saved ? (
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Saved.
-          </Text>
-        ) : null}
-      </ScrollView>
-
-      <View
-        style={[
-          styles.footer,
-          { borderTopColor: colors.border, backgroundColor: colors.background },
-        ]}
-      >
-        {draft.canRegenerate ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={regenerating || busy}
-            onPress={() =>
-              Alert.alert(
-                "Regenerate brackets?",
-                "This clears current bracket matches and re-seeds from pool standings.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Regenerate",
-                    style: "destructive",
-                    onPress: () => {
-                      setRegenerating(true);
-                      setActionError(null);
-                      void regenerateTournamentHostBrackets(slug!)
-                        .then((result) => {
-                          setDraft(result.settings);
-                          setSaved(true);
-                          void refresh();
-                        })
-                        .catch((cause) => {
-                          setActionError(
-                            messageFor(cause, "Could not regenerate brackets.")
-                          );
-                        })
-                        .finally(() => setRegenerating(false));
-                    },
-                  },
-                ]
-              )
+          <Section
+            title="Teams per bracket"
+            description={
+              draft.totalBracketTeams > 0
+                ? `${draft.totalBracketTeams} teams are in pool play feeding brackets.`
+                : undefined
             }
-            style={[
-              styles.regenerate,
-              {
-                borderColor: colors.destructive,
-                opacity: regenerating || busy ? 0.5 : 1,
-              },
-            ]}
           >
-            {regenerating ? (
-              <ActivityIndicator color={colors.destructive} />
-            ) : (
-              <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-                Regenerate brackets
-              </Text>
-            )}
-          </Pressable>
+            <View style={styles.counts}>
+              <View style={styles.countField}>
+                <FormField label="Gold" colors={colors}>
+                  <FormTextInput
+                    editable={!locked}
+                    keyboardType="number-pad"
+                    value={draft.goldTeamCount == null ? "" : String(draft.goldTeamCount)}
+                    onChangeText={(text) => updateCount("goldTeamCount", text)}
+                    placeholder="e.g. 8"
+                    accessibilityLabel="Gold bracket teams"
+                    colors={colors}
+                  />
+                </FormField>
+              </View>
+              {draft.bracketCount === 3 ? (
+                <View style={styles.countField}>
+                  <FormField label="Silver" colors={colors}>
+                    <FormTextInput
+                      editable={!locked}
+                      keyboardType="number-pad"
+                      value={draft.silverTeamCount == null ? "" : String(draft.silverTeamCount)}
+                      onChangeText={(text) => updateCount("silverTeamCount", text)}
+                      placeholder="e.g. 8"
+                      accessibilityLabel="Silver bracket teams"
+                      colors={colors}
+                    />
+                  </FormField>
+                </View>
+              ) : null}
+            </View>
+          </Section>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy || locked || !draft.hasPoolToBracket}
+
+        {draft.canRegenerate ? (
+          <Section
+            title="Regenerate"
+            description="Clears bracket matches and re-seeds from current pool standings."
+          >
+            <Button
+              label="Regenerate brackets"
+              icon="refresh"
+              variant="destructiveOutline"
+              fullWidth
+              loading={regenerating}
+              disabled={busy}
+              onPress={confirmRegenerate}
+            />
+          </Section>
+        ) : null}
+      </ScreenScroll>
+
+      <BottomBar>
+        {actionError ? (
+          <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
+        ) : null}
+        {saved && !dirty ? <Banner tone="success" message="Bracket settings saved." /> : null}
+        <Button
+          label="Save changes"
+          fullWidth
+          loading={busy}
+          disabled={!dirty || locked || !draft.hasPoolToBracket || regenerating}
           onPress={() => void onSave()}
-          style={[
-            styles.save,
-            {
-              backgroundColor: colors.primary,
-              opacity: busy || locked || !draft.hasPoolToBracket ? 0.5 : 1,
-            },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-              Save bracket settings
-            </Text>
-          )}
-        </Pressable>
-      </View>
+        />
+      </BottomBar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 10 },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22, marginBottom: 8 },
-  section: { fontSize: 17, fontWeight: "700", marginTop: 12 },
-  option: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  footer: { borderTopWidth: 1, paddingHorizontal: 20, paddingVertical: 12, gap: 10 },
-  regenerate: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  save: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  counts: { flexDirection: "row", gap: space.md },
+  countField: { flex: 1 },
 });

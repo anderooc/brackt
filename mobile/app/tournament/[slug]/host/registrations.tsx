@@ -23,16 +23,7 @@ import type {
 import { Redirect, useLocalSearchParams } from "expo-router";
 import * as Crypto from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, TextInput, View } from "react-native";
 import {
   checkInTournamentHostRegistrations,
   bulkAssignTournamentHostRegistrations,
@@ -44,18 +35,33 @@ import {
   updateTournamentHostRegistration,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { FormSubmitButton } from "~/components/create-form";
-import {
-  formatFeeCents,
-  paymentStatusLabel,
-  REGISTRATION_STATUS_LABELS,
-} from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { formatFeeCents, paymentStatusLabel } from "~/lib/format";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  HIT_TARGET,
+  Icon,
+  ScreenScroll,
+  SegmentedControl,
+  StatusBadge,
+  Tappable,
+  haptics,
+  radius,
+  space,
+} from "~/ui";
 
 type TabId = "checkin" | "pending" | "teams" | "waitlist";
 type CheckInFilter = "all" | "ready" | "checked_in" | "blocked";
+type RegistrationsResult = { registrations: TournamentHostRegistrationsContract };
 
 function matchesSearch(row: TournamentHostRegistrationContract, query: string) {
   const needle = query.trim().toLowerCase();
@@ -67,15 +73,23 @@ function matchesSearch(row: TournamentHostRegistrationContract, query: string) {
   );
 }
 
+function poolLabel(divisionName: string | null) {
+  if (!divisionName) return null;
+  return /^pool\b/i.test(divisionName) ? divisionName : `Pool ${divisionName}`;
+}
+
+function plural(count: number, word: string) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
 export default function TournamentHostRegistrationsScreen() {
-  const colors = useThemeColors();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug, tab: tabParam } = useLocalSearchParams<{
     slug: string;
     tab?: string;
   }>();
   const [tab, setTab] = useState<TabId>("pending");
-  const [payload, setPayload] =
+  const [registrations, setRegistrations] =
     useState<TournamentHostRegistrationsContract | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -86,30 +100,27 @@ export default function TournamentHostRegistrationsScreen() {
     (signal?: AbortSignal) => fetchTournamentHostRegistrations(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, refreshError, isRefreshing, refresh } = usePublicLoader(
     load,
     "Could not load registrations."
   );
 
-  const registrations = payload ?? data?.registrations ?? null;
+  useEffect(() => {
+    if (data) setRegistrations(data.registrations);
+  }, [data]);
 
   useEffect(() => {
-    if (!registrations) return;
-    if (tabParam === "checkin" && registrations.canCheckIn) {
+    if (!registrations || initialTabSet.current) return;
+    initialTabSet.current = true;
+    if (registrations.canCheckIn && (tabParam === "checkin" || !tabParam)) {
       setTab("checkin");
-      initialTabSet.current = true;
-      return;
-    }
-    if (!initialTabSet.current && registrations.canCheckIn) {
-      setTab("checkin");
-      initialTabSet.current = true;
+    } else if (!registrations.registrations.some((row) => row.status === "pending")) {
+      setTab("teams");
     }
   }, [registrations, tabParam]);
 
   const pending = useMemo(
-    () =>
-      registrations?.registrations.filter((row) => row.status === "pending") ??
-      [],
+    () => registrations?.registrations.filter((row) => row.status === "pending") ?? [],
     [registrations]
   );
   const teams = useMemo(
@@ -119,43 +130,30 @@ export default function TournamentHostRegistrationsScreen() {
       ) ?? [],
     [registrations]
   );
-  const checkInTeams = useMemo(
-    () =>
-      registrations?.registrations.filter(
-        (row) => row.status === "confirmed" || row.status === "checked_in"
-      ) ?? [],
-    [registrations]
-  );
   const readyToCheckIn = useMemo(
     () =>
-      checkInTeams.filter(
-        (row) =>
-          row.status === "confirmed" && !(row.waiver?.blocksCheckIn ?? false)
+      teams.filter(
+        (row) => row.status === "confirmed" && !(row.waiver?.blocksCheckIn ?? false)
       ),
-    [checkInTeams]
-  );
-
-  const applyPayload = useCallback(
-    (next: TournamentHostRegistrationsContract) => {
-      setPayload(next);
-    },
-    []
+    [teams]
   );
 
   const runAction = useCallback(
-    async (id: string, action: () => Promise<{ registrations: TournamentHostRegistrationsContract }>) => {
+    async (id: string, action: () => Promise<RegistrationsResult>) => {
       setBusyId(id);
       setActionError(null);
       try {
         const result = await action();
-        applyPayload(result.registrations);
+        setRegistrations(result.registrations);
+        haptics.success();
       } catch (cause) {
         setActionError(messageFor(cause, "Could not update registration."));
+        haptics.error();
       } finally {
         setBusyId(null);
       }
     },
-    [applyPayload]
+    []
   );
 
   if (sessionLoading) return <LoadingScreen />;
@@ -164,8 +162,7 @@ export default function TournamentHostRegistrationsScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => void refresh()}
+        message="This link is missing the tournament. Go back and open it again."
       />
     );
   }
@@ -178,108 +175,60 @@ export default function TournamentHostRegistrationsScreen() {
       />
     );
   }
-  if (!registrations) return <LoadingScreen />;
+  if (!registrations) return <LoadingScreen rows={5} />;
 
   const locked = !registrations.canManage;
+  const activeTab = tab === "checkin" && !registrations.canCheckIn ? "pending" : tab;
+  const tabs = [
+    ...(registrations.canCheckIn
+      ? [{ id: "checkin" as const, label: "Check-in", count: readyToCheckIn.length }]
+      : []),
+    { id: "pending" as const, label: "Pending", count: pending.length },
+    { id: "teams" as const, label: "Teams", count: teams.length },
+    { id: "waitlist" as const, label: "Waitlist", count: registrations.waitlist.length },
+  ];
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setPayload(null);
-            void refresh();
-          }}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <SegmentedControl
+        options={tabs}
+        value={activeTab}
+        onChange={setTab}
+        accessibilityLabel="Registration views"
+      />
+
       {locked ? (
-        <Text style={[styles.locked, { color: colors.mutedForeground }]}>
-          Registrations are read-only in the current tournament stage.
-        </Text>
+        <Banner
+          tone="info"
+          message="Registrations are read-only at this stage of the tournament."
+        />
       ) : null}
+      {refreshError ? <Banner tone="warning" message={refreshError} /> : null}
       {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
       ) : null}
 
-      <View style={styles.tabs}>
-        {(
-          [
-            ...(registrations.canCheckIn
-              ? ([
-                  [
-                    "checkin",
-                    `Check-in (${readyToCheckIn.length} left)`,
-                  ],
-                ] as const)
-              : []),
-            ["pending", `Pending (${pending.length})`],
-            ["teams", `Teams (${teams.length})`],
-            ["waitlist", `Waitlist (${registrations.waitlist.length})`],
-          ] as const
-        ).map(([id, label]) => {
-          const selected = tab === id;
-          return (
-            <Pressable
-              key={id}
-              onPress={() => setTab(id as TabId)}
-              style={[
-                styles.tab,
-                {
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected
-                    ? withAlpha(colors.primary, 0.1)
-                    : "transparent",
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: selected ? colors.primary : colors.foreground,
-                  fontWeight: selected ? "700" : "500",
-                }}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {tab === "checkin" && registrations.canCheckIn ? (
+      {activeTab === "checkin" ? (
         <CheckInTab
-          rows={checkInTeams}
+          rows={teams}
           readyCount={readyToCheckIn.length}
           waiverRequired={registrations.waiverRequiredBeforeCheckIn}
           showWaiver={registrations.waiverEnabled}
           busyId={busyId}
           onCheckIn={(id) =>
             void runAction(id, () =>
-              updateTournamentHostRegistration(slug, id, {
-                status: "checked_in",
-              }).then((result) => ({ registrations: result.registrations }))
+              updateTournamentHostRegistration(slug, id, { status: "checked_in" })
             )
           }
           onUndoCheckIn={(id, teamName) =>
-            Alert.alert("Undo check-in?", `Mark ${teamName} as not checked in?`, [
+            Alert.alert("Undo check-in?", `${teamName} will be marked as not checked in.`, [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Undo",
+                text: "Undo check-in",
+                style: "destructive",
                 onPress: () =>
                   void runAction(id, () =>
-                    updateTournamentHostRegistration(slug, id, {
-                      status: "confirmed",
-                    }).then((result) => ({
-                      registrations: result.registrations,
-                    }))
+                    updateTournamentHostRegistration(slug, id, { status: "confirmed" })
                   ),
               },
             ])
@@ -289,26 +238,23 @@ export default function TournamentHostRegistrationsScreen() {
             if (ids.length === 0) return;
             Alert.alert(
               "Check in all ready teams?",
-              `${ids.length} team${ids.length === 1 ? "" : "s"} will be checked in.`,
+              `${plural(ids.length, "team")} will be checked in.`,
               [
                 { text: "Cancel", style: "cancel" },
                 {
                   text: "Check in all",
                   onPress: () =>
                     void runAction("bulk-checkin", () =>
-                      checkInTournamentHostRegistrations(slug, ids).then(
-                        (result) => ({ registrations: result.registrations })
-                      )
+                      checkInTournamentHostRegistrations(slug, ids)
                     ),
                 },
               ]
             );
           }}
-          colors={colors}
         />
       ) : null}
 
-      {tab === "pending" ? (
+      {activeTab === "pending" ? (
         <PendingTab
           rows={pending}
           locked={locked}
@@ -316,32 +262,27 @@ export default function TournamentHostRegistrationsScreen() {
           showPayment={registrations.paymentEnabled}
           showWaiver={registrations.waiverEnabled}
           onConfirm={(id) =>
-            void runAction(id, () =>
-              confirmTournamentHostRegistrations(slug, [id]).then((result) => ({
-                registrations: result.registrations,
-              }))
-            )
+            void runAction(id, () => confirmTournamentHostRegistrations(slug, [id]))
           }
           onReject={(id, teamName) =>
-            Alert.alert("Reject registration?", `Remove ${teamName}?`, [
-              { text: "Cancel", style: "cancel" },
-              {
-                text: "Reject",
-                style: "destructive",
-                onPress: () =>
-                  void runAction(id, () =>
-                    removeTournamentHostRegistrations(slug, [id]).then(
-                      (result) => ({ registrations: result.registrations })
-                    )
-                  ),
-              },
-            ])
+            Alert.alert(
+              "Reject registration?",
+              `${teamName} will be removed from the tournament.`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Reject",
+                  style: "destructive",
+                  onPress: () =>
+                    void runAction(id, () => removeTournamentHostRegistrations(slug, [id])),
+                },
+              ]
+            )
           }
-          colors={colors}
         />
       ) : null}
 
-      {tab === "teams" ? (
+      {activeTab === "teams" ? (
         <TeamsTab
           rows={teams}
           divisions={registrations.divisions}
@@ -351,23 +292,18 @@ export default function TournamentHostRegistrationsScreen() {
           showWaiver={registrations.waiverEnabled}
           onAssignDivision={(id, divisionId) =>
             void runAction(id, () =>
-              updateTournamentHostRegistration(slug, id, { divisionId }).then(
-                (result) => ({ registrations: result.registrations })
-              )
+              updateTournamentHostRegistration(slug, id, { divisionId })
             )
           }
           onBulkAssignDivision={(ids, divisionId) =>
-            void runAction("bulk", () =>
-              bulkAssignTournamentHostRegistrations(slug, ids, divisionId).then(
-                (result) => ({ registrations: result.registrations })
-              )
+            runAction("bulk", () =>
+              bulkAssignTournamentHostRegistrations(slug, ids, divisionId)
             )
           }
-          colors={colors}
         />
       ) : null}
 
-      {tab === "waitlist" ? (
+      {activeTab === "waitlist" ? (
         <WaitlistTab
           rows={registrations.waitlist}
           locked={locked}
@@ -376,35 +312,28 @@ export default function TournamentHostRegistrationsScreen() {
             if (!promoteOperationId.current) {
               promoteOperationId.current = Crypto.randomUUID();
             }
+            const operationId = promoteOperationId.current;
             void runAction("promote", () =>
-              promoteTournamentHostWaitlist(
-                slug,
-                promoteOperationId.current!
-              ).then((result) => {
+              promoteTournamentHostWaitlist(slug, operationId).then((result) => {
                 promoteOperationId.current = null;
-                return { registrations: result.registrations };
+                return result;
               })
             );
           }}
           onRemove={(id, teamName) =>
-            Alert.alert("Remove from waitlist?", teamName, [
+            Alert.alert("Remove from waitlist?", `${teamName} will lose its place in line.`, [
               { text: "Cancel", style: "cancel" },
               {
                 text: "Remove",
                 style: "destructive",
                 onPress: () =>
-                  void runAction(id, () =>
-                    removeTournamentHostWaitlistEntry(slug, id).then(
-                      (result) => ({ registrations: result.registrations })
-                    )
-                  ),
+                  void runAction(id, () => removeTournamentHostWaitlistEntry(slug, id)),
               },
             ])
           }
-          colors={colors}
         />
       ) : null}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
@@ -416,7 +345,6 @@ function PendingTab({
   showWaiver,
   onConfirm,
   onReject,
-  colors,
 }: {
   rows: TournamentHostRegistrationContract[];
   locked: boolean;
@@ -425,55 +353,61 @@ function PendingTab({
   showWaiver: boolean;
   onConfirm: (id: string) => void;
   onReject: (id: string, teamName: string) => void;
-  colors: ReturnType<typeof useThemeColors>;
 }) {
   if (rows.length === 0) {
     return (
-      <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-        No pending registrations.
-      </Text>
+      <EmptyState
+        icon="mail-unread-outline"
+        title="No pending registrations"
+        message="New registrations that need your approval show up here."
+      />
     );
   }
 
   return (
     <View style={styles.list}>
-      {rows.map((row) => (
-        <RegistrationCard
-          key={row.id}
-          row={row}
-          colors={colors}
-          showPayment={showPayment}
-          showWaiver={showWaiver}
-          actions={
-            locked ? null : (
-              <View style={styles.actions}>
-                <Pressable
-                  disabled={busyId === row.id || row.payment?.blocksConfirm}
-                  onPress={() => onConfirm(row.id)}
-                  style={[
-                    styles.action,
-                    { borderColor: colors.primary },
-                    row.payment?.blocksConfirm ? styles.actionDisabled : null,
-                  ]}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    Confirm
-                  </Text>
-                </Pressable>
-                <Pressable
-                  disabled={busyId === row.id}
-                  onPress={() => onReject(row.id, row.teamName)}
-                  style={[styles.action, { borderColor: colors.destructive }]}
-                >
-                  <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-                    Reject
-                  </Text>
-                </Pressable>
-              </View>
-            )
-          }
-        />
-      ))}
+      {rows.map((row) => {
+        const busy = busyId === row.id;
+        const paymentBlocks = row.payment?.blocksConfirm ?? false;
+        return (
+          <RegistrationCard
+            key={row.id}
+            row={row}
+            showPayment={showPayment}
+            showWaiver={showWaiver}
+            footer={
+              locked ? null : (
+                <>
+                  {paymentBlocks ? (
+                    <AppText variant="footnote" tone="warning">
+                      Payment must be received before confirming.
+                    </AppText>
+                  ) : null}
+                  <View style={styles.actions}>
+                    <Button
+                      label="Confirm"
+                      size="sm"
+                      icon="checkmark"
+                      loading={busy}
+                      disabled={paymentBlocks || (busyId !== null && !busy)}
+                      onPress={() => onConfirm(row.id)}
+                      style={styles.flex}
+                    />
+                    <Button
+                      label="Reject"
+                      size="sm"
+                      variant="destructiveOutline"
+                      disabled={busyId !== null}
+                      onPress={() => onReject(row.id, row.teamName)}
+                      style={styles.flex}
+                    />
+                  </View>
+                </>
+              )
+            }
+          />
+        );
+      })}
     </View>
   );
 }
@@ -487,7 +421,6 @@ function TeamsTab({
   showWaiver,
   onAssignDivision,
   onBulkAssignDivision,
-  colors,
 }: {
   rows: TournamentHostRegistrationContract[];
   divisions: TournamentHostRegistrationsContract["divisions"];
@@ -496,20 +429,20 @@ function TeamsTab({
   showPayment: boolean;
   showWaiver: boolean;
   onAssignDivision: (id: string, divisionId: string | null) => void;
-  onBulkAssignDivision: (ids: string[], divisionId: string | null) => void;
-  colors: ReturnType<typeof useThemeColors>;
+  onBulkAssignDivision: (ids: string[], divisionId: string | null) => Promise<void>;
 }) {
-  const showBulkSelect = divisions.length > 0 && !locked;
+  const canAssign = divisions.length > 0 && !locked;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
-  const allRegIds = useMemo(() => rows.map((row) => row.id), [rows]);
-  const selectedCount = useMemo(
-    () => allRegIds.filter((id) => selectedIds.has(id)).length,
-    [allRegIds, selectedIds]
+  const liveSelectedIds = useMemo(
+    () => rows.map((row) => row.id).filter((id) => selectedIds.has(id)),
+    [rows, selectedIds]
   );
-  const allSelected = selectedCount > 0 && selectedCount === allRegIds.length;
+  const selectedCount = liveSelectedIds.length;
+  const allSelected = selectedCount > 0 && selectedCount === rows.length;
 
   const toggleRowSelected = useCallback((regId: string) => {
+    haptics.selection();
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(regId)) next.delete(regId);
@@ -518,194 +451,149 @@ function TeamsTab({
     });
   }, []);
 
-  const toggleAllSelected = useCallback(() => {
-    setSelectedIds(allSelected ? new Set() : new Set(allRegIds));
-  }, [allRegIds, allSelected]);
-
-  const clearSelection = useCallback(() => {
-    setSelectedIds(new Set());
-  }, []);
-
-  const liveSelectedIds = useMemo(
-    () => allRegIds.filter((id) => selectedIds.has(id)),
-    [allRegIds, selectedIds]
+  const bulkAssign = useCallback(
+    async (divisionId: string | null) => {
+      await onBulkAssignDivision(liveSelectedIds, divisionId);
+      setSelectedIds(new Set());
+    },
+    [liveSelectedIds, onBulkAssignDivision]
   );
 
   if (rows.length === 0) {
     return (
-      <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-        No confirmed teams yet.
-      </Text>
+      <EmptyState
+        icon="people-outline"
+        title="No confirmed teams yet"
+        message="Teams appear here once you confirm their registration."
+      />
     );
   }
 
+  const bulkBusy = busyId === "bulk";
+
   return (
     <View style={styles.list}>
-      {showBulkSelect ? (
-        <View style={[styles.bulkBar, { borderColor: colors.border }]}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={toggleAllSelected}
-            style={styles.bulkSelectAll}
-          >
-            <Text style={{ color: colors.primary, fontWeight: "700" }}>
-              {allSelected ? "Clear all" : "Select all"}
-            </Text>
-          </Pressable>
+      {canAssign ? (
+        <Card>
+          <View style={styles.bulkHeader}>
+            <AppText variant="subhead" weight="600" style={styles.flex}>
+              {selectedCount > 0 ? `${selectedCount} selected` : "Assign pools in bulk"}
+            </AppText>
+            <Button
+              label={allSelected ? "Clear" : "Select all"}
+              variant="ghost"
+              size="sm"
+              onPress={() =>
+                setSelectedIds(allSelected ? new Set() : new Set(rows.map((row) => row.id)))
+              }
+            />
+          </View>
           {selectedCount > 0 ? (
-            <>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {selectedCount} selected
-              </Text>
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                Assign pool
-              </Text>
-              <View style={styles.chips}>
-                <Pressable
-                  disabled={busyId === "bulk"}
-                  onPress={() => {
-                    onBulkAssignDivision(liveSelectedIds, null);
-                    clearSelection();
-                  }}
-                  style={[styles.chip, { borderColor: colors.border }]}
-                >
-                  <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                    Unassigned
-                  </Text>
-                </Pressable>
-                {divisions.map((division) => (
-                  <Pressable
-                    key={division.id}
-                    disabled={busyId === "bulk"}
-                    onPress={() => {
-                      onBulkAssignDivision(liveSelectedIds, division.id);
-                      clearSelection();
-                    }}
-                    style={[styles.chip, { borderColor: colors.border }]}
-                  >
-                    <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                      {division.name}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          ) : null}
-        </View>
+            <ChipRow>
+              <Chip
+                label="Unassigned"
+                disabled={bulkBusy}
+                onPress={() => void bulkAssign(null)}
+              />
+              {divisions.map((division) => (
+                <Chip
+                  key={division.id}
+                  label={division.name}
+                  disabled={bulkBusy}
+                  onPress={() => void bulkAssign(division.id)}
+                />
+              ))}
+            </ChipRow>
+          ) : (
+            <AppText variant="footnote" tone="muted">
+              Select teams below, then pick a pool to move them all at once.
+            </AppText>
+          )}
+        </Card>
       ) : null}
 
-      {rows.map((row) => (
-        <RegistrationCard
-          key={row.id}
-          row={row}
-          colors={colors}
-          showPayment={showPayment}
-          showWaiver={showWaiver}
-          leading={
-            showBulkSelect ? (
-              <Pressable
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: selectedIds.has(row.id) }}
-                onPress={() => toggleRowSelected(row.id)}
-                style={[
-                  styles.checkbox,
-                  {
-                    borderColor: selectedIds.has(row.id)
-                      ? colors.primary
-                      : colors.border,
-                    backgroundColor: selectedIds.has(row.id)
-                      ? withAlpha(colors.primary, 0.12)
-                      : "transparent",
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: selectedIds.has(row.id)
-                      ? colors.primary
-                      : colors.mutedForeground,
-                    fontWeight: "700",
-                  }}
-                >
-                  {selectedIds.has(row.id) ? "✓" : ""}
-                </Text>
-              </Pressable>
-            ) : null
-          }
-          extra={
-            divisions.length > 0 && !locked ? (
-              <View style={styles.divisionRow}>
-                <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                  Pool
-                </Text>
-                <View style={styles.chips}>
-                  <Pressable
-                    disabled={busyId === row.id}
-                    onPress={() => onAssignDivision(row.id, null)}
-                    style={[
-                      styles.chip,
-                      {
-                        borderColor: !row.divisionId
-                          ? colors.primary
-                          : colors.border,
-                        backgroundColor: !row.divisionId
-                          ? withAlpha(colors.primary, 0.1)
-                          : "transparent",
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: !row.divisionId
-                          ? colors.primary
-                          : colors.foreground,
-                        fontWeight: !row.divisionId ? "700" : "500",
-                      }}
-                    >
-                      Unassigned
-                    </Text>
-                  </Pressable>
-                  {divisions.map((division) => {
-                    const selected = row.divisionId === division.id;
-                    return (
-                      <Pressable
+      {rows.map((row) => {
+        const selected = selectedIds.has(row.id);
+        const rowBusy = busyId === row.id;
+        return (
+          <RegistrationCard
+            key={row.id}
+            row={row}
+            showPayment={showPayment}
+            showWaiver={showWaiver}
+            leading={
+              canAssign ? (
+                <SelectBox
+                  checked={selected}
+                  label={row.teamName}
+                  onPress={() => toggleRowSelected(row.id)}
+                />
+              ) : null
+            }
+            footer={
+              canAssign ? (
+                <View style={styles.assign}>
+                  <AppText variant="footnote" weight="600">
+                    Pool{rowBusy ? "  ·  Saving…" : ""}
+                  </AppText>
+                  <ChipRow>
+                    <Chip
+                      label="Unassigned"
+                      selected={!row.divisionId}
+                      disabled={rowBusy}
+                      onPress={() => onAssignDivision(row.id, null)}
+                    />
+                    {divisions.map((division) => (
+                      <Chip
                         key={division.id}
-                        disabled={busyId === row.id}
+                        label={division.name}
+                        selected={row.divisionId === division.id}
+                        disabled={rowBusy}
                         onPress={() => onAssignDivision(row.id, division.id)}
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: selected
-                              ? colors.primary
-                              : colors.border,
-                            backgroundColor: selected
-                              ? withAlpha(colors.primary, 0.1)
-                              : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={{
-                            color: selected ? colors.primary : colors.foreground,
-                            fontWeight: selected ? "700" : "500",
-                          }}
-                        >
-                          {division.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                      />
+                    ))}
+                  </ChipRow>
                 </View>
-              </View>
-            ) : row.divisionName ? (
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                Pool: {row.divisionName}
-              </Text>
-            ) : null
-          }
-        />
-      ))}
+              ) : null
+            }
+          />
+        );
+      })}
     </View>
+  );
+}
+
+function SelectBox({
+  checked,
+  label,
+  onPress,
+}: {
+  checked: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <Tappable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={`Select ${label}`}
+      onPress={onPress}
+      hitSlop={10}
+      style={styles.selectHit}
+    >
+      <View
+        style={[
+          styles.selectBox,
+          {
+            borderColor: checked ? colors.primary : colors.border,
+            backgroundColor: checked ? colors.primary : "transparent",
+          },
+        ]}
+      >
+        {checked ? <Icon name="checkmark" size={16} color={colors.primaryForeground} /> : null}
+      </View>
+    </Tappable>
   );
 }
 
@@ -718,7 +606,6 @@ function CheckInTab({
   onCheckIn,
   onUndoCheckIn,
   onCheckInAll,
-  colors,
 }: {
   rows: TournamentHostRegistrationContract[];
   readyCount: number;
@@ -728,23 +615,21 @@ function CheckInTab({
   onCheckIn: (id: string) => void;
   onUndoCheckIn: (id: string, teamName: string) => void;
   onCheckInAll: () => void;
-  colors: ReturnType<typeof useThemeColors>;
 }) {
+  const colors = useThemeColors();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CheckInFilter>("all");
 
   const checkedInCount = rows.filter((row) => row.status === "checked_in").length;
-  const progress =
-    rows.length === 0 ? 0 : Math.round((checkedInCount / rows.length) * 100);
+  const blockedCount = rows.filter((row) => row.waiver?.blocksCheckIn ?? false).length;
+  const progress = rows.length === 0 ? 0 : Math.round((checkedInCount / rows.length) * 100);
 
   const filtered = useMemo(() => {
     return rows
       .filter((row) => matchesSearch(row, query))
       .filter((row) => {
         if (filter === "ready") {
-          return (
-            row.status === "confirmed" && !(row.waiver?.blocksCheckIn ?? false)
-          );
+          return row.status === "confirmed" && !(row.waiver?.blocksCheckIn ?? false);
         }
         if (filter === "checked_in") return row.status === "checked_in";
         if (filter === "blocked") return row.waiver?.blocksCheckIn ?? false;
@@ -760,219 +645,145 @@ function CheckInTab({
 
   if (rows.length === 0) {
     return (
-      <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-        No confirmed teams to check in yet.
-      </Text>
+      <EmptyState
+        icon="checkbox-outline"
+        title="No teams to check in yet"
+        message="Confirmed teams show up here on tournament day."
+      />
     );
   }
 
+  const filters: { id: CheckInFilter; label: string; count?: number }[] = [
+    { id: "all", label: "All" },
+    { id: "ready", label: "Ready", count: readyCount },
+    { id: "checked_in", label: "Checked in", count: checkedInCount },
+    ...(blockedCount > 0
+      ? [{ id: "blocked" as const, label: "Blocked", count: blockedCount }]
+      : []),
+  ];
+
   return (
     <View style={styles.list}>
-      <View style={[styles.checkInHero, { borderColor: colors.border }]}>
-        <Text style={[styles.checkInTitle, { color: colors.foreground }]}>
-          {checkedInCount} of {rows.length} checked in
-        </Text>
-        <View
-          style={[styles.progressTrack, { backgroundColor: colors.border }]}
-        >
+      <Card>
+        <AppText variant="headline">
+          {checkedInCount} of {plural(rows.length, "team")} checked in
+        </AppText>
+        <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
           <View
             style={[
               styles.progressFill,
-              {
-                backgroundColor: colors.primary,
-                width: `${progress}%`,
-              },
+              { backgroundColor: colors.primary, width: `${progress}%` },
             ]}
           />
         </View>
         {waiverRequired && showWaiver ? (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            Waiver required before check-in.
-          </Text>
+          <AppText variant="footnote" tone="muted">
+            Teams need a complete waiver before they can check in.
+          </AppText>
         ) : null}
-        <FormSubmitButton
-          label={
-            readyCount > 0
-              ? `Check in all ready (${readyCount})`
-              : "All ready teams checked in"
-          }
-          busy={busyId === "bulk-checkin"}
-          disabled={readyCount === 0 || busyId === "bulk-checkin"}
+        <Button
+          label={readyCount > 0 ? `Check in all ready (${readyCount})` : "Everyone ready is checked in"}
+          icon={readyCount > 0 ? "checkmark-done" : undefined}
+          loading={busyId === "bulk-checkin"}
+          disabled={readyCount === 0 || (busyId !== null && busyId !== "bulk-checkin")}
           onPress={onCheckInAll}
-          colors={colors}
+          fullWidth
+        />
+      </Card>
+
+      <View style={[styles.search, { backgroundColor: colors.muted }]}>
+        <Icon name="search" size={18} tone="muted" />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search teams, schools, pools"
+          placeholderTextColor={colors.mutedForeground}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          accessibilityLabel="Search teams"
+          style={[styles.searchInput, { color: colors.foreground }]}
         />
       </View>
 
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search teams, schools, pools…"
-        placeholderTextColor={colors.mutedForeground}
-        autoCapitalize="none"
-        autoCorrect={false}
-        style={[
-          styles.search,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
-      />
-
-      <View style={styles.filterRow}>
-        {(
-          [
-            ["all", "All"],
-            ["ready", "Ready"],
-            ["checked_in", "Checked in"],
-            ["blocked", "Blocked"],
-          ] as const
-        ).map(([id, label]) => {
-          const selected = filter === id;
-          return (
-            <Pressable
-              key={id}
-              onPress={() => setFilter(id)}
-              style={[
-                styles.filterChip,
-                {
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected
-                    ? withAlpha(colors.primary, 0.1)
-                    : "transparent",
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: selected ? colors.primary : colors.foreground,
-                  fontWeight: selected ? "700" : "500",
-                  fontSize: 13,
-                }}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ChipRow>
+        {filters.map((option) => (
+          <Chip
+            key={option.id}
+            label={option.label}
+            count={option.count}
+            selected={filter === option.id}
+            onPress={() => setFilter(option.id)}
+          />
+        ))}
+      </ChipRow>
 
       {filtered.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          No teams match this filter.
-        </Text>
+        <EmptyState
+          compact
+          icon="search"
+          title="No matching teams"
+          message={query ? "Try a different search." : "No teams in this filter."}
+        />
       ) : (
         filtered.map((row) => {
           const checkedIn = row.status === "checked_in";
           const blocked = row.waiver?.blocksCheckIn ?? false;
           const busy = busyId === row.id;
+          const meta = [row.schoolName, poolLabel(row.divisionName)]
+            .filter(Boolean)
+            .join(" · ");
           return (
-            <View
-              key={row.id}
-              style={[
-                styles.card,
-                {
-                  borderColor: checkedIn ? colors.primary : colors.border,
-                  backgroundColor: checkedIn
-                    ? withAlpha(colors.primary, 0.06)
-                    : "transparent",
-                },
-              ]}
-            >
+            <Card key={row.id}>
               <View style={styles.checkInRow}>
-                <View style={styles.checkInCopy}>
-                  <Text style={[styles.teamName, { color: colors.foreground }]}>
+                <View style={styles.flex}>
+                  <AppText variant="callout" weight="600">
                     {row.teamName}
-                  </Text>
-                  {row.schoolName ? (
-                    <Text
-                      style={[styles.meta, { color: colors.mutedForeground }]}
-                    >
-                      {row.schoolName}
-                    </Text>
-                  ) : null}
-                  {row.divisionName ? (
-                    <Text
-                      style={[styles.meta, { color: colors.mutedForeground }]}
-                    >
-                      Pool: {row.divisionName}
-                    </Text>
+                  </AppText>
+                  {meta ? (
+                    <AppText variant="footnote" tone="muted">
+                      {meta}
+                    </AppText>
                   ) : null}
                   {showWaiver && row.waiver ? (
-                    <Text
-                      style={[
-                        styles.meta,
-                        {
-                          color: row.waiver.complete
-                            ? colors.primary
-                            : colors.mutedForeground,
-                        },
-                      ]}
+                    <AppText
+                      variant="footnote"
+                      tone={row.waiver.complete ? "success" : blocked ? "warning" : "muted"}
                     >
-                      Waiver {row.waiver.completedCount}/{row.waiver.totalCount}
-                      {row.waiver.complete ? " · Complete" : ""}
-                      {blocked ? " · Blocks check-in" : ""}
-                    </Text>
+                      Waivers {row.waiver.completedCount}/{row.waiver.totalCount}
+                      {row.waiver.complete ? " · Complete" : blocked ? " · Required to check in" : ""}
+                    </AppText>
                   ) : null}
                 </View>
                 {checkedIn ? (
-                  <View style={styles.checkInActions}>
-                    <View
-                      style={[
-                        styles.checkedBadge,
-                        { backgroundColor: withAlpha(colors.primary, 0.12) },
-                      ]}
-                    >
-                      <Text
-                        style={{ color: colors.primary, fontWeight: "700" }}
-                      >
-                        ✓ In
-                      </Text>
+                  <View style={styles.checkedIn}>
+                    <View style={styles.checkedLabel}>
+                      <Icon name="checkmark-circle" size={18} tone="success" />
+                      <AppText variant="footnote" weight="600" tone="success">
+                        Checked in
+                      </AppText>
                     </View>
-                    <Pressable
-                      disabled={busy}
+                    <Button
+                      label="Undo"
+                      variant="ghost"
+                      size="sm"
+                      loading={busy}
+                      disabled={busyId !== null && !busy}
                       onPress={() => onUndoCheckIn(row.id, row.teamName)}
-                      style={[styles.action, { borderColor: colors.border }]}
-                    >
-                      <Text
-                        style={{
-                          color: colors.mutedForeground,
-                          fontWeight: "600",
-                        }}
-                      >
-                        Undo
-                      </Text>
-                    </Pressable>
+                    />
                   </View>
                 ) : (
-                  <Pressable
-                    disabled={busy || blocked}
+                  <Button
+                    label="Check in"
+                    size="sm"
+                    loading={busy}
+                    disabled={blocked || (busyId !== null && !busy)}
                     onPress={() => onCheckIn(row.id)}
-                    style={[
-                      styles.checkInButton,
-                      {
-                        backgroundColor: blocked
-                          ? colors.border
-                          : colors.primary,
-                        opacity: busy || blocked ? 0.6 : 1,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: blocked
-                          ? colors.mutedForeground
-                          : colors.primaryForeground,
-                        fontWeight: "700",
-                      }}
-                    >
-                      {busy ? "…" : "Check in"}
-                    </Text>
-                  </Pressable>
+                  />
                 )}
               </View>
-            </View>
+            </Card>
           );
         })
       )}
@@ -986,228 +797,161 @@ function WaitlistTab({
   busyId,
   onPromote,
   onRemove,
-  colors,
 }: {
   rows: TournamentHostRegistrationsContract["waitlist"];
   locked: boolean;
   busyId: string | null;
   onPromote: () => void;
   onRemove: (id: string, teamName: string) => void;
-  colors: ReturnType<typeof useThemeColors>;
 }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        icon="hourglass-outline"
+        title="Waitlist is empty"
+        message="When the tournament is full, new registrations line up here."
+      />
+    );
+  }
+
+  const anyEligible = rows.some((row) => row.eligible);
+
   return (
     <View style={styles.list}>
       {!locked ? (
-        <FormSubmitButton
+        <Button
           label="Promote next eligible team"
-          busy={busyId === "promote"}
-          colors={colors}
+          icon="arrow-up-circle-outline"
+          loading={busyId === "promote"}
+          disabled={!anyEligible || (busyId !== null && busyId !== "promote")}
           onPress={onPromote}
+          fullWidth
         />
       ) : null}
-      {rows.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          No teams on the waitlist.
-        </Text>
-      ) : (
-        rows.map((row) => (
-          <View
-            key={row.id}
-            style={[styles.card, { borderColor: colors.border }]}
-          >
-            <Text style={[styles.teamName, { color: colors.foreground }]}>
-              #{row.queueRank} {row.teamName}
-            </Text>
-            <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-              {row.schoolName}
-            </Text>
-            <Text
-              style={[
-                styles.meta,
-                { color: row.eligible ? colors.primary : colors.mutedForeground },
-              ]}
-            >
-              {row.eligible ? "Eligible" : "Not eligible"}
-            </Text>
-            {!locked ? (
-              <Pressable
-                disabled={busyId === row.id}
-                onPress={() => onRemove(row.id, row.teamName)}
-                style={[styles.action, { borderColor: colors.destructive }]}
-              >
-                <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-                  Remove
-                </Text>
-              </Pressable>
-            ) : null}
+      {rows.map((row) => (
+        <Card key={row.id}>
+          <View style={styles.checkInRow}>
+            <AppText variant="headline" tone="muted" style={styles.rank}>
+              {row.queueRank}
+            </AppText>
+            <View style={styles.flex}>
+              <AppText variant="callout" weight="600">
+                {row.teamName}
+              </AppText>
+              {row.schoolName ? (
+                <AppText variant="footnote" tone="muted">
+                  {row.schoolName}
+                </AppText>
+              ) : null}
+            </View>
+            <Badge
+              label={row.eligible ? "Eligible" : "Not eligible"}
+              tone={row.eligible ? "success" : "neutral"}
+            />
           </View>
-        ))
-      )}
+          {!locked ? (
+            <Button
+              label="Remove"
+              variant="destructiveOutline"
+              size="sm"
+              loading={busyId === row.id}
+              disabled={busyId !== null && busyId !== row.id}
+              onPress={() => onRemove(row.id, row.teamName)}
+              style={styles.selfStart}
+            />
+          ) : null}
+        </Card>
+      ))}
     </View>
   );
 }
 
 function RegistrationCard({
   row,
-  colors,
   showPayment,
   showWaiver,
   leading,
-  extra,
-  actions,
+  footer,
 }: {
   row: TournamentHostRegistrationContract;
-  colors: ReturnType<typeof useThemeColors>;
   showPayment: boolean;
   showWaiver: boolean;
   leading?: ReactNode;
-  extra?: ReactNode;
-  actions?: ReactNode;
+  footer?: ReactNode;
 }) {
+  const details = [
+    poolLabel(row.divisionName),
+    showWaiver && row.waiver
+      ? `Waivers ${row.waiver.completedCount}/${row.waiver.totalCount}`
+      : null,
+    showPayment && row.payment
+      ? `${paymentStatusLabel(row.payment.status)} · ${formatFeeCents(row.payment.amountCents)}`
+      : null,
+  ].filter(Boolean);
+
   return (
-    <View style={[styles.card, { borderColor: colors.border }]}>
+    <Card>
       <View style={styles.cardHeader}>
         {leading}
-        <View style={styles.cardHeaderText}>
-          <Text style={[styles.teamName, { color: colors.foreground }]}>
+        <View style={styles.flex}>
+          <AppText variant="callout" weight="600">
             {row.teamName}
-          </Text>
+          </AppText>
           {row.schoolName ? (
-            <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+            <AppText variant="footnote" tone="muted">
               {row.schoolName}
-            </Text>
+            </AppText>
           ) : null}
         </View>
+        <StatusBadge kind="registration" status={row.status} />
       </View>
-      <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {REGISTRATION_STATUS_LABELS[row.status] ?? row.status}
-      </Text>
-      {showWaiver && row.waiver ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Waiver {row.waiver.completedCount}/{row.waiver.totalCount}
-          {row.waiver.complete ? " · Complete" : ""}
-        </Text>
+      {details.length > 0 ? (
+        <AppText variant="footnote" tone="muted">
+          {details.join("  ·  ")}
+        </AppText>
       ) : null}
-      {showPayment && row.payment ? (
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Payment {paymentStatusLabel(row.payment.status)}
-          {" · "}
-          {formatFeeCents(row.payment.amountCents)}
-        </Text>
-      ) : null}
-      {extra}
-      {actions}
-    </View>
+      {footer}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
-  locked: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 13 },
-  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  tab: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  list: { gap: 12 },
-  empty: { fontSize: 14, lineHeight: 20 },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
-  },
-  teamName: { fontSize: 16, fontWeight: "700" },
-  meta: { fontSize: 13, lineHeight: 18 },
-  actions: { flexDirection: "row", gap: 8, marginTop: 4 },
-  action: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  actionDisabled: { opacity: 0.5 },
-  divisionRow: { gap: 8, marginTop: 4 },
-  bulkBar: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  bulkSelectAll: { alignSelf: "flex-start" },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  cardHeaderText: { flex: 1, gap: 2 },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 1,
-    borderRadius: 6,
+  flex: { flex: 1 },
+  selfStart: { alignSelf: "flex-start" },
+  list: { gap: space.md },
+  actions: { flexDirection: "row", gap: space.sm, marginTop: space.xs },
+  assign: { gap: space.sm, marginTop: space.xs },
+  bulkHeader: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: space.md },
+  selectHit: {
+    width: HIT_TARGET,
+    height: HIT_TARGET,
+    marginVertical: -space.sm,
+    marginLeft: -space.sm,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 2,
   },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+  selectBox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderRadius: radius.sm - 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  checkInHero: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  checkInTitle: { fontSize: 18, fontWeight: "800" },
-  progressTrack: {
-    height: 8,
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  hint: { fontSize: 13, lineHeight: 18 },
+  progressTrack: { height: 8, borderRadius: radius.full, overflow: "hidden" },
+  progressFill: { height: "100%", borderRadius: radius.full },
   search: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  filterChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  checkInRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    alignItems: "center",
+    gap: space.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    minHeight: HIT_TARGET,
   },
-  checkInCopy: { flex: 1, gap: 4 },
-  checkInActions: { alignItems: "flex-end", gap: 8 },
-  checkedBadge: {
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  checkInButton: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignSelf: "flex-start",
-  },
+  searchInput: { flex: 1, fontSize: 16, paddingVertical: space.md },
+  checkInRow: { flexDirection: "row", alignItems: "center", gap: space.md },
+  checkedIn: { alignItems: "flex-end", gap: space.xxs },
+  checkedLabel: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  rank: { minWidth: 24, textAlign: "center" },
 });

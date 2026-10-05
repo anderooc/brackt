@@ -23,28 +23,35 @@ import type {
 } from "@/lib/api/contracts/tournament-host";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import {
   fetchTournamentHostPools,
   releaseTournamentHostDivisionPools,
   updateTournamentHostPoolSeeding,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { FormSubmitButton } from "~/components/create-form";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  haptics,
+  HIT_TARGET,
+  Icon,
+  ListGroup,
+  ListRow,
+  radius,
+  ScreenScroll,
+  space,
+  type IconName,
+} from "~/ui";
 
 export default function TournamentHostPoolsScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -53,12 +60,13 @@ export default function TournamentHostPoolsScreen() {
   );
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostPools(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, reload } = usePublicLoader(
     load,
     "Could not load pools."
   );
@@ -72,14 +80,19 @@ export default function TournamentHostPoolsScreen() {
   const runAction = useCallback(
     async (
       key: string,
-      action: () => Promise<{ pools: TournamentHostPoolsContract }>
+      action: () => Promise<{ pools: TournamentHostPoolsContract }>,
+      success: string
     ) => {
       setBusyKey(key);
       setActionError(null);
+      setNotice(null);
       try {
         const result = await action();
         setPayload(result.pools);
+        haptics.success();
+        setNotice(success);
       } catch (cause) {
+        haptics.error();
         setActionError(messageFor(cause, "Could not update pools."));
       } finally {
         setBusyKey(null);
@@ -94,8 +107,8 @@ export default function TournamentHostPoolsScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => void refresh()}
+        message="No tournament was specified. Go back and open it again."
+        onRetry={() => (router.canGoBack() ? router.back() : router.replace("/"))}
       />
     );
   }
@@ -104,56 +117,53 @@ export default function TournamentHostPoolsScreen() {
       <ErrorScreen
         title="Pools unavailable"
         message={error}
-        onRetry={() => void refresh()}
+        onRetry={() => void reload()}
       />
     );
   }
   if (!pools) return <LoadingScreen />;
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setPayload(null);
-            void refresh();
-          }}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
       {pools.poolAssignmentBlocked ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          {pools.poolAssignmentBlocked}
-        </Text>
+        <Banner tone="info" message={pools.poolAssignmentBlocked} />
+      ) : null}
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
+        />
       ) : null}
       {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
+      ) : null}
+      {notice ? (
+        <Banner tone="success" message={notice} onDismiss={() => setNotice(null)} />
       ) : null}
 
-      <Pressable
-        onPress={() => router.push(`/tournament/${slug}/pools`)}
-        style={[styles.viewLink, { borderColor: colors.border }]}
-      >
-        <Text style={[styles.viewLinkTitle, { color: colors.foreground }]}>
-          View public pools
-        </Text>
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Standings and matches participants see after release
-        </Text>
-      </Pressable>
+      <ListGroup>
+        <ListRow
+          title="View public pools"
+          subtitle="Standings and matches teams see after release"
+          icon="eye-outline"
+          onPress={() => router.push(`/tournament/${slug}/pools`)}
+        />
+      </ListGroup>
 
       {pools.divisions.length === 0 ? (
-        <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-          Add pools on the Setup screen before seeding teams.
-        </Text>
+        <Card>
+          <EmptyState
+            icon="grid-outline"
+            title="No pools yet"
+            message="Add pools and courts in Setup, then assign teams to them in Registrations."
+            action={{
+              label: "Open Setup",
+              icon: "construct-outline",
+              onPress: () => router.push(`/tournament/${slug}/host/setup`),
+            }}
+          />
+        </Card>
       ) : (
         pools.divisions.map((division) => (
           <DivisionPoolsCard
@@ -161,37 +171,44 @@ export default function TournamentHostPoolsScreen() {
             division={division}
             canAssignPools={pools.canAssignPools}
             busyKey={busyKey}
-            colors={colors}
+            onAssignTeams={() =>
+              router.push(`/tournament/${slug}/host/registrations?tab=teams`)
+            }
             onRelease={() =>
               Alert.alert(
-                "Release pools?",
-                `${division.name} will become visible to all participants.`,
+                `Release ${division.name}?`,
+                "Pools, standings, and matches become visible to all teams and fans.",
                 [
                   { text: "Cancel", style: "cancel" },
                   {
                     text: "Release",
                     onPress: () =>
-                      void runAction(`release-${division.id}`, () =>
-                        releaseTournamentHostDivisionPools(
-                          slug,
-                          division.id
-                        ).then((result) => ({ pools: result.pools }))
+                      void runAction(
+                        `release-${division.id}`,
+                        () =>
+                          releaseTournamentHostDivisionPools(slug, division.id).then(
+                            (result) => ({ pools: result.pools })
+                          ),
+                        `${division.name} released to teams.`
                       ),
                   },
                 ]
               )
             }
-            onSaveSeeding={(poolId, teamIds) =>
-              void runAction(`seed-${poolId}`, () =>
-                updateTournamentHostPoolSeeding(slug, poolId, teamIds).then(
-                  (result) => ({ pools: result.pools })
-                )
+            onSaveSeeding={(poolId, poolName, teamIds) =>
+              void runAction(
+                `seed-${poolId}`,
+                () =>
+                  updateTournamentHostPoolSeeding(slug, poolId, teamIds).then(
+                    (result) => ({ pools: result.pools })
+                  ),
+                `Seeding saved for ${poolName}.`
               )
             }
           />
         ))
       )}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
@@ -199,100 +216,98 @@ function DivisionPoolsCard({
   division,
   canAssignPools,
   busyKey,
-  colors,
+  onAssignTeams,
   onRelease,
   onSaveSeeding,
 }: {
   division: TournamentHostDivisionPoolsContract;
   canAssignPools: boolean;
   busyKey: string | null;
-  colors: ReturnType<typeof useThemeColors>;
+  onAssignTeams: () => void;
   onRelease: () => void;
-  onSaveSeeding: (poolId: string, teamIds: string[]) => void;
+  onSaveSeeding: (poolId: string, poolName: string, teamIds: string[]) => void;
 }) {
   const released = division.poolsReleasedAt != null;
+  const hasTeams =
+    division.pools.length > 0 && division.pools.some((pool) => pool.teams.length > 0);
 
   return (
-    <View style={[styles.card, { borderColor: colors.border }]}>
-      <Text style={[styles.divisionName, { color: colors.foreground }]}>
-        {division.name}
-      </Text>
+    <Card style={styles.divisionCard}>
+      <View style={styles.divisionHeader}>
+        <AppText variant="headline" style={styles.flex}>
+          {division.name}
+        </AppText>
+        <Badge
+          label={released ? "Released" : "Host only"}
+          tone={released ? "success" : "neutral"}
+        />
+      </View>
+      {division.matchCount > 0 ? (
+        <AppText variant="footnote" tone="muted">
+          {division.completedMatchCount} of {division.matchCount} matches complete
+        </AppText>
+      ) : null}
 
-      {released ? (
-        <View
-          style={[
-            styles.released,
-            { backgroundColor: withAlpha(colors.primary, 0.08) },
-          ]}
-        >
-          <Text style={{ color: colors.primary, fontWeight: "700" }}>
-            Released to participants
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.releaseBlock}>
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            Host only — not visible to participants until you release.
-          </Text>
-          <FormSubmitButton
-            label="Release to participants"
-            busy={busyKey === `release-${division.id}`}
-            disabled={division.matchCount === 0}
-            colors={colors}
-            onPress={onRelease}
-          />
-          {division.matchCount === 0 ? (
-            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              Save seeding to generate matches before releasing.
-            </Text>
-          ) : null}
-        </View>
-      )}
-
-      {division.pools.length === 0 ||
-      division.pools.every((pool) => pool.teams.length === 0) ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Assign confirmed teams to this pool from Registrations.
-        </Text>
+      {!hasTeams ? (
+        <EmptyState
+          compact
+          icon="people-outline"
+          title="No teams assigned"
+          message={`Assign confirmed teams to ${division.name} in Registrations.`}
+          action={{ label: "Assign teams", icon: "people-outline", onPress: onAssignTeams }}
+        />
       ) : (
         division.pools.map((pool) =>
           division.format === "pool_to_bracket" ? (
-            <PoolSeedingCard
+            <PoolSeeding
               key={pool.id}
               pool={pool}
               canEdit={canAssignPools}
               busy={busyKey === `seed-${pool.id}`}
-              colors={colors}
               onSave={onSaveSeeding}
             />
           ) : (
-            <View key={pool.id} style={styles.poolMeta}>
-              <Text style={[styles.poolName, { color: colors.foreground }]}>
-                {pool.name}
-              </Text>
-              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                {pool.matchCount} matches · {pool.teams.length} teams
-              </Text>
-            </View>
+            <ListGroup key={pool.id}>
+              <ListRow
+                title={pool.name}
+                subtitle={`${pool.matchCount} matches · ${pool.teams.length} teams`}
+              />
+            </ListGroup>
           )
         )
       )}
-    </View>
+
+      {!released ? (
+        <View style={styles.releaseBlock}>
+          <AppText variant="footnote" tone="muted">
+            {division.matchCount === 0
+              ? "Save seeding to generate matches, then release."
+              : "Teams and fans can't see these pools until you release them."}
+          </AppText>
+          <Button
+            label="Release to teams"
+            icon="megaphone-outline"
+            onPress={onRelease}
+            loading={busyKey === `release-${division.id}`}
+            disabled={division.matchCount === 0}
+            fullWidth
+          />
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
-function PoolSeedingCard({
+function PoolSeeding({
   pool,
   canEdit,
   busy,
-  colors,
   onSave,
 }: {
   pool: TournamentHostPoolContract;
   canEdit: boolean;
   busy: boolean;
-  colors: ReturnType<typeof useThemeColors>;
-  onSave: (poolId: string, teamIds: string[]) => void;
+  onSave: (poolId: string, poolName: string, teamIds: string[]) => void;
 }) {
   const sorted = [...pool.teams].sort((a, b) => {
     const sa = a.seed ?? Number.MAX_SAFE_INTEGER;
@@ -300,20 +315,22 @@ function PoolSeedingCard({
     if (sa !== sb) return sa - sb;
     return a.name.localeCompare(b.name);
   });
-  const [order, setOrder] = useState(() => sorted.map((team) => team.id));
+  const savedOrder = sorted.map((team) => team.id);
+  const [order, setOrder] = useState(savedOrder);
 
   useEffect(() => {
-    setOrder(sorted.map((team) => team.id));
+    setOrder(savedOrder);
   }, [pool.id, pool.teams.map((team) => `${team.id}:${team.seed}`).join(",")]);
 
   const teamById = new Map(pool.teams.map((team) => [team.id, team]));
   const locked = pool.matchesStarted || !canEdit;
+  const dirty = order.join(",") !== savedOrder.join(",");
 
   if (pool.teams.length < 2) {
     return (
-      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+      <AppText variant="footnote" tone="muted">
         Add at least 2 teams to {pool.name} before setting seeds.
-      </Text>
+      </AppText>
     );
   }
 
@@ -329,117 +346,134 @@ function PoolSeedingCard({
 
   return (
     <View style={styles.seeding}>
-      <Text style={[styles.poolName, { color: colors.foreground }]}>
-        Seeding — {pool.name}
-      </Text>
-      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-        Seed 1 is top seed. Saving creates round-robin matches.
-      </Text>
-      {order.map((teamId, index) => {
-        const team = teamById.get(teamId);
-        if (!team) return null;
-        return (
-          <View
-            key={teamId}
-            style={[styles.seedRow, { borderColor: colors.border }]}
-          >
-            <Text style={[styles.seedRank, { color: colors.primary }]}>
-              {index + 1}
-            </Text>
-            <View style={styles.seedText}>
-              <Text style={[styles.teamName, { color: colors.foreground }]}>
-                {team.name}
-              </Text>
-              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                {team.university}
-              </Text>
-            </View>
-            {!locked ? (
-              <View style={styles.seedControls}>
-                <Pressable
-                  disabled={busy || index === 0}
-                  onPress={() => move(index, -1)}
-                  style={styles.seedButton}
-                >
-                  <Text style={{ color: colors.primary }}>↑</Text>
-                </Pressable>
-                <Pressable
-                  disabled={busy || index === order.length - 1}
-                  onPress={() => move(index, 1)}
-                  style={styles.seedButton}
-                >
-                  <Text style={{ color: colors.primary }}>↓</Text>
-                </Pressable>
+      <View style={styles.seedingHeader}>
+        <AppText variant="callout" weight="600">
+          {pool.name}
+        </AppText>
+        <AppText variant="footnote" tone="muted">
+          {locked
+            ? pool.matchesStarted
+              ? "Matches have started, so seeding is locked."
+              : "Seeding is read-only right now."
+            : "Seed 1 is the top seed. Saving creates round-robin matches."}
+        </AppText>
+      </View>
+      <ListGroup>
+        {order.map((teamId, index) => {
+          const team = teamById.get(teamId);
+          if (!team) return null;
+          return (
+            <View key={teamId} style={styles.seedRow}>
+              <AppText variant="headline" tone="primary" style={styles.seedRank}>
+                {index + 1}
+              </AppText>
+              <View style={styles.flex}>
+                <AppText variant="callout" weight="600" numberOfLines={1}>
+                  {team.name}
+                </AppText>
+                <AppText variant="footnote" tone="muted" numberOfLines={1}>
+                  {team.university}
+                </AppText>
               </View>
-            ) : null}
-          </View>
-        );
-      })}
-      {pool.matchesStarted ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Matches have started — seeding is locked.
-        </Text>
-      ) : null}
+              {!locked ? (
+                <View style={styles.seedControls}>
+                  <ReorderButton
+                    icon="chevron-up"
+                    accessibilityLabel={`Move ${team.name} up`}
+                    disabled={busy || index === 0}
+                    onPress={() => move(index, -1)}
+                  />
+                  <ReorderButton
+                    icon="chevron-down"
+                    accessibilityLabel={`Move ${team.name} down`}
+                    disabled={busy || index === order.length - 1}
+                    onPress={() => move(index, 1)}
+                  />
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </ListGroup>
       {!locked ? (
-        <FormSubmitButton
-          label="Save seeding & generate matches"
-          busy={busy}
-          colors={colors}
-          onPress={() => onSave(pool.id, order)}
+        <Button
+          label={
+            pool.matchCount > 0 && !dirty
+              ? "Save seeding"
+              : "Save seeding and create matches"
+          }
+          variant={dirty || pool.matchCount === 0 ? "primary" : "outline"}
+          onPress={() => onSave(pool.id, pool.name, order)}
+          loading={busy}
+          fullWidth
         />
-      ) : null}
-      {pool.matchCount > 0 ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          {pool.completedMatchCount} of {pool.matchCount} matches complete
-        </Text>
       ) : null}
     </View>
   );
 }
 
+function ReorderButton({
+  icon,
+  accessibilityLabel,
+  disabled,
+  onPress,
+}: {
+  icon: IconName;
+  accessibilityLabel: string;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={() => {
+        haptics.selection();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.reorderButton,
+        {
+          backgroundColor: pressed ? colors.muted : "transparent",
+          opacity: disabled ? 0.3 : 1,
+        },
+      ]}
+    >
+      <Icon name={icon} size={20} tone="primary" />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
-  hint: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 13 },
-  empty: { fontSize: 14, lineHeight: 20 },
-  viewLink: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  viewLinkTitle: { fontSize: 15, fontWeight: "700" },
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  divisionName: { fontSize: 18, fontWeight: "800" },
-  released: {
-    borderRadius: 10,
-    padding: 10,
-  },
-  releaseBlock: { gap: 8 },
-  poolMeta: { gap: 4 },
-  poolName: { fontSize: 16, fontWeight: "700" },
-  seeding: { gap: 8 },
-  seedRow: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
+  flex: { flex: 1, minWidth: 0 },
+  divisionCard: { gap: space.md },
+  divisionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: space.md,
   },
-  seedRank: {
-    width: 24,
-    fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center",
+  releaseBlock: { gap: space.sm },
+  seeding: { gap: space.sm },
+  seedingHeader: { gap: space.xxs },
+  seedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    minHeight: HIT_TARGET + 12,
+    paddingLeft: space.lg,
+    paddingRight: space.xs,
+    paddingVertical: space.xs,
   },
-  seedText: { flex: 1, gap: 2 },
-  teamName: { fontSize: 15, fontWeight: "600" },
-  seedControls: { flexDirection: "row", gap: 4 },
-  seedButton: { paddingHorizontal: 8, paddingVertical: 4 },
+  seedRank: { width: 24, textAlign: "center" },
+  seedControls: { flexDirection: "row" },
+  reorderButton: {
+    width: HIT_TARGET,
+    height: HIT_TARGET,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

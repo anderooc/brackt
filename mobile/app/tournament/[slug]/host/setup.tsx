@@ -17,18 +17,9 @@
  */
 
 import type { TournamentHostSetupContract } from "@/lib/api/contracts/tournament-host";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   addTournamentHostCourt,
   addTournamentHostDivision,
@@ -39,18 +30,46 @@ import {
   updateTournamentHostRegistrationAvailability,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import {
-  FormField,
-  FormSubmitButton,
-  FormTextInput,
-} from "~/components/create-form";
+import { FormField, FormTextInput } from "~/components/create-form";
 import { PLAY_FORMAT_LABELS } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  haptics,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  space,
+} from "~/ui";
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function localDateOf(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function endOfLocalDayIso(ymd: string): string {
+  const [year, month, day] = ymd.split("-").map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59).toISOString();
+}
 
 export default function TournamentHostSetupScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [setup, setSetup] = useState<TournamentHostSetupContract | null>(null);
@@ -58,14 +77,15 @@ export default function TournamentHostSetupScreen() {
   const [courtName, setCourtName] = useState("");
   const [capacityText, setCapacityText] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostSetup(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, reload } = usePublicLoader(
     load,
     "Could not load setup."
   );
@@ -78,20 +98,30 @@ export default function TournamentHostSetupScreen() {
         ? ""
         : String(data.setup.registrationCapacity)
     );
-    setDeadline(data.setup.registrationDeadline ?? "");
+    setDeadline(localDateOf(data.setup.registrationDeadline));
   }, [data]);
 
   const runAction = useCallback(
-    async (action: () => Promise<{ setup: TournamentHostSetupContract }>) => {
-      setBusy(true);
+    async (
+      key: string,
+      action: () => Promise<{ setup: TournamentHostSetupContract }>,
+      success?: string
+    ) => {
+      setBusyKey(key);
       setActionError(null);
+      setNotice(null);
       try {
         const result = await action();
         setSetup(result.setup);
+        haptics.success();
+        if (success) setNotice(success);
+        return true;
       } catch (cause) {
+        haptics.error();
         setActionError(messageFor(cause, "Could not save changes."));
+        return false;
       } finally {
-        setBusy(false);
+        setBusyKey(null);
       }
     },
     []
@@ -103,8 +133,8 @@ export default function TournamentHostSetupScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => void refresh()}
+        message="No tournament was specified. Go back and open it again."
+        onRetry={() => (router.canGoBack() ? router.back() : router.replace("/"))}
       />
     );
   }
@@ -113,65 +143,123 @@ export default function TournamentHostSetupScreen() {
       <ErrorScreen
         title="Setup unavailable"
         message={error}
-        onRetry={() => void refresh()}
+        onRetry={() => void reload()}
       />
     );
   }
   if (!setup) return <LoadingScreen />;
 
   const locked = !setup.canEdit;
+  const savedCapacity =
+    setup.registrationCapacity == null ? "" : String(setup.registrationCapacity);
+  const availabilityDirty =
+    capacityText.trim() !== savedCapacity ||
+    deadline.trim() !== localDateOf(setup.registrationDeadline);
+  const divisionNames = new Map(
+    setup.divisions.map((division) => [division.id, division.name])
+  );
+
+  const saveAvailability = () => {
+    const capacityValue = capacityText.trim();
+    const deadlineValue = deadline.trim();
+    if (capacityValue !== "" && !/^\d+$/.test(capacityValue)) {
+      setActionError("Capacity must be a whole number, or blank for unlimited.");
+      haptics.error();
+      return;
+    }
+    if (deadlineValue !== "" && !DATE_PATTERN.test(deadlineValue)) {
+      setActionError("Deadline must use YYYY-MM-DD, or be blank for no deadline.");
+      haptics.error();
+      return;
+    }
+    void runAction(
+      "availability",
+      () =>
+        updateTournamentHostRegistrationAvailability(slug, {
+          capacity: capacityValue === "" ? null : Number.parseInt(capacityValue, 10),
+          deadline:
+            deadlineValue === ""
+              ? null
+              : deadlineValue === localDateOf(setup.registrationDeadline)
+                ? setup.registrationDeadline
+                : endOfLocalDayIso(deadlineValue),
+        }),
+      "Registration availability saved."
+    );
+  };
+
+  const addPool = () => {
+    const name = divisionName.trim();
+    if (!name) return;
+    void runAction(
+      "add-pool",
+      async () => {
+        const result = await addTournamentHostDivision(slug, name);
+        setDivisionName("");
+        return result;
+      },
+      `${name} added.`
+    );
+  };
+
+  const addCourt = () => {
+    const name = courtName.trim();
+    if (!name) return;
+    void runAction(
+      "add-court",
+      async () => {
+        const result = await addTournamentHostCourt(slug, name);
+        setCourtName("");
+        return result;
+      },
+      `${name} added.`
+    );
+  };
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => void refresh()}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
       {setup.preparationLockedReason ? (
-        <Text style={[styles.locked, { color: colors.mutedForeground }]}>
-          {setup.preparationLockedReason}
-        </Text>
+        <Banner tone="info" message={setup.preparationLockedReason} />
+      ) : null}
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
+        />
       ) : null}
       {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
+      ) : null}
+      {notice ? (
+        <Banner tone="success" message={notice} onDismiss={() => setNotice(null)} />
       ) : null}
 
-      <View style={[styles.card, { borderColor: colors.border }]}>
-        <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          Format
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {PLAY_FORMAT_LABELS[setup.playFormat] ?? setup.playFormat}
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Chosen at creation and shared by every pool.
-        </Text>
-      </View>
+      <ListGroup>
+        <ListRow
+          title={PLAY_FORMAT_LABELS[setup.playFormat] ?? setup.playFormat}
+          subtitle="Play format was chosen when the tournament was created and applies to every pool."
+          icon="git-branch-outline"
+          numberOfLines={3}
+        />
+      </ListGroup>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Registration availability
-        </Text>
-        <FormField label="Capacity" colors={colors} hint="Leave blank for unlimited.">
+      <Section
+        title="Registration"
+        description={`${setup.registeredCount} active registration${setup.registeredCount === 1 ? "" : "s"}`}
+      >
+        <FormField label="Capacity" colors={colors} hint="Leave blank for unlimited teams.">
           <FormTextInput
             value={capacityText}
             onChangeText={setCapacityText}
             placeholder="Unlimited"
             colors={colors}
             keyboardType="numbers-and-punctuation"
+            editable={!locked}
+            accessibilityLabel="Team capacity"
           />
         </FormField>
-        <FormField label="Deadline" colors={colors} hint="YYYY-MM-DD or leave blank.">
+        <FormField label="Deadline" colors={colors} hint="YYYY-MM-DD. Registration closes at 11:59 PM that day. Leave blank for no deadline.">
           <FormTextInput
             value={deadline}
             onChangeText={setDeadline}
@@ -179,266 +267,223 @@ export default function TournamentHostSetupScreen() {
             colors={colors}
             keyboardType="numbers-and-punctuation"
             autoCapitalize="none"
+            editable={!locked}
+            accessibilityLabel="Registration deadline"
           />
         </FormField>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {setup.registeredCount} active registrations
-        </Text>
-        <FormSubmitButton
-          label="Save availability"
-          busy={busy}
-          disabled={locked}
-          colors={colors}
-          onPress={() =>
-            void runAction(() =>
-              updateTournamentHostRegistrationAvailability(slug, {
-                capacity:
-                  capacityText.trim() === ""
-                    ? null
-                    : Number.parseInt(capacityText, 10),
-                deadline: deadline.trim() === "" ? null : deadline.trim(),
-              })
-            )
-          }
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Pools
-        </Text>
-        {setup.divisions.map((division) => (
-          <View
-            key={division.id}
-            style={[styles.itemCard, { borderColor: colors.border }]}
-          >
-            <View style={styles.itemHeader}>
-              <Text style={[styles.itemTitle, { color: colors.foreground }]}>
-                {division.name}
-              </Text>
-              {!locked ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${division.name}`}
-                  onPress={() =>
-                    Alert.alert(
-                      "Remove pool?",
-                      `Delete ${division.name}? This cannot be undone.`,
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Remove",
-                          style: "destructive",
-                          onPress: () =>
-                            void runAction(() =>
-                              removeTournamentHostDivision(slug, division.id)
-                            ),
-                        },
-                      ]
-                    )
-                  }
-                >
-                  <Text style={{ color: colors.destructive, fontWeight: "600" }}>
-                    Remove
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-            {setup.courts.length > 0 ? (
-              <View style={styles.courtPickers}>
-                <Text
-                  style={[styles.meta, { color: colors.mutedForeground }]}
-                >
-                  Courts
-                </Text>
-                {setup.courts.map((court) => {
-                  const selected = division.courtIds.includes(court.id);
-                  return (
-                    <Pressable
-                      key={court.id}
-                      disabled={locked || busy}
-                      onPress={() => {
-                        const next = selected
-                          ? division.courtIds.filter((id) => id !== court.id)
-                          : [...division.courtIds, court.id];
-                        void runAction(() =>
-                          setTournamentHostDivisionCourts(
-                            slug,
-                            division.id,
-                            next
-                          )
-                        );
-                      }}
-                      style={[
-                        styles.courtChip,
-                        {
-                          borderColor: selected
-                            ? colors.primary
-                            : colors.border,
-                          backgroundColor: selected
-                            ? withAlpha(colors.primary, 0.1)
-                            : "transparent",
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: selected
-                            ? colors.primary
-                            : colors.foreground,
-                          fontWeight: selected ? "700" : "500",
-                        }}
-                      >
-                        {court.name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                Add courts below to assign them to this pool.
-              </Text>
-            )}
-          </View>
-        ))}
         {!locked ? (
-          <>
-            <FormField label="New pool name" colors={colors}>
+          <Button
+            label="Save registration"
+            onPress={saveAvailability}
+            loading={busyKey === "availability"}
+            disabled={!availabilityDirty}
+            fullWidth
+          />
+        ) : null}
+      </Section>
+
+      <Section title="Pools" description="Choose which courts each pool plays on.">
+        {setup.divisions.length === 0 ? (
+          <Card>
+            <EmptyState
+              compact
+              icon="grid-outline"
+              title="No pools yet"
+              message={locked ? "Pools can't be added at this stage." : "Add your first pool below."}
+            />
+          </Card>
+        ) : (
+          setup.divisions.map((division) => {
+            const courtsBusy = busyKey === `courts-${division.id}`;
+            return (
+              <Card key={division.id}>
+                <View style={styles.itemHeader}>
+                  <AppText variant="headline" style={styles.flex}>
+                    {division.name}
+                  </AppText>
+                  {!locked ? (
+                    <Button
+                      label="Remove"
+                      variant="destructiveOutline"
+                      size="sm"
+                      icon="trash-outline"
+                      accessibilityLabel={`Remove ${division.name}`}
+                      loading={busyKey === `remove-pool-${division.id}`}
+                      onPress={() =>
+                        Alert.alert(
+                          `Remove ${division.name}?`,
+                          "This deletes the pool and can't be undone.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Remove",
+                              style: "destructive",
+                              onPress: () =>
+                                void runAction(
+                                  `remove-pool-${division.id}`,
+                                  () => removeTournamentHostDivision(slug, division.id),
+                                  `${division.name} removed.`
+                                ),
+                            },
+                          ]
+                        )
+                      }
+                    />
+                  ) : null}
+                </View>
+                {setup.courts.length > 0 ? (
+                  <View style={styles.courtPicker}>
+                    <AppText variant="footnote" tone="muted">
+                      {courtsBusy ? "Saving courts…" : "Courts"}
+                    </AppText>
+                    <ChipRow>
+                      {setup.courts.map((court) => {
+                        const selected = division.courtIds.includes(court.id);
+                        return (
+                          <Chip
+                            key={court.id}
+                            label={court.name}
+                            selected={selected}
+                            icon={selected ? "checkmark" : undefined}
+                            disabled={locked || courtsBusy}
+                            onPress={() => {
+                              const next = selected
+                                ? division.courtIds.filter((id) => id !== court.id)
+                                : [...division.courtIds, court.id];
+                              void runAction(`courts-${division.id}`, () =>
+                                setTournamentHostDivisionCourts(slug, division.id, next)
+                              );
+                            }}
+                          />
+                        );
+                      })}
+                    </ChipRow>
+                  </View>
+                ) : (
+                  <AppText variant="footnote" tone="muted">
+                    Add courts below to assign them to this pool.
+                  </AppText>
+                )}
+              </Card>
+            );
+          })
+        )}
+        {!locked ? (
+          <View style={styles.addRow}>
+            <View style={styles.flex}>
               <FormTextInput
                 value={divisionName}
                 onChangeText={setDivisionName}
-                placeholder="Gold"
+                placeholder="New pool name, e.g. Gold"
                 colors={colors}
+                autoCapitalize="words"
+                accessibilityLabel="New pool name"
               />
-            </FormField>
-            <FormSubmitButton
-              label="Add pool"
-              busy={busy}
-              disabled={!divisionName.trim()}
-              colors={colors}
-              onPress={() => {
-                const name = divisionName.trim();
-                if (!name) return;
-                void runAction(async () => {
-                  const result = await addTournamentHostDivision(slug, name);
-                  setDivisionName("");
-                  return result;
-                });
-              }}
-            />
-          </>
-        ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Courts
-        </Text>
-        {setup.courts.map((court) => (
-          <View
-            key={court.id}
-            style={[styles.itemCard, { borderColor: colors.border }]}
-          >
-            <View style={styles.itemHeader}>
-              <Text style={[styles.itemTitle, { color: colors.foreground }]}>
-                {court.name}
-              </Text>
-              {!locked ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${court.name}`}
-                  onPress={() =>
-                    Alert.alert(
-                      "Remove court?",
-                      `Delete ${court.name}?`,
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Remove",
-                          style: "destructive",
-                          onPress: () =>
-                            void runAction(() =>
-                              removeTournamentHostCourt(slug, court.id)
-                            ),
-                        },
-                      ]
-                    )
-                  }
-                >
-                  <Text style={{ color: colors.destructive, fontWeight: "600" }}>
-                    Remove
-                  </Text>
-                </Pressable>
-              ) : null}
             </View>
+            <Button
+              label="Add"
+              icon="add"
+              variant="outline"
+              onPress={addPool}
+              loading={busyKey === "add-pool"}
+              disabled={!divisionName.trim()}
+              accessibilityLabel="Add pool"
+            />
           </View>
-        ))}
+        ) : null}
+      </Section>
+
+      <Section title="Courts">
+        {setup.courts.length === 0 ? (
+          <Card>
+            <EmptyState
+              compact
+              icon="map-outline"
+              title="No courts yet"
+              message={
+                locked ? "Courts can't be added at this stage." : "Add the courts you'll play on below."
+              }
+            />
+          </Card>
+        ) : (
+          <ListGroup>
+            {setup.courts.map((court) => {
+              const usedBy = court.divisionIds
+                .map((id) => divisionNames.get(id))
+                .filter(Boolean)
+                .join(", ");
+              return (
+                <ListRow
+                  key={court.id}
+                  title={court.name}
+                  subtitle={usedBy ? `Used by ${usedBy}` : "Not assigned to a pool"}
+                  trailing={
+                    !locked ? (
+                      <Button
+                        label="Remove"
+                        variant="destructiveOutline"
+                        size="sm"
+                        accessibilityLabel={`Remove ${court.name}`}
+                        loading={busyKey === `remove-court-${court.id}`}
+                        onPress={() =>
+                          Alert.alert(`Remove ${court.name}?`, "This can't be undone.", [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Remove",
+                              style: "destructive",
+                              onPress: () =>
+                                void runAction(
+                                  `remove-court-${court.id}`,
+                                  () => removeTournamentHostCourt(slug, court.id),
+                                  `${court.name} removed.`
+                                ),
+                            },
+                          ])
+                        }
+                      />
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </ListGroup>
+        )}
         {!locked ? (
-          <>
-            <FormField label="New court name" colors={colors}>
+          <View style={styles.addRow}>
+            <View style={styles.flex}>
               <FormTextInput
                 value={courtName}
                 onChangeText={setCourtName}
-                placeholder="Court 1"
+                placeholder="New court name, e.g. Court 1"
                 colors={colors}
+                autoCapitalize="words"
+                accessibilityLabel="New court name"
               />
-            </FormField>
-            <FormSubmitButton
-              label="Add court"
-              busy={busy}
+            </View>
+            <Button
+              label="Add"
+              icon="add"
+              variant="outline"
+              onPress={addCourt}
+              loading={busyKey === "add-court"}
               disabled={!courtName.trim()}
-              colors={colors}
-              onPress={() => {
-                const name = courtName.trim();
-                if (!name) return;
-                void runAction(async () => {
-                  const result = await addTournamentHostCourt(slug, name);
-                  setCourtName("");
-                  return result;
-                });
-              }}
+              accessibilityLabel="Add court"
             />
-          </>
+          </View>
         ) : null}
-      </View>
-    </ScrollView>
+      </Section>
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 20, paddingBottom: 40 },
-  locked: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 13 },
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 6,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "700" },
-  meta: { fontSize: 13, lineHeight: 18 },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: "700" },
-  itemCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-  },
+  flex: { flex: 1 },
   itemHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: space.md,
   },
-  itemTitle: { fontSize: 15, fontWeight: "700", flex: 1 },
-  courtPickers: { gap: 8 },
-  courtChip: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
+  courtPicker: { gap: space.sm },
+  addRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
 });

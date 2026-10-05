@@ -17,17 +17,13 @@
  */
 
 import type { TournamentPoolSettingsContract } from "@/lib/api/contracts/tournament-ops";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   LayoutAnimation,
   Platform,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   UIManager,
   View,
@@ -42,9 +38,26 @@ import {
   POOL_TIEBREAK_OPTIONS,
   WARMUP_FORMAT_OPTIONS,
 } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  BottomBar,
+  Button,
+  EmptyState,
+  HIT_TARGET,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  haptics,
+  radius,
+  space,
+  type IconName,
+} from "~/ui";
 
 if (
   Platform.OS === "android" &&
@@ -59,6 +72,7 @@ function animateTiebreakReorder() {
 
 export default function PoolSettingsScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [draft, setDraft] = useState<TournamentPoolSettingsContract | null>(
@@ -72,7 +86,7 @@ export default function PoolSettingsScreen() {
     (signal?: AbortSignal) => fetchTournamentPoolSettings(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, poll } = usePublicLoader(
     load,
     "Could not load pool settings."
   );
@@ -85,11 +99,14 @@ export default function PoolSettingsScreen() {
   if (!session) return <Redirect href="/sign-in" />;
   if (!slug) {
     return (
-      <ErrorScreen
-        title="Tournament unavailable"
-        message="Missing tournament link."
-        onRetry={() => {}}
-      />
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Tournament unavailable"
+          message="This link is missing its tournament. Go back and open it again."
+          action={{ label: "Go back", icon: "chevron-back", onPress: () => router.back() }}
+        />
+      </View>
     );
   }
   if ((data === null || draft === null) && error === null) {
@@ -105,6 +122,13 @@ export default function PoolSettingsScreen() {
     );
   }
 
+  const dirty = JSON.stringify(draft) !== JSON.stringify(data);
+
+  function edit(patch: Partial<TournamentPoolSettingsContract>) {
+    setSaved(false);
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
   async function onSave() {
     if (!draft || busy) return;
     setBusy(true);
@@ -113,10 +137,12 @@ export default function PoolSettingsScreen() {
     try {
       const next = await updateTournamentPoolSettings(slug!, draft);
       setDraft(next);
+      await poll();
       setSaved(true);
-      await refresh();
+      haptics.success();
     } catch (cause) {
       setActionError(messageFor(cause, "Could not save pool settings."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -129,6 +155,7 @@ export default function PoolSettingsScreen() {
       return;
     }
     animateTiebreakReorder();
+    setSaved(false);
     setDraft((prev) => {
       if (!prev) return prev;
       const criteria = [...prev.poolTiebreakCriteria];
@@ -138,264 +165,245 @@ export default function PoolSettingsScreen() {
     });
   }
 
+  const lastIndex = draft.poolTiebreakCriteria.length - 1;
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+        {error ? <Banner tone="error" message={error} /> : null}
+
+        <Section title="Match format" description="How many sets each pool match plays.">
+          <OptionList
+            options={MATCH_FORMAT_OPTIONS}
+            value={draft.matchFormat}
+            onChange={(matchFormat) => edit({ matchFormat })}
           />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Pool settings
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          Match format, scoring, warmup, and standings tie-break order for pool
-          play.
-        </Text>
+        </Section>
 
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          Match format
-        </Text>
-        {MATCH_FORMAT_OPTIONS.map((option) => {
-          const selected = draft.matchFormat === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() =>
-                setDraft((prev) =>
-                  prev ? { ...prev, matchFormat: option.value } : prev
-                )
-              }
-              style={[
-                styles.option,
-                {
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected
-                    ? withAlpha(colors.primary, 0.1)
-                    : "transparent",
-                },
-              ]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Section title="Scoring" description="Points for each set in pool play.">
+          <ListGroup>
+            <StepperRow
+              label="Starting score"
+              description="Score each set begins at."
+              value={draft.setStartingScore}
+              onChange={(value) => edit({ setStartingScore: value ?? 0 })}
+            />
+            <StepperRow
+              label="Set target"
+              description="Points needed to win a set."
+              value={draft.setTargetScore}
+              min={1}
+              onChange={(value) => edit({ setTargetScore: value ?? 0 })}
+            />
+            <StepperRow
+              label="Tiebreak set target"
+              description="Points needed to win a deciding set."
+              value={draft.tiebreakTargetScore}
+              min={1}
+              onChange={(value) => edit({ tiebreakTargetScore: value ?? 0 })}
+            />
+          </ListGroup>
+        </Section>
 
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          Scoring
-        </Text>
-        <View style={styles.scoreRow}>
-          <Field
-            label="Start"
-            value={String(draft.setStartingScore)}
-            onChange={(text) =>
-              setDraft((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      setStartingScore: Number.parseInt(text || "0", 10) || 0,
-                    }
-                  : prev
-              )
-            }
-            colors={colors}
+        <Section title="Warmup">
+          <OptionList
+            options={WARMUP_FORMAT_OPTIONS}
+            value={draft.warmupFormat}
+            onChange={(warmupFormat) => edit({ warmupFormat })}
           />
-          <Field
-            label="Target"
-            value={String(draft.setTargetScore)}
-            onChange={(text) =>
-              setDraft((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      setTargetScore: Number.parseInt(text || "0", 10) || 0,
-                    }
-                  : prev
-              )
-            }
-            colors={colors}
-          />
-          <Field
-            label="TB"
-            value={String(draft.tiebreakTargetScore)}
-            onChange={(text) =>
-              setDraft((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      tiebreakTargetScore:
-                        Number.parseInt(text || "0", 10) || 0,
-                    }
-                  : prev
-              )
-            }
-            colors={colors}
-          />
-        </View>
+        </Section>
 
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          Warmup
-        </Text>
-        {WARMUP_FORMAT_OPTIONS.map((option) => {
-          const selected = draft.warmupFormat === option.value;
-          return (
-            <Pressable
-              key={option.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() =>
-                setDraft((prev) =>
-                  prev ? { ...prev, warmupFormat: option.value } : prev
-                )
-              }
-              style={[
-                styles.option,
-                {
-                  borderColor: selected ? colors.primary : colors.border,
-                  backgroundColor: selected
-                    ? withAlpha(colors.primary, 0.1)
-                    : "transparent",
-                },
-              ]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Section
+          title="Standings tie-breaks"
+          description="Teams tied on the first rule are ranked by the next one down."
+        >
+          <ListGroup>
+            {draft.poolTiebreakCriteria.map((criterion, index) => {
+              const label =
+                POOL_TIEBREAK_OPTIONS.find((item) => item.value === criterion)
+                  ?.label ?? criterion;
+              return (
+                <ListRow
+                  key={criterion}
+                  title={`${index + 1}. ${label}`}
+                  trailing={
+                    <View style={styles.reorder}>
+                      <SquareButton
+                        icon="chevron-up"
+                        accessibilityLabel={`Move ${label} up`}
+                        disabled={index === 0}
+                        onPress={() => moveCriterion(index, -1)}
+                      />
+                      <SquareButton
+                        icon="chevron-down"
+                        accessibilityLabel={`Move ${label} down`}
+                        disabled={index === lastIndex}
+                        onPress={() => moveCriterion(index, 1)}
+                      />
+                    </View>
+                  }
+                />
+              );
+            })}
+          </ListGroup>
+        </Section>
+      </ScreenScroll>
 
-        <Text style={[styles.section, { color: colors.foreground }]}>
-          Tie-break order
-        </Text>
-        <View style={styles.tieList}>
-          {draft.poolTiebreakCriteria.map((criterion, index) => {
-            const label =
-              POOL_TIEBREAK_OPTIONS.find((item) => item.value === criterion)
-                ?.label ?? criterion;
-            return (
-              <View
-                key={criterion}
-                style={[styles.tieRow, { borderColor: colors.border }]}
-              >
-                <Text
-                  style={{
-                    flex: 1,
-                    color: colors.foreground,
-                    fontWeight: "600",
-                  }}
-                >
-                  {index + 1}. {label}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Move up"
-                  disabled={index === 0}
-                  onPress={() => moveCriterion(index, -1)}
-                  style={[styles.tieBtn, { opacity: index === 0 ? 0.35 : 1 }]}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    ↑
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Move down"
-                  disabled={index === draft.poolTiebreakCriteria.length - 1}
-                  onPress={() => moveCriterion(index, 1)}
-                  style={[
-                    styles.tieBtn,
-                    {
-                      opacity:
-                        index === draft.poolTiebreakCriteria.length - 1
-                          ? 0.35
-                          : 1,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    ↓
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
-
+      <BottomBar>
         {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
+          <Banner
+            tone="error"
+            message={actionError}
+            onDismiss={() => setActionError(null)}
+          />
         ) : null}
         {saved ? (
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Saved.
-          </Text>
+          <Banner
+            tone="success"
+            message="Pool settings saved."
+            onDismiss={() => setSaved(false)}
+          />
         ) : null}
-      </ScrollView>
-
-      <View
-        style={[
-          styles.footer,
-          { borderTopColor: colors.border, backgroundColor: colors.background },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
+        <Button
+          label="Save changes"
+          fullWidth
+          loading={busy}
+          disabled={!dirty}
           onPress={() => void onSave()}
-          style={[
-            styles.save,
-            { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-              Save pool settings
-            </Text>
-          )}
-        </Pressable>
-      </View>
+        />
+      </BottomBar>
     </View>
   );
 }
 
-function Field({
-  label,
+function OptionList<T extends string>({
+  options,
   value,
   onChange,
-  colors,
 }: {
-  label: string;
-  value: string;
-  onChange: (text: string) => void;
-  colors: ReturnType<typeof useThemeColors>;
+  options: readonly { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
 }) {
   return (
-    <View style={styles.field}>
-      <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>{label}</Text>
+    <ListGroup>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <ListRow
+            key={option.value}
+            title={option.label}
+            accessibilityLabel={selected ? `${option.label}, selected` : option.label}
+            chevron={false}
+            trailing={
+              selected ? <Icon name="checkmark" size={20} tone="primary" /> : null
+            }
+            onPress={() => {
+              if (selected) return;
+              haptics.selection();
+              onChange(option.value);
+            }}
+          />
+        );
+      })}
+    </ListGroup>
+  );
+}
+
+function SquareButton({
+  icon,
+  accessibilityLabel,
+  disabled,
+  onPress,
+}: {
+  icon: IconName;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={() => {
+        haptics.selection();
+        onPress();
+      }}
+      style={({ pressed }) => [
+        styles.squareButton,
+        {
+          backgroundColor: pressed ? colors.muted : "transparent",
+          opacity: disabled ? 0.3 : 1,
+        },
+      ]}
+    >
+      <Icon name={icon} size={20} tone="primary" />
+    </Pressable>
+  );
+}
+
+function StepperRow({
+  label,
+  description,
+  value,
+  onChange,
+  min = 0,
+  max = 99,
+}: {
+  label: string;
+  description?: string;
+  value: number;
+  onChange: (value: number | null) => void;
+  min?: number;
+  max?: number;
+}) {
+  const colors = useThemeColors();
+  return (
+    <View style={styles.stepperRow}>
+      <View style={styles.stepperText}>
+        <AppText variant="callout" weight="600">
+          {label}
+        </AppText>
+        {description ? (
+          <AppText variant="footnote" tone="muted">
+            {description}
+          </AppText>
+        ) : null}
+      </View>
+      <SquareButton
+        icon="remove"
+        accessibilityLabel={`Decrease ${label}`}
+        disabled={value <= min}
+        onPress={() => onChange(Math.max(min, value - 1))}
+      />
       <TextInput
+        value={String(value)}
+        onChangeText={(text) => {
+          const parsed = Number.parseInt(text, 10);
+          onChange(Number.isNaN(parsed) ? null : Math.min(max, parsed));
+        }}
         keyboardType="number-pad"
-        value={value}
-        onChangeText={onChange}
+        returnKeyType="done"
+        selectTextOnFocus
+        maxLength={2}
+        accessibilityLabel={label}
         style={[
-          styles.input,
+          styles.stepperInput,
           {
             color: colors.foreground,
             borderColor: colors.border,
-            backgroundColor: colors.background,
+            backgroundColor: colors.card,
           },
         ]}
+      />
+      <SquareButton
+        icon="add"
+        accessibilityLabel={`Increase ${label}`}
+        disabled={value >= max}
+        onPress={() => onChange(Math.min(max, value + 1))}
       />
     </View>
   );
@@ -403,41 +411,33 @@ function Field({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40, gap: 10 },
-  title: { fontSize: 28, fontWeight: "800", letterSpacing: -0.4 },
-  body: { fontSize: 15, lineHeight: 22, marginBottom: 8 },
-  section: { fontSize: 17, fontWeight: "700", marginTop: 12 },
-  option: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+  centered: { flex: 1, justifyContent: "center" },
+  reorder: { flexDirection: "row", gap: space.xxs },
+  squareButton: {
+    width: HIT_TARGET,
+    height: HIT_TARGET,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  scoreRow: { flexDirection: "row", gap: 10 },
-  field: { flex: 1, gap: 4 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  tieList: { gap: 10 },
-  tieRow: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  stepperRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: space.xs,
+    minHeight: HIT_TARGET + 12,
+    paddingLeft: space.lg,
+    paddingRight: space.sm,
+    paddingVertical: space.sm,
   },
-  tieBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-  footer: { borderTopWidth: 1, paddingHorizontal: 20, paddingVertical: 12 },
-  save: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
+  stepperText: { flex: 1, gap: space.xxs, marginRight: space.sm },
+  stepperInput: {
+    width: 52,
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    textAlign: "center",
+    fontSize: 17,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
   },
 });

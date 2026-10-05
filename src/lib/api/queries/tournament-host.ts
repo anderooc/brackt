@@ -293,8 +293,7 @@ async function loadSetupContract(
   return {
     playFormat: tournament.playFormat ?? "pool_to_bracket",
     registrationCapacity: tournament.registrationCapacity,
-    registrationDeadline:
-      tournament.registrationDeadline?.toISOString().slice(0, 10) ?? null,
+    registrationDeadline: tournament.registrationDeadline?.toISOString() ?? null,
     registeredCount: registrationCounts.registrationCount,
     canEdit,
     preparationLockedReason,

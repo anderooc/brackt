@@ -16,38 +16,125 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type {
+  TournamentHostChecklistStepContract,
+  TournamentHostOverviewContract,
+} from "@/lib/api/contracts/tournament-host";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   fetchTournamentHostOverview,
   updateTournamentHostStatus,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { ChipPicker } from "~/components/create-form";
 import {
   PLAY_FORMAT_LABELS,
   TOURNAMENT_STATUS_LABELS,
   TOURNAMENT_STATUS_VALUES,
 } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Card,
+  Chip,
+  ChipRow,
+  haptics,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  space,
+  StatusBadge,
+} from "~/ui";
+
+function plural(count: number, word: string, pluralWord = `${word}s`) {
+  return `${count} ${count === 1 ? word : pluralWord}`;
+}
+
+type StepAction =
+  | { kind: "route"; path: string }
+  | { kind: "status"; status: string }
+  | null;
+
+function stepAction(
+  step: TournamentHostChecklistStepContract,
+  overview: TournamentHostOverviewContract
+): StepAction {
+  const base = `/tournament/${overview.slug}`;
+  switch (step.id) {
+    case "setup":
+      return { kind: "route", path: `${base}/host/setup` };
+    case "open":
+      return step.done ? null : { kind: "status", status: "registration_open" };
+    case "confirm":
+      return { kind: "route", path: `${base}/host/registrations?tab=pending` };
+    case "pool-settings":
+      return { kind: "route", path: `${base}/settings/pool` };
+    case "bracket-settings":
+      return { kind: "route", path: `${base}/settings/bracket` };
+    case "pools":
+    case "release":
+      return { kind: "route", path: `${base}/host/pools` };
+    case "bracket":
+      return {
+        kind: "route",
+        path: overview.sections.bracket ? `${base}/host/bracket` : `${base}/bracket`,
+      };
+    case "schedule":
+      return overview.sections.schedule
+        ? { kind: "route", path: `${base}/host/schedule` }
+        : null;
+    case "run":
+      return step.done ? null : { kind: "status", status: "in_progress" };
+    default:
+      return null;
+  }
+}
+
+function stepHint(
+  step: TournamentHostChecklistStepContract,
+  overview: TournamentHostOverviewContract
+): string | undefined {
+  if (step.done) return undefined;
+  switch (step.id) {
+    case "setup":
+      return "Add pools and courts in Setup.";
+    case "open":
+      return "Tap to set status to Registration open when teams can sign up.";
+    case "confirm":
+      return overview.counts.pendingCount > 0
+        ? `${plural(overview.counts.pendingCount, "team")} waiting for approval.`
+        : "Approve pending teams, then close registration.";
+    case "pools":
+      return overview.playFormat === "pool_to_bracket"
+        ? "Assign teams to pools in Registrations, then save seeding in Pools to create matches."
+        : "Assign teams in Registrations, then save seeding to build the bracket.";
+    case "release":
+      return "Release pools when schedules are ready for teams and fans.";
+    case "bracket":
+      return overview.playFormat === "pool_to_bracket"
+        ? "Brackets seed automatically when every pool finishes."
+        : "Teams appear once seeding is saved.";
+    case "schedule":
+      return "Set start times and courts in Schedule.";
+    case "run":
+      return "Tap to set status to In progress on event day.";
+    default:
+      return step.hint;
+  }
+}
 
 export default function TournamentHostScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const [statusBusy, setStatusBusy] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostOverview(slug ?? "", signal),
@@ -58,21 +145,37 @@ export default function TournamentHostScreen() {
     "Could not load host tools."
   );
 
-  const onStatusChange = useCallback(
+  const applyStatus = useCallback(
     async (status: string) => {
       if (!slug || !data || data.overview.status === status) return;
-      setStatusBusy(true);
+      setPendingStatus(status);
       setActionError(null);
+      setNotice(null);
       try {
         await updateTournamentHostStatus(slug, status);
         await reload(undefined, "silent");
+        haptics.success();
+        setNotice(`Status set to ${TOURNAMENT_STATUS_LABELS[status] ?? status}.`);
       } catch (cause) {
+        haptics.error();
         setActionError(messageFor(cause, "Could not update status."));
       } finally {
-        setStatusBusy(false);
+        setPendingStatus(null);
       }
     },
     [data, reload, slug]
+  );
+
+  const confirmStatus = useCallback(
+    (status: string) => {
+      if (!data || data.overview.status === status) return;
+      const label = TOURNAMENT_STATUS_LABELS[status] ?? status;
+      Alert.alert(`Set status to ${label}?`, statusConfirmMessage(status), [
+        { text: "Cancel", style: "cancel" },
+        { text: "Set status", onPress: () => void applyStatus(status) },
+      ]);
+    },
+    [applyStatus, data]
   );
 
   if (sessionLoading) return <LoadingScreen />;
@@ -81,8 +184,8 @@ export default function TournamentHostScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => router.replace("/")}
+        message="No tournament was specified. Go back and open it again."
+        onRetry={() => (router.canGoBack() ? router.back() : router.replace("/"))}
       />
     );
   }
@@ -91,297 +194,247 @@ export default function TournamentHostScreen() {
       <ErrorScreen
         title="Host tools unavailable"
         message={error}
-        onRetry={() => void refresh()}
+        onRetry={() => void reload()}
       />
     );
   }
   if (!data) return <LoadingScreen />;
 
   const overview = data.overview;
+  const base = `/tournament/${slug}`;
+  const { counts, sections } = overview;
+  const doneCount = overview.checklist.filter((step) => step.done).length;
+  const teamCount = counts.confirmedCount + counts.checkedInCount;
+  const statusBusy = pendingStatus != null;
+
+  const registrationDetail = [
+    plural(counts.registrationCount, "team"),
+    counts.pendingCount > 0 ? `${counts.pendingCount} pending` : null,
+    counts.waitlistCount > 0 ? `${counts.waitlistCount} waitlisted` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => void refresh()}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <View style={[styles.hero, { borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          {overview.name}
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          {TOURNAMENT_STATUS_LABELS[overview.status] ?? overview.status}
-          {" · "}
-          {PLAY_FORMAT_LABELS[overview.playFormat] ?? overview.playFormat}
-        </Text>
-        {overview.isArchived ? (
-          <Text style={[styles.warning, { color: colors.destructive }]}>
-            Archived — update the date before changing status.
-          </Text>
-        ) : null}
-      </View>
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <Card>
+        <AppText variant="title">{overview.name}</AppText>
+        <View style={styles.heroMeta}>
+          <StatusBadge kind="tournament" status={overview.status} date={overview.date} />
+          <AppText variant="subhead" tone="muted">
+            {PLAY_FORMAT_LABELS[overview.playFormat] ?? overview.playFormat}
+          </AppText>
+        </View>
+      </Card>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Status
-        </Text>
-        <ChipPicker
-          options={TOURNAMENT_STATUS_VALUES}
-          value={overview.status}
-          onChange={(value) => void onStatusChange(value)}
-          colors={colors}
-          labels={TOURNAMENT_STATUS_LABELS}
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
         />
-        {statusBusy ? (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            Saving…
-          </Text>
-        ) : null}
+      ) : null}
+      {overview.isArchived ? (
+        <Banner
+          tone="warning"
+          title="Archived"
+          message="The tournament date has passed, so status and preparation changes are locked. Update the date to make changes."
+        />
+      ) : overview.preparationLockedReason ? (
+        <Banner tone="info" message={overview.preparationLockedReason} />
+      ) : null}
+
+      <Section title="Status" description="Who can see and register for this tournament.">
+        <ChipRow>
+          {TOURNAMENT_STATUS_VALUES.map((status) => (
+            <Chip
+              key={status}
+              label={TOURNAMENT_STATUS_LABELS[status] ?? status}
+              selected={(pendingStatus ?? overview.status) === status}
+              disabled={statusBusy || overview.isArchived}
+              onPress={() => confirmStatus(status)}
+            />
+          ))}
+        </ChipRow>
         {actionError ? (
-          <Text style={[styles.error, { color: colors.destructive }]}>
-            {actionError}
-          </Text>
+          <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
         ) : null}
-      </View>
+        {notice ? (
+          <Banner tone="success" message={notice} onDismiss={() => setNotice(null)} />
+        ) : null}
+      </Section>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Checklist
-        </Text>
-        {overview.checklist.map((step) => (
-          <View
-            key={step.id}
-            style={[
-              styles.checkItem,
-              {
-                borderColor: colors.border,
-                backgroundColor: step.done
-                  ? withAlpha(colors.primary, 0.06)
-                  : "transparent",
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.checkMark,
-                { color: step.done ? colors.primary : colors.mutedForeground },
-              ]}
-            >
-              {step.done ? "✓" : "○"}
-            </Text>
-            <View style={styles.checkText}>
-              <Text style={[styles.checkLabel, { color: colors.foreground }]}>
-                {step.label}
-              </Text>
-              {!step.done && step.hint ? (
-                <Text
-                  style={[styles.hint, { color: colors.mutedForeground }]}
-                >
-                  {step.hint}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        ))}
-      </View>
+      <Section
+        title="Readiness"
+        description={`${doneCount} of ${overview.checklist.length} steps done`}
+      >
+        <ListGroup>
+          {overview.checklist.map((step) => {
+            const action = stepAction(step, overview);
+            const onPress =
+              action?.kind === "route"
+                ? () => router.push(action.path)
+                : action?.kind === "status" && !statusBusy && !overview.isArchived
+                  ? () => confirmStatus(action.status)
+                  : undefined;
+            return (
+              <ListRow
+                key={step.id}
+                title={step.label}
+                subtitle={stepHint(step, overview)}
+                icon={step.done ? "checkmark-circle" : "ellipse-outline"}
+                iconTone={step.done ? "success" : "muted"}
+                trailing={
+                  <Badge
+                    label={step.done ? "Done" : "To do"}
+                    tone={step.done ? "success" : "neutral"}
+                  />
+                }
+                onPress={onPress}
+                numberOfLines={3}
+              />
+            );
+          })}
+        </ListGroup>
+      </Section>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          Manage
-        </Text>
-        <HostLink
-          title="Setup"
-          detail={`${overview.counts.divisionCount} pools · ${overview.counts.courtCount} courts`}
-          onPress={() => router.push(`/tournament/${slug}/host/setup`)}
-          colors={colors}
-        />
-        {overview.sections.poolSettings ? (
-          <HostLink
-            title="Pool settings"
-            detail="Match format, scoring, tie-breaks"
-            onPress={() => router.push(`/tournament/${slug}/settings/pool`)}
-            colors={colors}
+      <Section title="Game day">
+        <ListGroup>
+          {overview.canCheckIn ? (
+            <ListRow
+              title="Check-in"
+              subtitle={`${counts.checkedInCount} of ${plural(teamCount, "team")} checked in`}
+              icon="checkbox-outline"
+              onPress={() => router.push(`${base}/host/registrations?tab=checkin`)}
+            />
+          ) : null}
+          {sections.schedule ? (
+            <ListRow
+              title="Schedule"
+              subtitle="Start times, courts, and reffing teams"
+              icon="time-outline"
+              onPress={() => router.push(`${base}/host/schedule`)}
+            />
+          ) : null}
+          {sections.pools ? (
+            <ListRow
+              title="Pools"
+              subtitle="Seeding, matches, and release"
+              icon="grid-outline"
+              onPress={() => router.push(`${base}/host/pools`)}
+            />
+          ) : null}
+          {sections.bracket ? (
+            <ListRow
+              title="Bracket"
+              subtitle="Tiers and regenerate"
+              icon="git-network-outline"
+              onPress={() => router.push(`${base}/host/bracket`)}
+            />
+          ) : null}
+          <ListRow
+            title="Live scores"
+            subtitle="What's on court now"
+            icon="pulse-outline"
+            onPress={() => router.push(`${base}/scoring`)}
           />
-        ) : null}
-        {overview.sections.bracketSettings ? (
-          <HostLink
-            title="Bracket settings"
-            detail="Gold / silver / bronze structure"
-            onPress={() => router.push(`/tournament/${slug}/settings/bracket`)}
-            colors={colors}
+          <ListRow
+            title="Matches"
+            subtitle="Public schedule and results"
+            icon="list-outline"
+            onPress={() => router.push(`${base}?tab=matches`)}
           />
-        ) : null}
-        <HostLink
-          title="Payment settings"
-          detail="Entry fees and payment methods"
-          onPress={() => router.push(`/tournament/${slug}/settings/payment`)}
-          colors={colors}
-        />
-        <HostLink
-          title="Waiver settings"
-          detail="PDF upload and signing options"
-          onPress={() => router.push(`/tournament/${slug}/settings/waiver`)}
-          colors={colors}
-        />
-        <HostLink
-          title="Tournament packet"
-          detail="Logistics notes and PDF header color"
-          onPress={() => router.push(`/tournament/${slug}/settings/packet`)}
-          colors={colors}
-        />
-        {overview.sections.pools ? (
-          <HostLink
-            title="Pool ops"
-            detail="Seeding, matches, and release"
-            onPress={() => router.push(`/tournament/${slug}/host/pools`)}
-            colors={colors}
+          <ListRow
+            title="Chat"
+            subtitle="Announcements and team discussion"
+            icon="chatbubbles-outline"
+            onPress={() => router.push(`${base}/chat`)}
           />
-        ) : null}
-        {overview.sections.bracket ? (
-          <HostLink
-            title="Bracket ops"
-            detail="Tier settings and regenerate"
-            onPress={() => router.push(`/tournament/${slug}/host/bracket`)}
-            colors={colors}
+          <ListRow
+            title="Email"
+            subtitle="Message registered captains"
+            icon="mail-outline"
+            onPress={() => router.push(`${base}/email`)}
           />
-        ) : null}
-        {overview.sections.schedule ? (
-          <HostLink
-            title="Schedule"
-            detail="Set start times and bulk fill"
-            onPress={() => router.push(`/tournament/${slug}/host/schedule`)}
-            colors={colors}
+        </ListGroup>
+      </Section>
+
+      <Section title="Setup">
+        <ListGroup>
+          <ListRow
+            title="Pools and courts"
+            subtitle={`${plural(counts.divisionCount, "pool")} · ${plural(counts.courtCount, "court")}`}
+            icon="construct-outline"
+            onPress={() => router.push(`${base}/host/setup`)}
           />
-        ) : null}
-        <HostLink
-          title="Matches"
-          detail="Public schedule and scoring"
-          onPress={() => router.push(`/tournament/${slug}?tab=matches`)}
-          colors={colors}
-        />
-        {overview.canCheckIn ? (
-          <HostLink
-            title="Check-in"
-            detail={`${overview.counts.checkedInCount} of ${overview.counts.confirmedCount + overview.counts.checkedInCount} teams checked in`}
-            onPress={() =>
-              router.push(`/tournament/${slug}/host/registrations?tab=checkin`)
-            }
-            colors={colors}
+          <ListRow
+            title="Registrations"
+            subtitle={registrationDetail}
+            icon="people-outline"
+            onPress={() => router.push(`${base}/host/registrations`)}
           />
-        ) : null}
-        <HostLink
-          title="Registrations"
-          detail={
-            overview.canCheckIn
-              ? `${overview.counts.registrationCount} teams`
-              : `${overview.counts.registrationCount} teams · ${overview.counts.pendingCount} pending`
-          }
-          onPress={() => router.push(`/tournament/${slug}/host/registrations`)}
-          colors={colors}
-        />
-      </View>
-    </ScrollView>
+          {sections.poolSettings ? (
+            <ListRow
+              title="Pool settings"
+              subtitle="Match format, scoring, and tie-breaks"
+              icon="options-outline"
+              onPress={() => router.push(`${base}/settings/pool`)}
+            />
+          ) : null}
+          {sections.bracketSettings ? (
+            <ListRow
+              title="Bracket settings"
+              subtitle="Gold, silver, and bronze tiers"
+              icon="trophy-outline"
+              onPress={() => router.push(`${base}/settings/bracket`)}
+            />
+          ) : null}
+          <ListRow
+            title="Payment"
+            subtitle="Entry fee and payment methods"
+            icon="card-outline"
+            onPress={() => router.push(`${base}/settings/payment`)}
+          />
+          <ListRow
+            title="Waiver"
+            subtitle="Waiver PDF and signing rules"
+            icon="document-text-outline"
+            onPress={() => router.push(`${base}/settings/waiver`)}
+          />
+          <ListRow
+            title="Packet"
+            subtitle="Logistics notes and PDF color"
+            icon="folder-open-outline"
+            onPress={() => router.push(`${base}/settings/packet`)}
+          />
+        </ListGroup>
+      </Section>
+    </ScreenScroll>
   );
 }
 
-function HostLink({
-  title,
-  detail,
-  onPress,
-  colors,
-  disabled,
-  badge,
-}: {
-  title: string;
-  detail: string;
-  onPress: () => void;
-  colors: ReturnType<typeof useThemeColors>;
-  disabled?: boolean;
-  badge?: string;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled: !!disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={[
-        styles.link,
-        {
-          borderColor: colors.border,
-          opacity: disabled ? 0.6 : 1,
-        },
-      ]}
-    >
-      <View style={styles.linkText}>
-        <View style={styles.linkTitleRow}>
-          <Text style={[styles.linkTitle, { color: colors.foreground }]}>
-            {title}
-          </Text>
-          {badge ? (
-            <Text style={[styles.badge, { color: colors.mutedForeground }]}>
-              {badge}
-            </Text>
-          ) : null}
-        </View>
-        <Text style={[styles.linkDetail, { color: colors.mutedForeground }]}>
-          {detail}
-        </Text>
-      </View>
-      {!disabled ? (
-        <Text style={[styles.chevron, { color: colors.primary }]}>›</Text>
-      ) : null}
-    </Pressable>
-  );
+function statusConfirmMessage(status: string): string {
+  switch (status) {
+    case "draft":
+      return "Teams won't be able to register while the tournament is a draft.";
+    case "registration_open":
+      return "Teams will be able to find and register for this tournament.";
+    case "registration_closed":
+      return "New teams will no longer be able to register.";
+    case "in_progress":
+      return "Teams and fans will see the event as live.";
+    case "completed":
+      return "The event will be marked as finished.";
+    default:
+      return "This changes what teams and fans see.";
+  }
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 20, paddingBottom: 40 },
-  hero: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    gap: 6,
-  },
-  title: { fontSize: 22, fontWeight: "800" },
-  meta: { fontSize: 14 },
-  warning: { fontSize: 13, marginTop: 4 },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: "700" },
-  hint: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 13 },
-  checkItem: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "flex-start",
-  },
-  checkMark: { fontSize: 16, fontWeight: "700", width: 18 },
-  checkText: { flex: 1, gap: 4 },
-  checkLabel: { fontSize: 14, fontWeight: "600", lineHeight: 20 },
-  link: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+  heroMeta: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    flexWrap: "wrap",
+    gap: space.sm,
   },
-  linkText: { flex: 1, gap: 2 },
-  linkTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  linkTitle: { fontSize: 15, fontWeight: "700" },
-  badge: { fontSize: 12, fontWeight: "600" },
-  linkDetail: { fontSize: 13, lineHeight: 18 },
-  chevron: { fontSize: 22, fontWeight: "300" },
 });

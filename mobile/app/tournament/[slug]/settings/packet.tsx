@@ -17,17 +17,9 @@
  */
 
 import type { TournamentPacketHostContract } from "@/lib/api/contracts/tournament-host";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   fetchTournamentHostPacket,
   updateTournamentHostPacket,
@@ -37,12 +29,24 @@ import { FormField, FormTextInput } from "~/components/create-form";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  Banner,
+  BottomBar,
+  Button,
+  EmptyState,
+  ScreenScroll,
+  Section,
+  haptics,
+  radius,
+  space,
+} from "~/ui";
 
 const DEFAULT_COLOR = "#C93D2E";
 const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
 export default function PacketSettingsScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [notes, setNotes] = useState("");
@@ -51,11 +55,9 @@ export default function PacketSettingsScreen() {
   const [savedColor, setSavedColor] = useState(DEFAULT_COLOR);
   const [canEdit, setCanEdit] = useState(true);
   const [lockedReason, setLockedReason] = useState<string | null>(null);
-  const [notesBusy, setNotesBusy] = useState(false);
-  const [colorBusy, setColorBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [notesSaved, setNotesSaved] = useState(false);
-  const [colorSaved, setColorSaved] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostPacket(slug ?? "", signal),
@@ -86,11 +88,14 @@ export default function PacketSettingsScreen() {
   if (!session) return <Redirect href="/sign-in" />;
   if (!slug) {
     return (
-      <ErrorScreen
-        title="Tournament unavailable"
-        message="Missing tournament link."
-        onRetry={() => {}}
-      />
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Tournament unavailable"
+          message="This link is missing its tournament. Go back and open it again."
+          action={{ label: "Go back", icon: "chevron-back", onPress: () => router.back() }}
+        />
+      </View>
     );
   }
   if (data === null && error === null) {
@@ -106,176 +111,151 @@ export default function PacketSettingsScreen() {
     );
   }
 
-  async function onSaveNotes() {
-    if (!canEdit || notesBusy) return;
-    setNotesBusy(true);
-    setActionError(null);
-    setNotesSaved(false);
-    try {
-      const next = await updateTournamentHostPacket(slug!, { notes });
-      applyPacket(next);
-      setNotesSaved(true);
-    } catch (cause) {
-      setActionError(messageFor(cause, "Could not save packet notes."));
-    } finally {
-      setNotesBusy(false);
-    }
-  }
+  const trimmedColor = colorInput.trim();
+  const colorValid = HEX_RE.test(trimmedColor);
+  const notesDirty = notes !== savedNotes;
+  const colorDirty = trimmedColor !== savedColor;
+  const dirty = notesDirty || colorDirty;
 
-  async function onSaveColor() {
-    if (!canEdit || colorBusy) return;
-    const trimmed = colorInput.trim();
-    if (!HEX_RE.test(trimmed)) {
-      setActionError("Enter a 6-digit hex color, e.g. #1A3F7D");
+  async function onSave() {
+    if (!canEdit || busy || !dirty) return;
+    if (colorDirty && !colorValid) {
+      setActionError("Enter a 6-digit hex color, like #1A3F7D.");
+      haptics.error();
       return;
     }
-    setColorBusy(true);
+    setBusy(true);
     setActionError(null);
-    setColorSaved(false);
+    setSaved(false);
     try {
       const next = await updateTournamentHostPacket(slug!, {
-        accentColor: trimmed,
+        ...(notesDirty ? { notes } : {}),
+        ...(colorDirty ? { accentColor: trimmedColor } : {}),
       });
       applyPacket(next);
-      setColorSaved(true);
+      setSaved(true);
+      haptics.success();
     } catch (cause) {
-      setActionError(messageFor(cause, "Could not save header color."));
+      setActionError(messageFor(cause, "Could not save packet settings."));
+      haptics.error();
     } finally {
-      setColorBusy(false);
+      setBusy(false);
     }
   }
-
-  const notesDirty = notes !== savedNotes;
-  const colorDirty = colorInput !== savedColor;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Tournament packet
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          Logistics notes and PDF header color for the downloadable team packet.
-        </Text>
-
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+        {error ? <Banner tone="error" message={error} /> : null}
         {lockedReason ? (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            {lockedReason}
-          </Text>
+          <Banner tone="info" title="Packet locked" message={lockedReason} />
         ) : null}
 
-        <FormField label="Logistics & day-of notes" colors={colors}>
-          <FormTextInput
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            editable={canEdit && !notesBusy}
-            placeholder="Agenda, parking, food, check-in, contacts…"
-            colors={colors}
-            style={{ minHeight: 180, textAlignVertical: "top" }}
-          />
-        </FormField>
-
-        {canEdit ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={notesBusy || !notesDirty}
-            onPress={() => void onSaveNotes()}
-            style={[
-              styles.inlineSave,
-              {
-                borderColor: colors.border,
-                opacity: notesBusy || !notesDirty ? 0.5 : 1,
-              },
-            ]}
-          >
-            {notesBusy ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={{ color: colors.primary, fontWeight: "600" }}>
-                Save packet notes
-              </Text>
-            )}
-          </Pressable>
-        ) : null}
-        {notesSaved ? (
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Notes saved.
-          </Text>
-        ) : null}
-
-        <FormField
-          label="PDF header color"
-          hint="Hex color for the packet PDF header band."
-          colors={colors}
+        <Section
+          title="Logistics notes"
+          description="Agenda, parking, food, and contacts printed in the downloadable team packet."
         >
-          <FormTextInput
-            value={colorInput}
-            onChangeText={setColorInput}
-            autoCapitalize="none"
-            editable={canEdit && !colorBusy}
-            placeholder="#C93D2E"
+          <FormField label="Day-of notes" colors={colors}>
+            <FormTextInput
+              value={notes}
+              onChangeText={(next) => {
+                setSaved(false);
+                setNotes(next);
+              }}
+              multiline
+              autoCapitalize="sentences"
+              editable={canEdit && !busy}
+              placeholder="Agenda, parking, food, check-in, contacts…"
+              accessibilityLabel="Logistics and day-of notes"
+              colors={colors}
+              style={styles.notes}
+            />
+          </FormField>
+        </Section>
+
+        <Section
+          title="Header color"
+          description="Color of the header band on the packet PDF."
+        >
+          <FormField
+            label="Hex color"
+            error={
+              colorDirty && trimmedColor.length >= 7 && !colorValid
+                ? "Use a 6-digit hex color, like #1A3F7D."
+                : null
+            }
             colors={colors}
-          />
-        </FormField>
-
-        {canEdit ? (
-          <Pressable
-            accessibilityRole="button"
-            disabled={colorBusy || !colorDirty}
-            onPress={() => void onSaveColor()}
-            style={[
-              styles.inlineSave,
-              {
-                borderColor: colors.border,
-                opacity: colorBusy || !colorDirty ? 0.5 : 1,
-              },
-            ]}
           >
-            {colorBusy ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={{ color: colors.primary, fontWeight: "600" }}>
-                Save header color
-              </Text>
-            )}
-          </Pressable>
-        ) : null}
-        {colorSaved ? (
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Color saved.
-          </Text>
-        ) : null}
+            <View style={styles.colorRow}>
+              <View
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={[
+                  styles.swatch,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colorValid ? trimmedColor : colors.muted,
+                  },
+                ]}
+              />
+              <FormTextInput
+                value={colorInput}
+                onChangeText={(next) => {
+                  setSaved(false);
+                  setColorInput(next);
+                }}
+                autoCapitalize="none"
+                maxLength={7}
+                editable={canEdit && !busy}
+                placeholder={DEFAULT_COLOR}
+                accessibilityLabel="Header color hex code"
+                colors={colors}
+                style={styles.colorInput}
+              />
+            </View>
+          </FormField>
+        </Section>
+      </ScreenScroll>
 
-        {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
-        ) : null}
-      </ScrollView>
+      {canEdit ? (
+        <BottomBar>
+          {actionError ? (
+            <Banner
+              tone="error"
+              message={actionError}
+              onDismiss={() => setActionError(null)}
+            />
+          ) : null}
+          {saved ? (
+            <Banner
+              tone="success"
+              message="Packet settings saved."
+              onDismiss={() => setSaved(false)}
+            />
+          ) : null}
+          <Button
+            label="Save changes"
+            fullWidth
+            loading={busy}
+            disabled={!dirty}
+            onPress={() => void onSave()}
+          />
+        </BottomBar>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, gap: 14, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: "700" },
-  body: { fontSize: 15, lineHeight: 21 },
-  hint: { fontSize: 13, lineHeight: 18 },
-  inlineSave: {
-    alignSelf: "flex-start",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  centered: { flex: 1, justifyContent: "center" },
+  notes: { minHeight: 180 },
+  colorRow: { flexDirection: "row", alignItems: "center", gap: space.md },
+  swatch: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
   },
+  colorInput: { flex: 1 },
 });

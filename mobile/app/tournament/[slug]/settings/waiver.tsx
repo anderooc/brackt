@@ -19,18 +19,9 @@
 import type { TournamentWaiverSettingsContract } from "@/lib/api/contracts/tournament-ops";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
 import {
   fetchTournamentWaiver,
   updateTournamentHostWaiverSettings,
@@ -41,9 +32,22 @@ import { FormField, FormTextInput } from "~/components/create-form";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  Banner,
+  BottomBar,
+  Button,
+  EmptyState,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  SwitchRow,
+  haptics,
+} from "~/ui";
 
 export default function WaiverSettingsScreen() {
   const colors = useThemeColors();
+  const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const [draft, setDraft] = useState<TournamentWaiverSettingsContract | null>(
@@ -54,13 +58,13 @@ export default function WaiverSettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentWaiver(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, poll } = usePublicLoader(
     load,
     "Could not load waiver settings."
   );
@@ -76,11 +80,14 @@ export default function WaiverSettingsScreen() {
   if (!session) return <Redirect href="/sign-in" />;
   if (!slug) {
     return (
-      <ErrorScreen
-        title="Tournament unavailable"
-        message="Missing tournament link."
-        onRetry={() => {}}
-      />
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Tournament unavailable"
+          message="This link is missing its tournament. Go back and open it again."
+          action={{ label: "Go back", icon: "chevron-back", onPress: () => router.back() }}
+        />
+      </View>
     );
   }
   if ((data === null || draft === null) && error === null) {
@@ -96,10 +103,18 @@ export default function WaiverSettingsScreen() {
     );
   }
 
+  const dirty = JSON.stringify(draft) !== JSON.stringify(data.settings);
+
+  function edit(patch: Partial<TournamentWaiverSettingsContract>) {
+    setNotice(null);
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  }
+
   async function onUpload() {
     if (uploading) return;
     setUploading(true);
     setActionError(null);
+    setNotice(null);
     try {
       const picked = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
@@ -115,9 +130,11 @@ export default function WaiverSettingsScreen() {
       });
       setFileName(result.waiver.fileName);
       setVersion(result.waiver.version);
-      await refresh();
+      setNotice(`Uploaded version ${result.waiver.version}.`);
+      haptics.success();
     } catch (cause) {
       setActionError(messageFor(cause, "Could not upload waiver PDF."));
+      haptics.error();
     } finally {
       setUploading(false);
     }
@@ -127,13 +144,15 @@ export default function WaiverSettingsScreen() {
     if (!draft || busy) return;
     setBusy(true);
     setActionError(null);
-    setSaved(false);
+    setNotice(null);
     try {
       await updateTournamentHostWaiverSettings(slug!, draft);
-      setSaved(true);
-      await refresh();
+      await poll();
+      setNotice("Waiver settings saved.");
+      haptics.success();
     } catch (cause) {
       setActionError(messageFor(cause, "Could not save waiver settings."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -141,232 +160,126 @@ export default function WaiverSettingsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refresh}
-            tintColor={colors.primary}
-          />
-        }
-      >
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Waiver settings
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          Upload the waiver PDF and choose how teams complete it.
-        </Text>
+      <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+        {error ? <Banner tone="error" message={error} /> : null}
 
-        <View style={styles.uploadBlock}>
-          <Text style={[styles.section, { color: colors.foreground }]}>
-            Waiver PDF
-          </Text>
-          {fileName ? (
-            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              v{version} · {fileName}
-            </Text>
-          ) : (
-            <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-              No waiver uploaded yet
-            </Text>
-          )}
-          <Pressable
-            accessibilityRole="button"
-            disabled={uploading}
+        <Section
+          title="Waiver PDF"
+          description="The document teams download, print, or sign."
+        >
+          <ListGroup>
+            <ListRow
+              icon="document-text-outline"
+              title={fileName ?? "No waiver uploaded yet"}
+              subtitle={
+                fileName && version != null
+                  ? `Version ${version}`
+                  : "Upload a PDF so teams can review it."
+              }
+            />
+          </ListGroup>
+          <Button
+            label={fileName ? "Upload new version" : "Upload PDF"}
+            icon="cloud-upload-outline"
+            variant="outline"
+            size="sm"
+            loading={uploading}
+            disabled={busy}
             onPress={() => void onUpload()}
-            style={[
-              styles.uploadBtn,
-              {
-                borderColor: colors.border,
-                opacity: uploading ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              {uploading ? "Uploading…" : fileName ? "Upload new version" : "Upload PDF"}
-            </Text>
-          </Pressable>
-        </View>
+          />
+        </Section>
 
-        <SwitchRow
-          label="Require waiver"
-          hint="Registered teams must complete the waiver before play."
-          value={draft.enabled}
-          onValueChange={(enabled) =>
-            setDraft((prev) => (prev ? { ...prev, enabled } : prev))
-          }
-          colors={colors}
-        />
+        <Section title="Requirement">
+          <ListGroup>
+            <SwitchRow
+              label="Require waiver"
+              description="Registered teams must complete the waiver before play."
+              value={draft.enabled}
+              onValueChange={(enabled) => edit({ enabled })}
+            />
+            {draft.enabled ? (
+              <SwitchRow
+                label="Block check-in until complete"
+                description="Teams can't check in until every player has signed."
+                value={draft.requiredBeforeCheckIn}
+                onValueChange={(requiredBeforeCheckIn) =>
+                  edit({ requiredBeforeCheckIn })
+                }
+              />
+            ) : null}
+          </ListGroup>
+        </Section>
 
         {draft.enabled ? (
-          <>
-            <SwitchRow
-              label="Download and print"
-              value={draft.allowDownloadPrint}
-              onValueChange={(allowDownloadPrint) =>
-                setDraft((prev) =>
-                  prev ? { ...prev, allowDownloadPrint } : prev
-                )
-              }
-              colors={colors}
-            />
-            <SwitchRow
-              label="Third-party signing link"
-              value={draft.allowThirdParty}
-              onValueChange={(allowThirdParty) =>
-                setDraft((prev) =>
-                  prev ? { ...prev, allowThirdParty } : prev
-                )
-              }
-              colors={colors}
-            />
+          <Section
+            title="How teams complete it"
+            description="Turn on every method you accept."
+          >
+            <ListGroup>
+              <SwitchRow
+                label="In-app acknowledgment"
+                description="Each player signs digitally in brackt."
+                value={draft.allowDigitalAck}
+                onValueChange={(allowDigitalAck) => edit({ allowDigitalAck })}
+              />
+              <SwitchRow
+                label="Download and print"
+                description="Teams print the PDF and bring signed copies."
+                value={draft.allowDownloadPrint}
+                onValueChange={(allowDownloadPrint) => edit({ allowDownloadPrint })}
+              />
+              <SwitchRow
+                label="Third-party signing link"
+                description="Send players to an outside signing service."
+                value={draft.allowThirdParty}
+                onValueChange={(allowThirdParty) => edit({ allowThirdParty })}
+              />
+            </ListGroup>
             {draft.allowThirdParty ? (
-              <FormField label="Third-party URL (HTTPS)" colors={colors}>
+              <FormField
+                label="Signing link"
+                hint="Must start with https://"
+                colors={colors}
+              >
                 <FormTextInput
                   value={draft.thirdPartyUrl ?? ""}
-                  onChangeText={(thirdPartyUrl) =>
-                    setDraft((prev) =>
-                      prev ? { ...prev, thirdPartyUrl } : prev
-                    )
-                  }
+                  onChangeText={(thirdPartyUrl) => edit({ thirdPartyUrl })}
                   autoCapitalize="none"
                   keyboardType="url"
                   placeholder="https://…"
+                  accessibilityLabel="Third-party signing link"
                   colors={colors}
                 />
               </FormField>
             ) : null}
-            <SwitchRow
-              label="In-app acknowledgment"
-              hint="Each player signs digitally in brackt."
-              value={draft.allowDigitalAck}
-              onValueChange={(allowDigitalAck) =>
-                setDraft((prev) =>
-                  prev ? { ...prev, allowDigitalAck } : prev
-                )
-              }
-              colors={colors}
-            />
-            <SwitchRow
-              label="Block check-in until complete"
-              value={draft.requiredBeforeCheckIn}
-              onValueChange={(requiredBeforeCheckIn) =>
-                setDraft((prev) =>
-                  prev ? { ...prev, requiredBeforeCheckIn } : prev
-                )
-              }
-              colors={colors}
-            />
-          </>
+          </Section>
         ) : null}
+      </ScreenScroll>
 
+      <BottomBar>
         {actionError ? (
-          <Text style={{ color: colors.destructive }}>{actionError}</Text>
+          <Banner
+            tone="error"
+            message={actionError}
+            onDismiss={() => setActionError(null)}
+          />
         ) : null}
-        {saved ? (
-          <Text style={{ color: colors.primary, fontWeight: "600" }}>
-            Saved.
-          </Text>
+        {notice ? (
+          <Banner tone="success" message={notice} onDismiss={() => setNotice(null)} />
         ) : null}
-      </ScrollView>
-
-      <View
-        style={[
-          styles.footer,
-          { borderTopColor: colors.border, backgroundColor: colors.background },
-        ]}
-      >
-        <Pressable
-          accessibilityRole="button"
-          disabled={busy}
+        <Button
+          label="Save changes"
+          fullWidth
+          loading={busy}
+          disabled={!dirty || uploading}
           onPress={() => void onSave()}
-          style={[
-            styles.save,
-            { backgroundColor: colors.primary, opacity: busy ? 0.6 : 1 },
-          ]}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryForeground} />
-          ) : (
-            <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-              Save waiver settings
-            </Text>
-          )}
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-function SwitchRow({
-  label,
-  hint,
-  value,
-  onValueChange,
-  colors,
-}: {
-  label: string;
-  hint?: string;
-  value: boolean;
-  onValueChange: (value: boolean) => void;
-  colors: ReturnType<typeof useThemeColors>;
-}) {
-  return (
-    <View style={styles.switchRow}>
-      <View style={styles.switchCopy}>
-        <Text style={[styles.switchLabel, { color: colors.foreground }]}>
-          {label}
-        </Text>
-        {hint ? (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            {hint}
-          </Text>
-        ) : null}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        accessibilityLabel={label}
-        trackColor={{ false: colors.border, true: colors.primary }}
-        thumbColor={colors.card}
-      />
+        />
+      </BottomBar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { padding: 16, gap: 14, paddingBottom: 32 },
-  title: { fontSize: 22, fontWeight: "700" },
-  body: { fontSize: 15, lineHeight: 21 },
-  section: { fontSize: 16, fontWeight: "600" },
-  uploadBlock: { gap: 8 },
-  uploadBtn: {
-    alignSelf: "flex-start",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  switchCopy: { flex: 1, gap: 4 },
-  switchLabel: { fontSize: 16, fontWeight: "600" },
-  hint: { fontSize: 13, lineHeight: 18 },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    padding: 16,
-  },
-  save: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    paddingVertical: 14,
-  },
+  centered: { flex: 1, justifyContent: "center" },
 });

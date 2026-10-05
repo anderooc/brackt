@@ -23,15 +23,7 @@ import type {
 } from "@/lib/api/contracts/tournament-host";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import {
   applyTournamentHostScheduleFill,
   fetchTournamentHostSchedule,
@@ -46,10 +38,27 @@ import {
   FormSubmitButton,
   FormTextInput,
 } from "~/components/create-form";
-import { formatMatchTime, MATCH_STATUS_LABELS } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
+import { formatCalendarDate, formatMatchTime } from "~/lib/format";
+import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  ChipRow,
+  EmptyState,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  StatusBadge,
+  SwitchRow,
+  haptics,
+  space,
+} from "~/ui";
 
 const DEFAULT_INTERVAL = "60";
 
@@ -63,15 +72,16 @@ function parseClockOnTournamentDate(
   const mins = Number(match[2]);
   if (hours < 0 || hours > 23 || mins < 0 || mins > 59) return null;
   const [year, month, day] = tournamentDate.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day, hours, mins, 0, 0)).toISOString();
+  // Device-local, matching the web host tools and every match-time display.
+  return new Date(year, month - 1, day, hours, mins, 0, 0).toISOString();
 }
 
 function scheduledTimeToClock(iso: string | null): string {
   if (!iso) return "";
   const parsed = new Date(iso);
   if (Number.isNaN(parsed.getTime())) return "";
-  const hours = parsed.getUTCHours().toString().padStart(2, "0");
-  const mins = parsed.getUTCMinutes().toString().padStart(2, "0");
+  const hours = parsed.getHours().toString().padStart(2, "0");
+  const mins = parsed.getMinutes().toString().padStart(2, "0");
   return `${hours}:${mins}`;
 }
 
@@ -142,7 +152,8 @@ export default function TournamentHostScheduleScreen() {
   const groupLabels = useMemo(() => {
     const labels: Record<string, string> = {};
     for (const group of groups) {
-      labels[group.id] = `${group.label} (${group.scheduledCount}/${group.totalCount})`;
+      const label = group.label.replace(/^(pool\b.*) pools$/i, "$1");
+      labels[group.id] = `${label} (${group.scheduledCount}/${group.totalCount})`;
     }
     return labels;
   }, [groups]);
@@ -152,9 +163,12 @@ export default function TournamentHostScheduleScreen() {
       setBusyKey(key);
       setActionError(null);
       try {
-        return await action();
+        const result = await action();
+        haptics.success();
+        return result;
       } catch (cause) {
         setActionError(messageFor(cause, "Could not update schedule."));
+        haptics.error();
         return null;
       } finally {
         setBusyKey(null);
@@ -246,8 +260,7 @@ export default function TournamentHostScheduleScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => void refresh()}
+        message="This link is missing the tournament. Go back and open it again."
       />
     );
   }
@@ -262,49 +275,53 @@ export default function TournamentHostScheduleScreen() {
   }
   if (!schedule) return <LoadingScreen />;
 
+  function confirmApplyFill() {
+    if (!overwrite) {
+      void onApplyFill();
+      return;
+    }
+    Alert.alert(
+      "Overwrite existing times?",
+      `Every unlocked match in ${selectedGroup?.label ?? "this group"} gets a new start time.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Overwrite", style: "destructive", onPress: () => void onApplyFill() },
+      ]
+    );
+  }
+
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => void refresh()}
-          tintColor={colors.primary}
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      <ListGroup>
+        <ListRow
+          icon="calendar-outline"
+          title={formatCalendarDate(schedule.date)}
+          subtitle={schedule.canSchedule ? "Tournament day" : "Tournament day · view only"}
         />
-      }
-    >
-      <View style={[styles.hero, { borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Match times
-        </Text>
-        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-          Tournament date {schedule.date}
-          {schedule.canSchedule ? "" : " · read-only"}
-        </Text>
-        <Pressable
-          accessibilityRole="button"
+        <ListRow
+          icon="eye-outline"
+          title="View public matches"
+          subtitle="What teams see"
           onPress={() => router.push(`/tournament/${slug}?tab=matches`)}
-          style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-        >
-          <Text style={[styles.link, { color: colors.primary }]}>
-            View public matches →
-          </Text>
-        </Pressable>
-      </View>
+        />
+      </ListGroup>
+
+      {actionError ? (
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
+      ) : null}
 
       {groups.length === 0 ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          No matches yet. Release pools or generate brackets first.
-        </Text>
+        <EmptyState
+          icon="calendar-outline"
+          title="No matches to schedule yet"
+          message="Release pools or generate brackets first, then set match times here."
+        />
       ) : (
         <>
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              Group
-            </Text>
+          <Section
+            title="Pool or bracket"
+            description="Each pool and bracket is timed on its own. Pick one to set its match times. The numbers show how many matches have a time."
+          >
             <ChipPicker
               options={groups.map((group) => group.id)}
               value={selectedGroup?.id ?? ""}
@@ -312,11 +329,10 @@ export default function TournamentHostScheduleScreen() {
               colors={colors}
               labels={groupLabels}
             />
-          </View>
+          </Section>
 
           {selectedGroup && schedule.canSchedule ? (
             <BulkFillSection
-              colors={colors}
               firstStart={firstStart}
               intervalText={intervalText}
               overwrite={overwrite}
@@ -324,13 +340,12 @@ export default function TournamentHostScheduleScreen() {
               onFirstStartChange={setFirstStart}
               onIntervalChange={setIntervalText}
               onOverwriteChange={setOverwrite}
-              onApply={() => void onApplyFill()}
+              onApply={confirmApplyFill}
             />
           ) : null}
 
           {selectedGroup ? (
             <MatchListSection
-              colors={colors}
               group={selectedGroup}
               courts={schedule.courts}
               canSchedule={schedule.canSchedule}
@@ -340,28 +355,17 @@ export default function TournamentHostScheduleScreen() {
                 setMatchClocks((current) => ({ ...current, [matchId]: clock }))
               }
               onSave={(match) => void onSaveMatchTime(match)}
-              onAssignRef={(match, refTeamId) =>
-                void onAssignRef(match, refTeamId)
-              }
-              onAssignCourt={(match, courtId) =>
-                void onAssignCourt(match, courtId)
-              }
+              onAssignRef={(match, refTeamId) => void onAssignRef(match, refTeamId)}
+              onAssignCourt={(match, courtId) => void onAssignCourt(match, courtId)}
             />
           ) : null}
         </>
       )}
-
-      {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
-      ) : null}
-    </ScrollView>
+    </ScreenScroll>
   );
 }
 
 function BulkFillSection({
-  colors,
   firstStart,
   intervalText,
   overwrite,
@@ -371,7 +375,6 @@ function BulkFillSection({
   onOverwriteChange,
   onApply,
 }: {
-  colors: ReturnType<typeof useThemeColors>;
   firstStart: string;
   intervalText: string;
   overwrite: boolean;
@@ -381,71 +384,53 @@ function BulkFillSection({
   onOverwriteChange: (value: boolean) => void;
   onApply: () => void;
 }) {
+  const colors = useThemeColors();
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: withAlpha(colors.primary, 0.04),
-        },
-      ]}
+    <Section
+      title="Fill times automatically"
+      description="Assigns start times in waves at a fixed interval. Live and final matches are skipped."
     >
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Bulk fill
-      </Text>
-      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-        Assign start times in waves using a fixed interval. Locked matches are
-        skipped.
-      </Text>
-      <FormField label="First start" colors={colors} hint="24-hour HH:MM">
-        <FormTextInput
-          value={firstStart}
-          onChangeText={onFirstStartChange}
-          placeholder="09:00"
-          colors={colors}
-          autoCapitalize="none"
-        />
-      </FormField>
-      <FormField label="Interval (minutes)" colors={colors}>
-        <FormTextInput
-          value={intervalText}
-          onChangeText={onIntervalChange}
-          placeholder="60"
-          colors={colors}
-          keyboardType="numbers-and-punctuation"
-        />
-      </FormField>
-      <View style={styles.switchRow}>
-        <View style={styles.switchCopy}>
-          <Text style={[styles.switchLabel, { color: colors.foreground }]}>
-            Overwrite existing times
-          </Text>
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            When off, only unscheduled matches get new times.
-          </Text>
+      <Card>
+        <View style={styles.fillRow}>
+          <View style={styles.flex}>
+            <FormField label="First start" hint="24-hour, e.g. 09:00" colors={colors}>
+              <FormTextInput
+                value={firstStart}
+                onChangeText={onFirstStartChange}
+                placeholder="09:00"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                colors={colors}
+              />
+            </FormField>
+          </View>
+          <View style={styles.flex}>
+            <FormField label="Every (minutes)" colors={colors}>
+              <FormTextInput
+                value={intervalText}
+                onChangeText={onIntervalChange}
+                placeholder="60"
+                keyboardType="number-pad"
+                colors={colors}
+              />
+            </FormField>
+          </View>
         </View>
-        <Switch
+      </Card>
+      <ListGroup>
+        <SwitchRow
+          label="Overwrite existing times"
+          description="When off, only matches without a time are filled."
           value={overwrite}
           onValueChange={onOverwriteChange}
-          accessibilityLabel="Overwrite existing times"
-          trackColor={{ false: colors.border, true: colors.primary }}
-          thumbColor={colors.card}
         />
-      </View>
-      <FormSubmitButton
-        label="Apply times"
-        busy={busy}
-        disabled={busy}
-        onPress={onApply}
-        colors={colors}
-      />
-    </View>
+      </ListGroup>
+      <FormSubmitButton label="Apply times" busy={busy} onPress={onApply} />
+    </Section>
   );
 }
 
 function MatchListSection({
-  colors,
   group,
   courts,
   canSchedule,
@@ -456,7 +441,6 @@ function MatchListSection({
   onAssignRef,
   onAssignCourt,
 }: {
-  colors: ReturnType<typeof useThemeColors>;
   group: TournamentHostScheduleGroupContract;
   courts: { id: string; name: string }[];
   canSchedule: boolean;
@@ -464,240 +448,147 @@ function MatchListSection({
   busyKey: string | null;
   onClockChange: (matchId: string, clock: string) => void;
   onSave: (match: TournamentHostScheduleMatchContract) => void;
-  onAssignRef: (
-    match: TournamentHostScheduleMatchContract,
-    refTeamId: string | null
-  ) => void;
-  onAssignCourt: (
-    match: TournamentHostScheduleMatchContract,
-    courtId: string | null
-  ) => void;
+  onAssignRef: (match: TournamentHostScheduleMatchContract, refTeamId: string | null) => void;
+  onAssignCourt: (match: TournamentHostScheduleMatchContract, courtId: string | null) => void;
 }) {
+  const colors = useThemeColors();
   const playable = group.matches.filter((match) => !match.isBye);
 
   return (
-    <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-        Matches ({group.scheduledCount}/{group.totalCount} scheduled)
-      </Text>
+    <Section
+      title="Matches"
+      description={`${group.scheduledCount} of ${group.totalCount} have a start time.`}
+    >
       {playable.length === 0 ? (
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+        <AppText variant="subhead" tone="muted">
           No playable matches in this group.
-        </Text>
+        </AppText>
       ) : (
         playable.map((match) => {
-          const busy = busyKey === `match-${match.id}`;
+          const timeBusy = busyKey === `match-${match.id}`;
           const refBusy = busyKey === `ref-${match.id}`;
           const courtBusy = busyKey === `court-${match.id}`;
-          const locked =
-            match.status === "completed" || match.status === "in_progress";
-          const courtLabels: Record<string, string> = { "": "No court" };
-          for (const court of courts) {
-            courtLabels[court.id] = court.name;
-          }
+          const locked = match.status === "completed" || match.status === "in_progress";
+          const savedClock = scheduledTimeToClock(match.scheduledTime);
+          const clock = matchClocks[match.id] ?? "";
+          const details = [
+            match.groupName,
+            match.scheduledTime ? formatMatchTime(match.scheduledTime) : "No time yet",
+            match.courtName,
+            match.refTeamName ? `Reffing: ${match.refTeamName}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
           return (
-            <View
-              key={match.id}
-              style={[styles.matchCard, { borderColor: colors.border }]}
-            >
+            <Card key={match.id}>
               <View style={styles.matchHeader}>
-                <Text style={[styles.matchLabel, { color: colors.foreground }]}>
+                <AppText variant="callout" weight="600" style={styles.flex}>
                   {match.label}
-                </Text>
-                <Text
-                  style={[styles.matchStatus, { color: colors.mutedForeground }]}
-                >
-                  {MATCH_STATUS_LABELS[match.status] ?? match.status}
-                </Text>
+                </AppText>
+                <StatusBadge kind="match" status={match.status} />
               </View>
-              {match.groupName ? (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  {match.groupName}
-                </Text>
-              ) : null}
-              {match.courtName ? (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  {match.courtName}
-                </Text>
-              ) : null}
-              {match.refTeamName ? (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  Working team: {match.refTeamName}
-                </Text>
-              ) : null}
-              {match.scheduledTime ? (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  Scheduled {formatMatchTime(match.scheduledTime)}
-                </Text>
-              ) : null}
-              {!locked && match.refOptions.length > 0 ? (
-                <View style={styles.assignBlock}>
-                  <Text style={[styles.assignLabel, { color: colors.foreground }]}>
-                    Working team
-                  </Text>
-                  <View style={styles.chipRow}>
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={refBusy}
-                      onPress={() => onAssignRef(match, null)}
-                      style={[
-                        styles.chip,
-                        {
-                          borderColor:
-                            match.refTeamId === null
-                              ? colors.primary
-                              : colors.border,
-                          backgroundColor:
-                            match.refTeamId === null
-                              ? withAlpha(colors.primary, 0.1)
-                              : "transparent",
-                        },
-                      ]}
-                    >
-                      <Text style={{ color: colors.foreground, fontSize: 13 }}>
-                        None
-                      </Text>
-                    </Pressable>
-                    {match.refOptions.map((option) => {
-                      const selected = match.refTeamId === option.id;
-                      return (
-                        <Pressable
-                          key={option.id}
-                          accessibilityRole="button"
-                          disabled={refBusy}
-                          onPress={() => onAssignRef(match, option.id)}
-                          style={[
-                            styles.chip,
-                            {
-                              borderColor: selected
-                                ? colors.primary
-                                : colors.border,
-                              backgroundColor: selected
-                                ? withAlpha(colors.primary, 0.1)
-                                : "transparent",
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{ color: colors.foreground, fontSize: 13 }}
-                          >
-                            {option.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-              {!locked && match.canAssignCourt && courts.length > 0 ? (
-                <View style={styles.assignBlock}>
-                  <Text style={[styles.assignLabel, { color: colors.foreground }]}>
-                    Court
-                  </Text>
-                  <ChipPicker
-                    options={["", ...courts.map((court) => court.id)]}
-                    value={match.courtId ?? ""}
-                    onChange={(courtId) =>
-                      onAssignCourt(match, courtId || null)
-                    }
-                    colors={colors}
-                    labels={courtLabels}
-                  />
-                  {courtBusy ? (
-                    <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                      Saving court…
-                    </Text>
+              <AppText variant="footnote" tone="muted">
+                {details}
+              </AppText>
+
+              {locked ? (
+                match.status === "in_progress" && canSchedule ? (
+                  <AppText variant="footnote" tone="muted">
+                    Time and assignments are locked while the match is live.
+                  </AppText>
+                ) : null
+              ) : (
+                <>
+                  {canSchedule ? (
+                    <View style={styles.timeRow}>
+                      <View style={styles.flex}>
+                        <FormTextInput
+                          value={clock}
+                          onChangeText={(value) => onClockChange(match.id, value)}
+                          placeholder="HH:MM"
+                          accessibilityLabel={`Start time for ${match.label}`}
+                          keyboardType="numbers-and-punctuation"
+                          autoCapitalize="none"
+                          returnKeyType="done"
+                          onSubmitEditing={() => onSave(match)}
+                          colors={colors}
+                        />
+                      </View>
+                      <Button
+                        label="Save time"
+                        variant="outline"
+                        size="sm"
+                        loading={timeBusy}
+                        disabled={clock === savedClock}
+                        onPress={() => onSave(match)}
+                      />
+                    </View>
                   ) : null}
-                </View>
-              ) : null}
-              {canSchedule && !locked ? (
-                <View style={styles.matchEditRow}>
-                  <View style={styles.matchClockField}>
-                    <FormTextInput
-                      value={matchClocks[match.id] ?? ""}
-                      onChangeText={(value) => onClockChange(match.id, value)}
-                      placeholder="HH:MM"
-                      colors={colors}
-                      autoCapitalize="none"
-                    />
-                  </View>
-                  <FormSubmitButton
-                    label="Save"
-                    busy={busy}
-                    disabled={busy}
-                    onPress={() => onSave(match)}
-                    colors={colors}
-                  />
-                </View>
-              ) : locked ? (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  Locked while live or final.
-                </Text>
-              ) : null}
-            </View>
+
+                  {match.refOptions.length > 0 ? (
+                    <View style={styles.assign}>
+                      <AppText variant="footnote" weight="600">
+                        Reffing team
+                      </AppText>
+                      <ChipRow>
+                        <Chip
+                          label="None"
+                          selected={match.refTeamId === null}
+                          disabled={refBusy}
+                          onPress={() => onAssignRef(match, null)}
+                        />
+                        {match.refOptions.map((option) => (
+                          <Chip
+                            key={option.id}
+                            label={option.name}
+                            selected={match.refTeamId === option.id}
+                            disabled={refBusy}
+                            onPress={() => onAssignRef(match, option.id)}
+                          />
+                        ))}
+                      </ChipRow>
+                    </View>
+                  ) : null}
+
+                  {match.canAssignCourt && courts.length > 0 ? (
+                    <View style={styles.assign}>
+                      <AppText variant="footnote" weight="600">
+                        Court{courtBusy ? "  ·  Saving…" : ""}
+                      </AppText>
+                      <ChipRow>
+                        <Chip
+                          label="No court"
+                          selected={!match.courtId}
+                          disabled={courtBusy}
+                          onPress={() => onAssignCourt(match, null)}
+                        />
+                        {courts.map((court) => (
+                          <Chip
+                            key={court.id}
+                            label={court.name}
+                            selected={match.courtId === court.id}
+                            disabled={courtBusy}
+                            onPress={() => onAssignCourt(match, court.id)}
+                          />
+                        ))}
+                      </ChipRow>
+                    </View>
+                  ) : null}
+                </>
+              )}
+            </Card>
           );
         })
       )}
-    </View>
+    </Section>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 20, paddingBottom: 40 },
-  hero: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    gap: 6,
-  },
-  title: { fontSize: 20, fontWeight: "800" },
-  meta: { fontSize: 14 },
-  link: { fontSize: 14, fontWeight: "600", marginTop: 4 },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: "700" },
-  hint: { fontSize: 13, lineHeight: 18 },
-  error: { fontSize: 13 },
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 12,
-  },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  switchCopy: { flex: 1, gap: 4 },
-  switchLabel: { fontSize: 14, fontWeight: "600" },
-  matchCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 6,
-  },
-  matchHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    alignItems: "flex-start",
-  },
-  matchLabel: { flex: 1, fontSize: 15, fontWeight: "700" },
-  matchStatus: { fontSize: 12, fontWeight: "600" },
-  matchEditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 4,
-  },
-  matchClockField: { flex: 1 },
-  assignBlock: { gap: 8, marginTop: 4 },
-  assignLabel: { fontSize: 14, fontWeight: "600" },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
+  flex: { flex: 1 },
+  fillRow: { flexDirection: "row", gap: space.md },
+  matchHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  timeRow: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.xs },
+  assign: { gap: space.sm, marginTop: space.xs },
 });

@@ -925,7 +925,8 @@ export function updateTournamentHostWaiverSettings(
       allowDownloadPrint: body.allowDownloadPrint,
       allowThirdParty: body.allowThirdParty,
       allowDigitalAck: body.allowDigitalAck,
-      thirdPartyUrl: body.thirdPartyUrl ?? "",
+      // The server validates any non-empty URL, even when third-party signing is off.
+      thirdPartyUrl: body.allowThirdParty ? (body.thirdPartyUrl ?? "") : "",
       requiredBeforeCheckIn: body.requiredBeforeCheckIn,
     },
   });

@@ -18,26 +18,27 @@
 
 import type { TournamentBracketSettingsContract } from "@/lib/api/contracts/tournament-ops";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Alert } from "react-native";
 import {
   fetchTournamentHostBrackets,
   regenerateTournamentHostBrackets,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import { FormSubmitButton } from "~/components/create-form";
 import { BRACKET_COUNT_OPTIONS } from "~/lib/format";
-import { useThemeColors, withAlpha } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
+import {
+  Banner,
+  Button,
+  Card,
+  EmptyState,
+  haptics,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+} from "~/ui";
 
 function bracketStructureLabel(settings: TournamentBracketSettingsContract) {
   const option = BRACKET_COUNT_OPTIONS.find(
@@ -46,8 +47,21 @@ function bracketStructureLabel(settings: TournamentBracketSettingsContract) {
   return option?.label ?? `${settings.bracketCount} bracket(s)`;
 }
 
+function tierSummary(settings: TournamentBracketSettingsContract): string | null {
+  const parts: string[] = [];
+  if (settings.bracketCount >= 2) {
+    parts.push(`Gold ${settings.goldTeamCount ?? "not set"}`);
+    if (settings.bracketCount === 3) {
+      parts.push(`Silver ${settings.silverTeamCount ?? "not set"}`);
+    }
+  }
+  if (settings.totalBracketTeams > 0) {
+    parts.push(`${settings.totalBracketTeams} teams in pool play`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export default function TournamentHostBracketScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -55,15 +69,20 @@ export default function TournamentHostBracketScreen() {
     useState<TournamentBracketSettingsContract | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostBrackets(slug ?? "", signal),
     [slug]
   );
-  const { data, error, isRefreshing, refresh } = usePublicLoader(
+  const { data, error, isRefreshing, refresh, reload } = usePublicLoader(
     load,
     "Could not load bracket ops."
   );
+
+  useEffect(() => {
+    if (data) setSettings(data.settings);
+  }, [data]);
 
   const current = settings ?? data?.settings ?? null;
 
@@ -80,11 +99,15 @@ export default function TournamentHostBracketScreen() {
           onPress: () => {
             setBusy(true);
             setActionError(null);
+            setNotice(null);
             void regenerateTournamentHostBrackets(slug)
               .then((result) => {
                 setSettings(result.settings);
+                haptics.success();
+                setNotice("Brackets regenerated from the latest pool standings.");
               })
               .catch((cause) => {
+                haptics.error();
                 setActionError(
                   messageFor(cause, "Could not regenerate brackets.")
                 );
@@ -102,8 +125,8 @@ export default function TournamentHostBracketScreen() {
     return (
       <ErrorScreen
         title="Missing tournament"
-        message="No tournament was specified."
-        onRetry={() => void refresh()}
+        message="No tournament was specified. Go back and open it again."
+        onRetry={() => (router.canGoBack() ? router.back() : router.replace("/"))}
       />
     );
   }
@@ -112,148 +135,91 @@ export default function TournamentHostBracketScreen() {
       <ErrorScreen
         title="Bracket ops unavailable"
         message={error}
-        onRetry={() => void refresh()}
+        onRetry={() => void reload()}
       />
     );
   }
   if (!current) return <LoadingScreen />;
 
-  const locked = current.locked && !current.canRegenerate;
+  const blocked = !current.canRegenerate;
 
   return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.content,
-        { backgroundColor: colors.background },
-      ]}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            setSettings(null);
-            void refresh();
-          }}
-          tintColor={colors.primary}
+    <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
+      {error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void refresh() }}
         />
-      }
-    >
+      ) : null}
       {actionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {actionError}
-        </Text>
+        <Banner tone="error" message={actionError} onDismiss={() => setActionError(null)} />
+      ) : null}
+      {notice ? (
+        <Banner tone="success" message={notice} onDismiss={() => setNotice(null)} />
       ) : null}
 
-      <Pressable
-        onPress={() => router.push(`/tournament/${slug}/bracket`)}
-        style={[styles.link, { borderColor: colors.border }]}
-      >
-        <Text style={[styles.linkTitle, { color: colors.foreground }]}>
-          View public bracket
-        </Text>
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Elimination draw participants see after pools are released
-        </Text>
-      </Pressable>
-
-      <View style={[styles.card, { borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Tier settings
-        </Text>
-        {!current.hasPoolToBracket ? (
-          <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-            Add a pool-to-bracket division before configuring brackets.
-          </Text>
-        ) : (
-          <>
-            <Text style={[styles.meta, { color: colors.foreground }]}>
-              {bracketStructureLabel(current)}
-            </Text>
-            {current.bracketCount >= 2 ? (
-              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                Gold: {current.goldTeamCount ?? "—"}
-                {current.bracketCount === 3
-                  ? ` · Silver: ${current.silverTeamCount ?? "—"}`
-                  : ""}
-              </Text>
-            ) : null}
-            {current.totalBracketTeams > 0 ? (
-              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                {current.totalBracketTeams} teams in pool play for brackets
-              </Text>
-            ) : null}
-            <Pressable
-              onPress={() => router.push(`/tournament/${slug}/settings/bracket`)}
-              style={[styles.editLink, { borderColor: colors.primary }]}
-            >
-              <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                Edit bracket settings
-              </Text>
-            </Pressable>
-          </>
-        )}
-      </View>
-
-      <View style={[styles.card, { borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          Regenerate
-        </Text>
-        <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-          Re-seed gold / silver / bronze from current pool standings. Only
-          available before any bracket match has been played.
-        </Text>
-        {locked ? (
-          <View
-            style={[
-              styles.locked,
-              { backgroundColor: withAlpha(colors.destructive, 0.08) },
-            ]}
-          >
-            <Text style={{ color: colors.destructive, fontSize: 13 }}>
-              {current.regenerateBlockedReason ??
-                "Bracket regeneration is not available right now."}
-            </Text>
-          </View>
-        ) : null}
-        <FormSubmitButton
-          label="Regenerate brackets"
-          busy={busy}
-          disabled={!current.canRegenerate || !current.hasPoolToBracket}
-          colors={colors}
-          onPress={onRegenerate}
+      <ListGroup>
+        <ListRow
+          title="View public bracket"
+          subtitle="The draw teams and fans see once pools are released"
+          icon="eye-outline"
+          onPress={() => router.push(`/tournament/${slug}/bracket`)}
         />
-      </View>
-    </ScrollView>
+      </ListGroup>
+
+      {!current.hasPoolToBracket ? (
+        <Card>
+          <EmptyState
+            icon="git-network-outline"
+            title="No pool-to-bracket pools"
+            message="Bracket tiers apply when a pool plays group matches before brackets. Add or update pools in Setup."
+            action={{
+              label: "Open Setup",
+              icon: "construct-outline",
+              onPress: () => router.push(`/tournament/${slug}/host/setup`),
+            }}
+          />
+        </Card>
+      ) : (
+        <>
+          <Section title="Tiers">
+            <ListGroup>
+              <ListRow
+                title={bracketStructureLabel(current)}
+                subtitle={tierSummary(current)}
+                icon="trophy-outline"
+                onPress={() => router.push(`/tournament/${slug}/settings/bracket`)}
+                accessibilityHint="Opens bracket settings"
+              />
+            </ListGroup>
+          </Section>
+
+          <Section
+            title="Regenerate"
+            description="Re-seed gold, silver, and bronze from current pool standings. Only available before any bracket match has been played."
+          >
+            {blocked ? (
+              <Banner
+                tone="warning"
+                message={
+                  current.regenerateBlockedReason ??
+                  "Bracket regeneration isn't available right now."
+                }
+              />
+            ) : null}
+            <Button
+              label="Regenerate brackets"
+              icon="refresh"
+              variant="destructiveOutline"
+              onPress={onRegenerate}
+              loading={busy}
+              disabled={blocked}
+              fullWidth
+            />
+          </Section>
+        </>
+      )}
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16, gap: 16, paddingBottom: 40 },
-  error: { fontSize: 13 },
-  hint: { fontSize: 13, lineHeight: 18 },
-  meta: { fontSize: 15, fontWeight: "600" },
-  link: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  linkTitle: { fontSize: 15, fontWeight: "700" },
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-  },
-  title: { fontSize: 17, fontWeight: "800" },
-  editLink: {
-    alignSelf: "flex-start",
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  locked: {
-    borderRadius: 10,
-    padding: 10,
-  },
-});
