@@ -18,22 +18,15 @@
 
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { deleteAccount } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField, FormTextInput } from "~/components/create-form";
 import { goBackOrReplace } from "~/lib/navigation";
 import { useThemeColors } from "~/theme/colors";
 import { LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, Button, Card, Icon, ScreenScroll, haptics, space } from "~/ui";
 
 export default function DeleteAccountScreen() {
   const colors = useThemeColors();
@@ -44,15 +37,13 @@ export default function DeleteAccountScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading) return <LoadingScreen rows={3} />;
   if (!session) return <Redirect href="/sign-in" />;
 
+  const ready = password.length > 0 && confirmation === "DELETE";
+
   async function onDelete() {
-    if (busy) return;
-    if (confirmation !== "DELETE") {
-      setError('Type DELETE exactly to confirm.');
-      return;
-    }
+    if (busy || !ready) return;
     setBusy(true);
     setError(null);
     try {
@@ -61,138 +52,83 @@ export default function DeleteAccountScreen() {
       router.replace("/sign-in");
     } catch (cause) {
       setError(messageFor(cause, "Could not delete account."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={[styles.title, { color: colors.foreground }]}>
-        Delete account
-      </Text>
-      <Text style={[styles.body, { color: colors.mutedForeground }]}>
-        This permanently removes your account and signs you out everywhere. Team
-        and tournament history you created may remain, but your personal data is
-        anonymized.
-      </Text>
+    <ScreenScroll gap={20}>
+      <Card style={{ borderColor: colors.destructive }}>
+        <View style={styles.warningTitle}>
+          <Icon name="warning-outline" size={20} tone="destructive" />
+          <AppText variant="headline" tone="destructive">
+            This can’t be undone
+          </AppText>
+        </View>
+        <AppText variant="subhead">
+          Your account is removed and you’re signed out everywhere. Teams and
+          tournaments you created may stay, but your personal details are
+          anonymized.
+        </AppText>
+      </Card>
 
-      <Text style={[styles.label, { color: colors.foreground }]}>
-        Password
-      </Text>
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        autoCapitalize="none"
-        placeholder="Your password"
-        placeholderTextColor={colors.mutedForeground}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
-      />
+      {error ? <Banner tone="error" message={error} /> : null}
 
-      <Text style={[styles.label, { color: colors.foreground }]}>
-        Type DELETE to confirm
-      </Text>
-      <TextInput
-        value={confirmation}
-        onChangeText={setConfirmation}
-        autoCapitalize="characters"
-        placeholder="DELETE"
-        placeholderTextColor={colors.mutedForeground}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
-      />
+      <FormField label="Password" colors={colors}>
+        <FormTextInput
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Your current password"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="password"
+          autoComplete="current-password"
+          colors={colors}
+        />
+      </FormField>
 
-      {error ? (
-        <Text style={{ color: colors.destructive }}>{error}</Text>
-      ) : null}
+      <FormField label="Type DELETE to confirm" colors={colors}>
+        <FormTextInput
+          value={confirmation}
+          onChangeText={setConfirmation}
+          placeholder="DELETE"
+          autoCapitalize="characters"
+          autoCorrect={false}
+          colors={colors}
+        />
+      </FormField>
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={busy}
-        onPress={() =>
-          Alert.alert(
-            "Delete account?",
-            "This cannot be undone.",
-            [
+      <View style={styles.actions}>
+        <Button
+          label="Delete my account"
+          variant="destructive"
+          fullWidth
+          loading={busy}
+          disabled={!ready}
+          onPress={() => {
+            haptics.warning();
+            Alert.alert("Delete your account?", "This permanently removes your account.", [
               { text: "Cancel", style: "cancel" },
-              {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => void onDelete(),
-              },
-            ]
-          )
-        }
-        style={[
-          styles.deleteBtn,
-          {
-            backgroundColor: colors.destructive,
-            opacity: busy ? 0.6 : 1,
-          },
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            Delete my account
-          </Text>
-        )}
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => goBackOrReplace(router, "/profile")}
-        style={[styles.cancelBtn, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          Cancel
-        </Text>
-      </Pressable>
-    </ScrollView>
+              { text: "Delete", style: "destructive", onPress: () => void onDelete() },
+            ]);
+          }}
+        />
+        <Button
+          label="Cancel"
+          variant="ghost"
+          fullWidth
+          disabled={busy}
+          onPress={() => goBackOrReplace(router, "/profile")}
+        />
+      </View>
+    </ScreenScroll>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 12, paddingBottom: 40 },
-  title: { fontSize: 22, fontWeight: "700" },
-  body: { fontSize: 15, lineHeight: 21 },
-  label: { fontSize: 14, fontWeight: "600", marginTop: 8 },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  deleteBtn: {
-    marginTop: 12,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  cancelBtn: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  warningTitle: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  actions: { gap: space.sm },
 });

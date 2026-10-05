@@ -18,18 +18,9 @@
 
 import { Redirect, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { File } from "expo-file-system";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, Image, StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import {
   fetchViewer,
@@ -45,9 +36,24 @@ import {
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
 import { goBackOrReplace } from "~/lib/navigation";
-import { useThemeColors, withAlpha } from "~/theme/colors";
-import { LoadingScreen } from "~/tournament/screen-state";
+import { FormField, FormSubmitButton, FormTextInput } from "~/components/create-form";
+import { useThemeColors } from "~/theme/colors";
+import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import {
+  AppText,
+  Banner,
+  Button,
+  Chip,
+  ChipRow,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  haptics,
+  space,
+} from "~/ui";
 
 export default function EditProfileScreen() {
   const colors = useThemeColors();
@@ -66,6 +72,7 @@ export default function EditProfileScreen() {
   const [displaySchool, setDisplaySchool] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const viewer = await fetchViewer(signal);
@@ -98,6 +105,20 @@ export default function EditProfileScreen() {
   if (sessionLoading) return <LoadingScreen />;
   if (!session) return <Redirect href="/sign-in" />;
   if (!ready && !error) return <LoadingScreen />;
+  if (!ready) {
+    return (
+      <ErrorScreen
+        title="Couldn’t load your profile"
+        message={error ?? "Please try again."}
+        onRetry={() => {
+          setError(null);
+          void load().catch((cause: unknown) =>
+            setError(messageFor(cause, "Could not load your profile."))
+          );
+        }}
+      />
+    );
+  }
 
   async function onSave() {
     setBusy(true);
@@ -109,9 +130,11 @@ export default function EditProfileScreen() {
         volleyballPosition,
         jerseyNumber: jerseyNumber.trim() === "" ? null : jerseyNumber.trim(),
       });
+      haptics.success();
       goBackOrReplace(router, "/profile");
     } catch (cause) {
       setError(messageFor(cause, "Could not save profile."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
@@ -119,24 +142,33 @@ export default function EditProfileScreen() {
 
   async function onPickAvatar() {
     setAvatarBusy(true);
-    setError(null);
+    setAvatarError(null);
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
-        quality: 0.85,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
       });
       if (picked.canceled || !picked.assets[0]) return;
-      const asset = picked.assets[0];
-      const mime = asset.mimeType ?? "image/jpeg";
-      const file = new File(asset.uri);
-      const base64 = await file.base64();
+      // Server caps avatars at 2 MB and only accepts JPEG/PNG/WebP.
+      const context = ImageManipulator.manipulate(picked.assets[0].uri);
+      context.resize({ width: 512 });
+      const image = await context.renderAsync();
+      const result = await image.saveAsync({
+        format: SaveFormat.JPEG,
+        compress: 0.8,
+        base64: true,
+      });
+      if (!result.base64) throw new Error("Could not read the selected photo.");
       const viewer = await uploadProfileAvatar({
-        base64,
-        contentType: mime,
+        base64: result.base64,
+        contentType: "image/jpeg",
       });
       setAvatarUrl(viewer.avatarUrl);
+      haptics.success();
     } catch (cause) {
-      setError(messageFor(cause, "Could not update profile photo."));
+      setAvatarError(messageFor(cause, "Could not update profile photo."));
     } finally {
       setAvatarBusy(false);
     }
@@ -144,42 +176,26 @@ export default function EditProfileScreen() {
 
   async function onRemoveAvatar() {
     setAvatarBusy(true);
-    setError(null);
+    setAvatarError(null);
     try {
       await removeProfileAvatar();
       setAvatarUrl(null);
     } catch (cause) {
-      setError(messageFor(cause, "Could not remove profile photo."));
+      setAvatarError(messageFor(cause, "Could not remove profile photo."));
     } finally {
       setAvatarBusy(false);
     }
   }
 
-  return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={[styles.readOnly, { borderColor: colors.border }]}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>Email</Text>
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          {displayEmail ?? "—"}
-        </Text>
-        <Text
-          style={{
-            color: colors.mutedForeground,
-            fontSize: 13,
-            marginTop: 8,
-          }}
-        >
-          School
-        </Text>
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          {displaySchool ?? "—"}
-        </Text>
-      </View>
+  function confirmRemoveAvatar() {
+    Alert.alert("Remove profile photo?", undefined, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: () => void onRemoveAvatar() },
+    ]);
+  }
 
+  return (
+    <ScreenScroll gap={space.xxl}>
       <View style={styles.avatarBlock}>
         {avatarUrl ? (
           <Image
@@ -188,235 +204,126 @@ export default function EditProfileScreen() {
             accessibilityLabel="Profile photo"
           />
         ) : (
-          <View
-            style={[
-              styles.avatarPlaceholder,
-              { borderColor: colors.border, backgroundColor: colors.card },
-            ]}
-          >
-            <Text style={{ color: colors.mutedForeground }}>No photo</Text>
+          <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.muted }]}>
+            <Icon name="person" size={40} tone="muted" />
           </View>
         )}
         <View style={styles.avatarActions}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={avatarBusy || busy}
+          <Button
+            label={avatarUrl ? "Change photo" : "Add photo"}
+            icon="camera-outline"
+            variant="outline"
+            size="sm"
+            loading={avatarBusy}
+            disabled={busy}
             onPress={() => void onPickAvatar()}
-            style={[styles.avatarBtn, { borderColor: colors.border }]}
-          >
-            <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              {avatarBusy ? "Uploading…" : "Change photo"}
-            </Text>
-          </Pressable>
+          />
           {avatarUrl ? (
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              label="Remove"
+              variant="ghost"
+              size="sm"
               disabled={avatarBusy || busy}
-              onPress={() => void onRemoveAvatar()}
-              style={[styles.avatarBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.destructive, fontWeight: "600" }}>
-                Remove
-              </Text>
-            </Pressable>
+              onPress={confirmRemoveAvatar}
+            />
           ) : null}
         </View>
+        {avatarError ? (
+          <Banner tone="error" message={avatarError} onDismiss={() => setAvatarError(null)} />
+        ) : null}
       </View>
 
-      <Text style={[styles.label, { color: colors.foreground }]}>
-        Display name
-      </Text>
-      <TextInput
-        value={fullName}
-        onChangeText={setFullName}
-        placeholder="Your name"
-        placeholderTextColor={colors.mutedForeground}
-        autoComplete="name"
-        maxLength={120}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
-      />
+      <Section title="Player details">
+        <FormField label="Display name" colors={colors}>
+          <FormTextInput
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Your name"
+            autoComplete="name"
+            textContentType="name"
+            autoCapitalize="words"
+            maxLength={120}
+            colors={colors}
+          />
+        </FormField>
 
-      <Text style={[styles.label, { color: colors.foreground }]}>Gender</Text>
-      <View style={styles.chips}>
-        <Pressable
-          onPress={() => setPlayerGender(null)}
-          style={chipStyle(playerGender === null, colors)}
+        <FormField label="Gender" colors={colors}>
+          <ChipRow>
+            <Chip
+              label="Not set"
+              selected={playerGender === null}
+              onPress={() => setPlayerGender(null)}
+            />
+            {USER_PLAYER_GENDERS.map((value) => (
+              <Chip
+                key={value}
+                label={USER_PLAYER_GENDER_LABELS[value]}
+                selected={playerGender === value}
+                onPress={() => setPlayerGender(value)}
+              />
+            ))}
+          </ChipRow>
+        </FormField>
+
+        <FormField label="Position" colors={colors}>
+          <ChipRow>
+            <Chip
+              label="Not set"
+              selected={volleyballPosition === null}
+              onPress={() => setVolleyballPosition(null)}
+            />
+            {VOLLEYBALL_POSITIONS.map((value) => (
+              <Chip
+                key={value}
+                label={VOLLEYBALL_POSITION_LABELS[value]}
+                selected={volleyballPosition === value}
+                onPress={() => setVolleyballPosition(value)}
+              />
+            ))}
+          </ChipRow>
+        </FormField>
+
+        <FormField
+          label="Jersey number"
+          hint="0–99. Shown on every team and school roster you join."
+          colors={colors}
         >
-          <Text style={chipTextStyle(playerGender === null, colors)}>
-            Not set
-          </Text>
-        </Pressable>
-        {USER_PLAYER_GENDERS.map((value) => {
-          const selected = playerGender === value;
-          return (
-            <Pressable
-              key={value}
-              onPress={() => setPlayerGender(value)}
-              style={chipStyle(selected, colors)}
-            >
-              <Text style={chipTextStyle(selected, colors)}>
-                {USER_PLAYER_GENDER_LABELS[value]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+          <FormTextInput
+            value={jerseyNumber}
+            onChangeText={setJerseyNumber}
+            placeholder="e.g. 7"
+            keyboardType="number-pad"
+            maxLength={2}
+            returnKeyType="done"
+            colors={colors}
+            style={styles.jersey}
+          />
+        </FormField>
+      </Section>
 
-      <Text style={[styles.label, { color: colors.foreground }]}>
-        Volleyball position
-      </Text>
-      <View style={styles.chips}>
-        <Pressable
-          onPress={() => setVolleyballPosition(null)}
-          style={chipStyle(volleyballPosition === null, colors)}
-        >
-          <Text style={chipTextStyle(volleyballPosition === null, colors)}>
-            Not set
-          </Text>
-        </Pressable>
-        {VOLLEYBALL_POSITIONS.map((value) => {
-          const selected = volleyballPosition === value;
-          return (
-            <Pressable
-              key={value}
-              onPress={() => setVolleyballPosition(value)}
-              style={chipStyle(selected, colors)}
-            >
-              <Text style={chipTextStyle(selected, colors)}>
-                {VOLLEYBALL_POSITION_LABELS[value]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Section title="Account" description="Your email and school are set by your account and school membership.">
+        <ListGroup>
+          <ListRow icon="mail-outline" iconTone="secondary" title={displayEmail ?? "No email"} subtitle="Email" />
+          <ListRow icon="school-outline" iconTone="secondary" title={displaySchool ?? "No school"} subtitle="School" />
+        </ListGroup>
+      </Section>
 
-      <Text style={[styles.label, { color: colors.foreground }]}>
-        Jersey number
-      </Text>
-      <TextInput
-        value={jerseyNumber}
-        onChangeText={setJerseyNumber}
-        placeholder="e.g. 7"
-        placeholderTextColor={colors.mutedForeground}
-        keyboardType="number-pad"
-        maxLength={2}
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
-      />
-      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-        0–99. Used on every team and school roster you join.
-      </Text>
+      {error ? <Banner tone="error" message={error} onDismiss={() => setError(null)} /> : null}
 
-      {error ? (
-        <Text style={{ color: colors.destructive }}>{error}</Text>
-      ) : null}
-
-      <Pressable
-        disabled={busy || !fullName.trim()}
+      <FormSubmitButton
+        label="Save profile"
+        busy={busy}
+        disabled={!fullName.trim() || avatarBusy}
         onPress={() => void onSave()}
-        style={[
-          styles.save,
-          {
-            backgroundColor: colors.primary,
-            opacity: busy || !fullName.trim() ? 0.5 : 1,
-          },
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            Save profile
-          </Text>
-        )}
-      </Pressable>
-    </ScrollView>
+      />
+    </ScreenScroll>
   );
 }
 
-function chipStyle(
-  selected: boolean,
-  colors: ReturnType<typeof useThemeColors>
-) {
-  return [
-    styles.chip,
-    {
-      borderColor: selected ? colors.primary : colors.border,
-      backgroundColor: selected ? withAlpha(colors.primary, 0.1) : "transparent",
-    },
-  ];
-}
-
-function chipTextStyle(
-  selected: boolean,
-  colors: ReturnType<typeof useThemeColors>
-) {
-  return {
-    color: selected ? colors.primary : colors.mutedForeground,
-    fontWeight: "700" as const,
-    fontSize: 13,
-  };
-}
-
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 40, gap: 10 },
-  readOnly: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 2,
-    marginBottom: 6,
-  },
-  avatarBlock: { gap: 10, marginBottom: 6 },
-  avatar: { width: 88, height: 88, borderRadius: 44 },
-  avatarPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  avatarBtn: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  label: { fontSize: 15, fontWeight: "700", marginTop: 4 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  hint: { fontSize: 13, lineHeight: 18 },
-  save: {
-    marginTop: 8,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  avatarBlock: { alignItems: "center", gap: space.md },
+  avatar: { width: 96, height: 96, borderRadius: 48 },
+  avatarPlaceholder: { alignItems: "center", justifyContent: "center" },
+  avatarActions: { flexDirection: "row", gap: space.sm },
+  jersey: { width: 96 },
 });

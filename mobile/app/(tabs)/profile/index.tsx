@@ -17,19 +17,9 @@
  */
 
 import type { ViewerContract } from "@/lib/api/contracts/viewer";
-import { Redirect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Redirect, useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import { Alert, Image, Linking, StyleSheet, View } from "react-native";
 import { API_BASE_URL } from "~/api/config";
 import { ApiClientError } from "~/api/client";
 import { fetchViewer } from "~/api/endpoints";
@@ -39,14 +29,32 @@ import {
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import {
+  AppText,
+  Badge,
+  Banner,
+  Button,
+  Icon,
+  ListGroup,
+  ListRow,
+  ScreenScroll,
+  Section,
+  Skeleton,
+  haptics,
+  radius,
+  space,
+} from "~/ui";
+
+const AVATAR_SIZE = 72;
 
 export default function ProfileScreen() {
-  const colors = useThemeColors();
   const router = useRouter();
   const { session, isLoading, signOut } = useSession();
   const [viewer, setViewer] = useState<ViewerContract | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -62,220 +70,274 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!session) return;
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [session, load]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      const controller = new AbortController();
+      void load(controller.signal);
+      return () => controller.abort();
+    }, [session, load])
+  );
 
-  if (isLoading) {
+  if (isLoading) return <LoadingScreen />;
+  if (!session) return <Redirect href="/sign-in" />;
+
+  if (!viewer && error) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ErrorScreen
+        title="Couldn't load your profile"
+        message={error}
+        onRetry={() => void load()}
+      />
     );
   }
 
-  if (!session) return <Redirect href="/sign-in" />;
+  function confirmSignOut() {
+    Alert.alert(
+      "Sign out?",
+      "You'll need to sign in again to manage your teams and tournaments.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out",
+          style: "destructive",
+          onPress: async () => {
+            setIsSigningOut(true);
+            try {
+              await signOut();
+            } catch {
+              haptics.error();
+              setIsSigningOut(false);
+              Alert.alert("Couldn't sign out", "Check your connection and try again.");
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  const school = viewer ? (viewer.displaySchool ?? viewer.university) : null;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={async () => {
-            setIsRefreshing(true);
-            await load();
-            setIsRefreshing(false);
-          }}
-          tintColor={colors.primary}
-        />
-      }
+    <ScreenScroll
+      refreshing={isRefreshing}
+      onRefresh={async () => {
+        setIsRefreshing(true);
+        await load();
+        setIsRefreshing(false);
+      }}
     >
       {viewer ? (
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          {viewer.avatarUrl ? (
-            <Image
-              source={{ uri: viewer.avatarUrl }}
-              style={styles.avatar}
-              accessibilityLabel="Profile photo"
-            />
-          ) : null}
-          <Text style={[styles.name, { color: colors.foreground }]}>
-            {viewer.fullName}
-          </Text>
-          <Text style={{ color: colors.mutedForeground }}>
-            {viewer.displayEmail ?? viewer.email}
-          </Text>
+        <View style={styles.hero}>
+          <ProfileAvatar uri={viewer.avatarUrl} name={viewer.fullName} />
+          <View style={styles.heroText}>
+            <AppText variant="title" numberOfLines={2}>
+              {viewer.fullName}
+            </AppText>
+            <AppText variant="subhead" tone="muted" numberOfLines={1}>
+              {viewer.displayEmail ?? viewer.email}
+            </AppText>
+            {school ? (
+              <AppText variant="subhead" tone="muted" numberOfLines={1}>
+                {school}
+              </AppText>
+            ) : null}
+            <View style={styles.heroBadges}>
+              <Badge label={roleLabel(viewer.role)} tone="neutral" />
+            </View>
+          </View>
+        </View>
+      ) : (
+        <HeroSkeleton />
+      )}
 
-          <View style={styles.rows}>
-            <Row label="Role" value={viewer.role} colors={colors} />
-            <Row
-              label="School"
-              value={viewer.displaySchool ?? viewer.university ?? "—"}
-              colors={colors}
-            />
-            <Row
+      {viewer && error ? (
+        <Banner
+          tone="error"
+          message={error}
+          action={{ label: "Try again", onPress: () => void load() }}
+          onDismiss={() => setError(null)}
+        />
+      ) : null}
+
+      {viewer ? (
+        <Section title="Player details">
+          <ListGroup>
+            <DetailRow
               label="Gender"
               value={
                 viewer.playerGender
                   ? (USER_PLAYER_GENDER_LABELS[viewer.playerGender] ??
                     viewer.playerGender)
-                  : "—"
+                  : null
               }
-              colors={colors}
             />
-            <Row
+            <DetailRow
               label="Position"
               value={
                 viewer.volleyballPosition
                   ? (VOLLEYBALL_POSITION_LABELS[viewer.volleyballPosition] ??
                     viewer.volleyballPosition)
-                  : "—"
+                  : null
               }
-              colors={colors}
             />
-            <Row
-              label="Jersey"
-              value={viewer.jerseyNumber?.toString() ?? "—"}
-              colors={colors}
+            <DetailRow
+              label="Jersey number"
+              value={viewer.jerseyNumber?.toString() ?? null}
             />
-          </View>
-        </View>
-      ) : error ? (
-        <Text style={{ color: colors.destructive }}>{error}</Text>
-      ) : (
-        <ActivityIndicator color={colors.primary} />
-      )}
+          </ListGroup>
+        </Section>
+      ) : null}
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push("/notifications")}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-          Notifications
-        </Text>
-      </Pressable>
+      <Section title="Account">
+        <ListGroup>
+          <ListRow
+            title="Edit profile"
+            subtitle="Name, photo, and player details"
+            icon="person-circle-outline"
+            onPress={() => router.push("/profile/edit")}
+          />
+          <ListRow
+            title="Change password"
+            icon="key-outline"
+            onPress={() => router.push("/profile/password")}
+          />
+        </ListGroup>
+      </Section>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push("/profile/edit")}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-          Edit profile
-        </Text>
-      </Pressable>
+      <Section title="Activity">
+        <ListGroup>
+          <ListRow
+            title="My schedule"
+            subtitle="Your upcoming matches across tournaments"
+            icon="calendar-outline"
+            onPress={() => router.push("/my-schedule")}
+          />
+          <ListRow
+            title="Notifications"
+            icon="notifications-outline"
+            onPress={() => router.push("/notifications")}
+          />
+        </ListGroup>
+      </Section>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push("/profile/password")}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-          Change password
-        </Text>
-      </Pressable>
+      <Section title="About">
+        <ListGroup>
+          <ListRow
+            title="Privacy notice"
+            icon="shield-checkmark-outline"
+            iconTone="muted"
+            accessibilityHint="Opens in your browser"
+            trailing={<Icon name="open-outline" size={18} tone="muted" />}
+            chevron={false}
+            onPress={() => void Linking.openURL(`${API_BASE_URL}/privacy`)}
+          />
+          <ListRow
+            title="Terms of use"
+            icon="document-text-outline"
+            iconTone="muted"
+            accessibilityHint="Opens in your browser"
+            trailing={<Icon name="open-outline" size={18} tone="muted" />}
+            chevron={false}
+            onPress={() => void Linking.openURL(`${API_BASE_URL}/terms`)}
+          />
+        </ListGroup>
+      </Section>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void Linking.openURL(`${API_BASE_URL}/privacy`)}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-          Privacy notice
-        </Text>
-      </Pressable>
+      <Section title="Danger zone">
+        <ListGroup>
+          <ListRow
+            title="Delete account"
+            subtitle="Permanently remove your account and personal data"
+            icon="trash-outline"
+            destructive
+            onPress={() => router.push("/profile/delete-account")}
+          />
+        </ListGroup>
+      </Section>
 
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => void Linking.openURL(`${API_BASE_URL}/terms`)}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-          Terms of use
-        </Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push("/profile/delete-account")}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.destructive, fontWeight: "700" }}>
-          Delete account
-        </Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => void signOut()}
-        style={[styles.action, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.destructive, fontWeight: "600" }}>
-          Sign out
-        </Text>
-      </Pressable>
-    </ScrollView>
+      <Button
+        label="Sign out"
+        icon="log-out-outline"
+        variant="destructiveOutline"
+        loading={isSigningOut}
+        onPress={confirmSignOut}
+        fullWidth
+      />
+    </ScreenScroll>
   );
 }
 
-function Row({
-  label,
-  value,
-  colors,
-}: {
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useThemeColors>;
-}) {
+function roleLabel(role: string): string {
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function DetailRow({ label, value }: { label: string; value: string | null }) {
   return (
-    <View style={styles.row}>
-      <Text style={{ color: colors.mutedForeground }}>{label}</Text>
-      <Text
-        style={{
-          color: colors.foreground,
-          fontWeight: "600",
-          flexShrink: 1,
-          textAlign: "right",
-        }}
-      >
-        {value}
-      </Text>
+    <ListRow
+      title={label}
+      trailing={
+        <AppText variant="callout" tone={value ? "default" : "muted"}>
+          {value ?? "Not set"}
+        </AppText>
+      }
+    />
+  );
+}
+
+function ProfileAvatar({ uri, name }: { uri: string | null; name: string }) {
+  const colors = useThemeColors();
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={[styles.avatar, { backgroundColor: colors.muted }]}
+        accessibilityLabel="Profile photo"
+      />
+    );
+  }
+  return (
+    <View
+      style={[styles.avatar, styles.avatarFallback, { backgroundColor: colors.muted }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      <AppText variant="title" tone="muted">
+        {initials(name)}
+      </AppText>
+    </View>
+  );
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
+
+function HeroSkeleton() {
+  return (
+    <View style={styles.hero} accessibilityLabel="Loading" accessibilityRole="progressbar">
+      <Skeleton width={AVATAR_SIZE} height={AVATAR_SIZE} rounded={radius.full} />
+      <View style={styles.heroText}>
+        <Skeleton width="60%" height={22} />
+        <Skeleton width="80%" height={14} />
+        <Skeleton width="45%" height={14} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 40, gap: 12 },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
-  card: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 4 },
+  hero: { flexDirection: "row", alignItems: "center", gap: space.lg },
+  heroText: { flex: 1, minWidth: 0, gap: space.xxs },
+  heroBadges: { flexDirection: "row", marginTop: space.xs },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    marginBottom: 8,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: radius.full,
   },
-  name: { fontSize: 22, fontWeight: "700" },
-  rows: { marginTop: 12, gap: 8 },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 12,
-  },
-  action: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  avatarFallback: { alignItems: "center", justifyContent: "center" },
 });

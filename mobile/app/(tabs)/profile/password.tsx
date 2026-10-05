@@ -17,21 +17,16 @@
  */
 
 import { Redirect, useRouter } from "expo-router";
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useRef, useState } from "react";
+import { Alert, type TextInput } from "react-native";
 import { changePassword } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { FormField, FormSubmitButton, FormTextInput } from "~/components/create-form";
 import { goBackOrReplace } from "~/lib/navigation";
 import { useThemeColors } from "~/theme/colors";
+import { LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
+import { AppText, Banner, ScreenScroll, haptics } from "~/ui";
 
 export default function ChangePasswordScreen() {
   const colors = useThemeColors();
@@ -42,138 +37,106 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const newRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
 
-  if (isLoading) return null;
+  if (isLoading) return <LoadingScreen rows={3} />;
   if (!session) return <Redirect href="/sign-in" />;
 
+  const tooShort = password.length > 0 && password.length < 8;
+  const mismatch = confirmPassword.length > 0 && confirmPassword !== password;
   const canSubmit =
-    currentPassword.length > 0 &&
-    password.length >= 8 &&
-    confirmPassword.length > 0;
+    currentPassword.length > 0 && password.length >= 8 && confirmPassword === password;
 
   async function onSubmit() {
+    if (!canSubmit || busy) return;
     setBusy(true);
     setError(null);
     try {
       await changePassword({ currentPassword, password, confirmPassword });
-      goBackOrReplace(router, "/profile");
+      haptics.success();
+      Alert.alert("Password updated", "Use your new password next time you sign in.", [
+        { text: "OK", onPress: () => goBackOrReplace(router, "/profile") },
+      ]);
     } catch (cause) {
       setError(messageFor(cause, "Could not update password."));
+      haptics.error();
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+    <ScreenScroll gap={20}>
+      <AppText variant="callout" tone="muted">
         Enter your current password, then choose a new one.
-      </Text>
+      </AppText>
 
-      <Field
-        label="Current password"
-        value={currentPassword}
-        onChangeText={setCurrentPassword}
-        colors={colors}
-      />
-      <Field
+
+      <FormField label="Current password" colors={colors}>
+        <FormTextInput
+          value={currentPassword}
+          onChangeText={setCurrentPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="password"
+          autoComplete="current-password"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => newRef.current?.focus()}
+          colors={colors}
+        />
+      </FormField>
+      <FormField
         label="New password"
-        value={password}
-        onChangeText={setPassword}
+        hint="At least 8 characters."
+        error={tooShort ? "Use at least 8 characters." : null}
         colors={colors}
-      />
-      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-        At least 8 characters.
-      </Text>
-      <Field
-        label="Confirm new password"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        colors={colors}
-      />
-
-      {error ? (
-        <Text style={{ color: colors.destructive }}>{error}</Text>
-      ) : null}
-
-      <Pressable
-        disabled={busy || !canSubmit}
-        onPress={() => void onSubmit()}
-        style={[
-          styles.save,
-          {
-            backgroundColor: colors.primary,
-            opacity: busy || !canSubmit ? 0.5 : 1,
-          },
-        ]}
       >
-        {busy ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            Update password
-          </Text>
-        )}
-      </Pressable>
-    </ScrollView>
-  );
-}
+        <FormTextInput
+          ref={newRef}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="newPassword"
+          autoComplete="new-password"
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => confirmRef.current?.focus()}
+          colors={colors}
+        />
+      </FormField>
+      <FormField
+        label="Confirm new password"
+        error={mismatch ? "Passwords don’t match." : null}
+        colors={colors}
+      >
+        <FormTextInput
+          ref={confirmRef}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="newPassword"
+          autoComplete="new-password"
+          returnKeyType="done"
+          onSubmitEditing={() => void onSubmit()}
+          colors={colors}
+        />
+      </FormField>
 
-function Field({
-  label,
-  value,
-  onChangeText,
-  colors,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  colors: ReturnType<typeof useThemeColors>;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.foreground }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        secureTextEntry
-        autoCapitalize="none"
-        autoCorrect={false}
-        textContentType="password"
-        style={[
-          styles.input,
-          {
-            color: colors.foreground,
-            borderColor: colors.border,
-            backgroundColor: colors.card,
-          },
-        ]}
+      {error ? <Banner tone="error" message={error} /> : null}
+
+      <FormSubmitButton
+        label="Update password"
+        busy={busy}
+        disabled={!canSubmit}
+        onPress={() => void onSubmit()}
       />
-    </View>
+    </ScreenScroll>
   );
 }
-
-const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 40, gap: 10 },
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 4 },
-  field: { gap: 6 },
-  label: { fontSize: 15, fontWeight: "700" },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  hint: { fontSize: 13, marginTop: -4 },
-  save: {
-    marginTop: 8,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-});
