@@ -16,30 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs } from "expo-router";
-import { Text, type ColorValue } from "react-native";
+import type { ColorValue } from "react-native";
 import { useThemeColors } from "~/theme/colors";
+import { haptics, type IconName } from "~/ui";
 
-function TabLabel({
-  label,
-  focused,
-  color,
-}: {
-  label: string;
-  focused: boolean;
-  color: ColorValue;
-}) {
-  return (
-    <Text
-      style={{
-        color,
-        fontSize: 11,
-        fontWeight: focused ? "700" : "600",
-        marginBottom: 10,
-      }}
-    >
-      {label}
-    </Text>
+function tabIcon(active: IconName, inactive: IconName) {
+  return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+    <Ionicons name={focused ? active : inactive} size={size - 2} color={color} />
   );
 }
 
@@ -50,7 +35,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground },
+        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
         headerTintColor: colors.primary,
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: colors.background },
@@ -60,27 +45,23 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarIconStyle: { display: "none" },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "600", letterSpacing: -0.1 },
+        tabBarItemStyle: { paddingHorizontal: 0 },
       }}
+      screenListeners={{ tabPress: () => haptics.selection() }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
-          tabBarLabel: ({ focused, color }) => (
-            <TabLabel label="Home" focused={focused} color={color} />
-          ),
-          tabBarAccessibilityLabel: "Dashboard",
+          title: "Home",
+          tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />
       <Tabs.Screen
         name="tournaments"
         options={{
           title: "Tournaments",
-          tabBarLabel: ({ focused, color }) => (
-            <TabLabel label="Tournaments" focused={focused} color={color} />
-          ),
-          tabBarAccessibilityLabel: "Tournaments",
+          tabBarIcon: tabIcon("trophy", "trophy-outline"),
         }}
       />
       <Tabs.Screen
@@ -88,10 +69,7 @@ export default function TabsLayout() {
         options={{
           title: "Teams",
           headerShown: false,
-          tabBarLabel: ({ focused, color }) => (
-            <TabLabel label="Teams" focused={focused} color={color} />
-          ),
-          tabBarAccessibilityLabel: "Teams",
+          tabBarIcon: tabIcon("people", "people-outline"),
         }}
       />
       <Tabs.Screen
@@ -99,10 +77,7 @@ export default function TabsLayout() {
         options={{
           title: "Schools",
           headerShown: false,
-          tabBarLabel: ({ focused, color }) => (
-            <TabLabel label="Schools" focused={focused} color={color} />
-          ),
-          tabBarAccessibilityLabel: "Schools",
+          tabBarIcon: tabIcon("school", "school-outline"),
         }}
       />
       <Tabs.Screen
@@ -110,10 +85,7 @@ export default function TabsLayout() {
         options={{
           title: "Profile",
           headerShown: false,
-          tabBarLabel: ({ focused, color }) => (
-            <TabLabel label="Profile" focused={focused} color={color} />
-          ),
-          tabBarAccessibilityLabel: "Profile",
+          tabBarIcon: tabIcon("person-circle", "person-circle-outline"),
         }}
       />
     </Tabs>

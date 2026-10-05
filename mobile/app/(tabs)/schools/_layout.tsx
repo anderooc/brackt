@@ -26,17 +26,17 @@ export default function SchoolsStackLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground },
+        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
         headerTintColor: colors.primary,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Find schools" }} />
-      <Stack.Screen name="new" options={{ title: "Create school" }} />
+      <Stack.Screen name="index" options={{ title: "Schools" }} />
+      <Stack.Screen name="new" options={{ title: "Create school", headerBackTitle: "Schools" }} />
       <Stack.Screen
         name="[slug]"
-        options={{ headerBackTitle: "Find" }}
+        options={{ title: "School", headerBackTitle: "Schools" }}
       />
       <Stack.Screen
         name="[slug]/edit"

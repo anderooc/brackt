@@ -26,6 +26,12 @@ import { NotificationsRealtimeProvider } from "~/notifications/NotificationsReal
 import { PushNotificationProvider } from "~/notifications/PushNotificationProvider";
 import { useThemeColors } from "~/theme/colors";
 
+// Deep links (push notifications, shared URLs) land on stack screens; keep the
+// tabs underneath so there is always a back button.
+export const unstable_settings = {
+  initialRouteName: "(tabs)",
+};
+
 function RootStack() {
   const colors = useThemeColors();
 
@@ -33,8 +39,9 @@ function RootStack() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground },
+        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
         headerTintColor: colors.primary,
+        headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
         // Keep back transitions sliding in from the left (iOS-style) on Android too.
         animation: Platform.OS === "android" ? "ios_from_right" : "default",
@@ -68,7 +75,7 @@ function RootStack() {
       />
       <Stack.Screen
         name="schedule"
-        options={{ title: "Schedule", headerBackTitle: "Home" }}
+        options={{ title: "All matches", headerBackTitle: "Home" }}
       />
       <Stack.Screen
         name="tournament/[slug]/index"
@@ -88,7 +95,7 @@ function RootStack() {
       />
       <Stack.Screen
         name="tournament/[slug]/scoring"
-        options={{ title: "Live scores", headerBackTitle: "Tournament" }}
+        options={{ title: "Scores", headerBackTitle: "Tournament" }}
       />
       <Stack.Screen
         name="tournament/[slug]/packet"
@@ -132,7 +139,7 @@ function RootStack() {
       />
       <Stack.Screen
         name="tournament/[slug]/settings/packet"
-        options={{ title: "Packet", headerBackTitle: "Tournament" }}
+        options={{ title: "Packet settings", headerBackTitle: "Tournament" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/index"
@@ -148,11 +155,11 @@ function RootStack() {
       />
       <Stack.Screen
         name="tournament/[slug]/host/pools"
-        options={{ title: "Pool ops", headerBackTitle: "Host" }}
+        options={{ title: "Pools", headerBackTitle: "Host" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/bracket"
-        options={{ title: "Bracket ops", headerBackTitle: "Host" }}
+        options={{ title: "Bracket", headerBackTitle: "Host" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/schedule"

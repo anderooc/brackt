@@ -17,6 +17,7 @@
  */
 
 import { Stack } from "expo-router";
+import { Platform } from "react-native";
 import { useThemeColors } from "~/theme/colors";
 
 export default function ProfileStackLayout() {
@@ -26,10 +27,11 @@ export default function ProfileStackLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground },
+        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
         headerTintColor: colors.primary,
-        contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
+        animation: Platform.OS === "android" ? "ios_from_right" : "default",
       }}
     >
       <Stack.Screen name="index" options={{ title: "Profile" }} />

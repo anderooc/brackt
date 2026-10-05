@@ -26,17 +26,20 @@ export default function TeamsStackLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground },
+        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
         headerTintColor: colors.primary,
-        contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen name="index" options={{ title: "Teams" }} />
-      <Stack.Screen name="new" options={{ title: "Create team" }} />
+      <Stack.Screen
+        name="new"
+        options={{ title: "Create team", headerBackTitle: "Teams" }}
+      />
       <Stack.Screen
         name="[slug]"
-        options={{ headerBackTitle: "Teams" }}
+        options={{ title: "Team", headerBackTitle: "Teams" }}
       />
     </Stack>
   );
