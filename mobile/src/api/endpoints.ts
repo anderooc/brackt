@@ -751,6 +751,16 @@ export function acknowledgeTournamentWaiver(
   });
 }
 
+export function updateTournamentWaiverPlayer(
+  slug: string,
+  body: { teamSlug: string; userId: string; action: "attest" | "waive" | "clear" }
+): Promise<{ success: true }> {
+  return apiRequest(tournamentPath(slug, "/waiver/players"), {
+    method: "POST",
+    body,
+  });
+}
+
 export function fetchTournamentPayment(
   slug: string,
   signal?: AbortSignal

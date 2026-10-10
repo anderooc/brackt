@@ -20,22 +20,23 @@
 
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
-import { and, eq, max } from "drizzle-orm";
+import { eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
-  registrations,
-  teamMembers,
   tournamentWaivers,
   tournaments,
   waiverCompletions,
 } from "@/lib/db/schema";
 import { WAIVER_MAX_BYTES } from "@/lib/supabase/admin";
+import { waiverSettingsFromTournament } from "@/lib/tournaments/waiver-access";
 import {
-  captainCanAttestOfflineWaiver,
-  waiverSettingsFromTournament,
-} from "@/lib/tournaments/waiver-access";
+  captainAttestWaiverPlayerForUser,
+  clearWaiverCompletionForUser,
+  hostWaivePlayerWaiverForUser,
+  loadRegisteredTeamMembership,
+} from "@/lib/tournaments/waiver-player-status";
 import { getLatestTournamentWaiver } from "@/lib/tournaments/waiver-compliance";
 import {
   tournamentWaiverStoragePath,
@@ -106,39 +107,6 @@ async function loadOrganizerTournament(tournamentId: string) {
   }
 
   return { user, tournament };
-}
-
-async function loadRegisteredTeamMembership(
-  tournamentId: string,
-  teamId: string,
-  userId: string
-) {
-  const [registration] = await db
-    .select({ id: registrations.id })
-    .from(registrations)
-    .where(
-      and(
-        eq(registrations.tournamentId, tournamentId),
-        eq(registrations.teamId, teamId)
-      )
-    )
-    .limit(1);
-
-  if (!registration) {
-    return { error: "Team is not registered for this tournament." as const };
-  }
-
-  const [membership] = await db
-    .select()
-    .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
-    .limit(1);
-
-  if (!membership) {
-    return { error: "You are not on this team roster." as const };
-  }
-
-  return { membership };
 }
 
 export async function updateTournamentWaiverSettings(
@@ -275,69 +243,14 @@ export async function captainAttestWaiverPlayer(
   playerUserId: string
 ) {
   const user = await requireUser();
-  const [tournament] = await db
-    .select()
-    .from(tournaments)
-    .where(eq(tournaments.id, tournamentId))
-    .limit(1);
-
-  if (!tournament?.waiverEnabled) {
-    return { error: "This tournament does not require a waiver." };
-  }
-
-  const settings = waiverSettingsFromTournament(tournament);
-  if (!captainCanAttestOfflineWaiver(settings)) {
-    return {
-      error: "The host only allows digital acknowledgment for this waiver.",
-    };
-  }
-
-  const [captainMembership] = await db
-    .select()
-    .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, user.id)))
-    .limit(1);
-
-  if (!captainMembership || captainMembership.role !== "captain") {
-    return { error: "Only team captains can attest offline waiver completion." };
-  }
-
-  const roster = await loadRegisteredTeamMembership(
+  const result = await captainAttestWaiverPlayerForUser(
+    user,
     tournamentId,
     teamId,
     playerUserId
   );
-  if ("error" in roster) return roster;
-
-  const waiver = await getLatestTournamentWaiver(tournamentId);
-  if (!waiver) {
-    return { error: "No waiver has been uploaded for this tournament yet." };
-  }
-
-  await db
-    .insert(waiverCompletions)
-    .values({
-      waiverId: waiver.id,
-      tournamentId,
-      teamId,
-      userId: playerUserId,
-      method: "captain_attested",
-      attestedByUserId: user.id,
-    })
-    .onConflictDoUpdate({
-      target: [waiverCompletions.waiverId, waiverCompletions.userId],
-      set: {
-        teamId,
-        method: "captain_attested",
-        signedName: null,
-        completedAt: new Date(),
-        attestedByUserId: user.id,
-        waivedByUserId: null,
-      },
-    });
-
-  revalidatePath("/tournaments/[slug]", "page");
-  return { success: true as const };
+  if (result.success) revalidatePath("/tournaments/[slug]", "page");
+  return result;
 }
 
 export async function acknowledgeWaiverDigitally(
@@ -411,50 +324,15 @@ export async function hostWaivePlayerWaiver(
   teamId: string,
   playerUserId: string
 ) {
-  const loaded = await loadOrganizerTournament(tournamentId);
-  if ("error" in loaded) return loaded;
-  const { user, tournament } = loaded;
-
-  if (!tournament.waiverEnabled) {
-    return { error: "This tournament does not require a waiver." };
-  }
-
-  const roster = await loadRegisteredTeamMembership(
+  const user = await requireUser();
+  const result = await hostWaivePlayerWaiverForUser(
+    user,
     tournamentId,
     teamId,
     playerUserId
   );
-  if ("error" in roster) return roster;
-
-  const waiver = await getLatestTournamentWaiver(tournamentId);
-  if (!waiver) {
-    return { error: "No waiver has been uploaded for this tournament yet." };
-  }
-
-  await db
-    .insert(waiverCompletions)
-    .values({
-      waiverId: waiver.id,
-      tournamentId,
-      teamId,
-      userId: playerUserId,
-      method: "host_override",
-      waivedByUserId: user.id,
-    })
-    .onConflictDoUpdate({
-      target: [waiverCompletions.waiverId, waiverCompletions.userId],
-      set: {
-        teamId,
-        method: "host_override",
-        signedName: null,
-        completedAt: new Date(),
-        attestedByUserId: null,
-        waivedByUserId: user.id,
-      },
-    });
-
-  revalidatePath("/tournaments/[slug]", "page");
-  return { success: true as const };
+  if (result.success) revalidatePath("/tournaments/[slug]", "page");
+  return result;
 }
 
 export async function clearWaiverCompletion(
@@ -463,67 +341,12 @@ export async function clearWaiverCompletion(
   playerUserId: string
 ) {
   const user = await requireUser();
-  const [tournament] = await db
-    .select()
-    .from(tournaments)
-    .where(eq(tournaments.id, tournamentId))
-    .limit(1);
-
-  if (!tournament) return { error: "Tournament not found." };
-
-  const waiver = await getLatestTournamentWaiver(tournamentId);
-  if (!waiver) return { success: true as const };
-
-  if (await resolveIsTournamentOrganizer(tournament, user)) {
-    await db
-      .delete(waiverCompletions)
-      .where(
-        and(
-          eq(waiverCompletions.waiverId, waiver.id),
-          eq(waiverCompletions.teamId, teamId),
-          eq(waiverCompletions.userId, playerUserId)
-        )
-      );
-    revalidatePath("/tournaments/[slug]", "page");
-    return { success: true as const };
-  }
-
-  const [captainMembership] = await db
-    .select()
-    .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, user.id)))
-    .limit(1);
-
-  if (!captainMembership || captainMembership.role !== "captain") {
-    return { error: "Only captains or the host can clear waiver attestation." };
-  }
-
-  const [completion] = await db
-    .select({ method: waiverCompletions.method })
-    .from(waiverCompletions)
-    .where(
-      and(
-        eq(waiverCompletions.waiverId, waiver.id),
-        eq(waiverCompletions.teamId, teamId),
-        eq(waiverCompletions.userId, playerUserId)
-      )
-    )
-    .limit(1);
-
-  if (completion?.method !== "captain_attested") {
-    return { error: "Only captain attestations can be cleared this way." };
-  }
-
-  await db
-    .delete(waiverCompletions)
-    .where(
-      and(
-        eq(waiverCompletions.waiverId, waiver.id),
-        eq(waiverCompletions.teamId, teamId),
-        eq(waiverCompletions.userId, playerUserId)
-      )
-    );
-
-  revalidatePath("/tournaments/[slug]", "page");
-  return { success: true as const };
+  const result = await clearWaiverCompletionForUser(
+    user,
+    tournamentId,
+    teamId,
+    playerUserId
+  );
+  if (result.success) revalidatePath("/tournaments/[slug]", "page");
+  return result;
 }

@@ -402,6 +402,12 @@ export default function TournamentHostScreen() {
             onPress={() => router.push(`${base}/settings/waiver`)}
           />
           <ListRow
+            title="Waiver tracking"
+            subtitle="Who has signed, team by team"
+            icon="checkmark-done-outline"
+            onPress={() => router.push(`${base}/waiver`)}
+          />
+          <ListRow
             title="Packet"
             subtitle="Logistics notes and PDF color"
             icon="folder-open-outline"

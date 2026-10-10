@@ -18,12 +18,17 @@
 
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import type {
+  TournamentWaiverRosterMemberContract,
+  TournamentWaiverTeamContract,
+} from "@/lib/api/contracts/tournament-ops";
+import { Alert, type AlertButton, StyleSheet, View } from "react-native";
 import { openExternalUrl } from "~/lib/links";
 import {
   acknowledgeTournamentWaiver,
   downloadTournamentWaiverPdf,
   fetchTournamentWaiver,
+  updateTournamentWaiverPlayer,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { FormField, FormTextInput } from "~/components/create-form";
@@ -101,6 +106,67 @@ export default function WaiverScreen() {
     } finally {
       setBusyKey(null);
     }
+  }
+
+  const waiver = data;
+  const captainCanAttest =
+    waiver.settings.allowDownloadPrint || waiver.settings.allowThirdParty;
+
+  function playerActionsFor(
+    team: TournamentWaiverTeamContract,
+    member: TournamentWaiverRosterMemberContract
+  ): (() => void) | undefined {
+    if (!waiver.settings.enabled || !waiver.hasPdf) return undefined;
+    const update = (action: "attest" | "waive" | "clear", success: string) =>
+      void run(
+        `player-${team.teamSlug}-${member.userId}`,
+        async () => {
+          await updateTournamentWaiverPlayer(slug!, {
+            teamSlug: team.teamSlug,
+            userId: member.userId,
+            action,
+          });
+        },
+        success
+      );
+
+    const options: AlertButton[] = [];
+    if (!member.completed) {
+      if (team.isCaptain && captainCanAttest) {
+        options.push({
+          text: "Mark as signed",
+          onPress: () => update("attest", `Marked ${member.fullName} as signed.`),
+        });
+      }
+      if (waiver.isOrganizer) {
+        options.push({
+          text: "Waive requirement",
+          onPress: () =>
+            update("waive", `Waived the requirement for ${member.fullName}.`),
+        });
+      }
+    } else if (
+      waiver.isOrganizer ||
+      (team.isCaptain && member.method === "captain_attested")
+    ) {
+      options.push({
+        text: "Clear signature",
+        style: "destructive",
+        onPress: () => update("clear", `Cleared ${member.fullName}'s signature.`),
+      });
+    }
+    if (options.length === 0) return undefined;
+
+    return () =>
+      Alert.alert(
+        member.fullName,
+        member.completed
+          ? `${waiverMethodLabel(member.method)}. Clearing it means they need to sign again.`
+          : team.isCaptain && captainCanAttest
+            ? "Mark as signed once they've completed the paper or external waiver."
+            : "Waiving lets them check in without a signature.",
+        [...options, { text: "Cancel", style: "cancel" }]
+      );
   }
 
   const canDownload = data.settings.allowDownloadPrint && data.hasPdf;
@@ -187,7 +253,11 @@ export default function WaiverScreen() {
             <Section
               key={team.teamSlug}
               title={team.teamName}
-              description={`${team.completedCount} of ${team.totalCount} signed`}
+              description={
+                (team.isCaptain || data.isOrganizer) && data.settings.enabled && data.hasPdf
+                  ? `${team.completedCount} of ${team.totalCount} signed · Tap a player to update`
+                  : `${team.completedCount} of ${team.totalCount} signed`
+              }
             >
               {team.complete ? (
                 <Badge label="Ready for check-in" tone="success" />
@@ -252,6 +322,8 @@ export default function WaiverScreen() {
                   {team.roster.map((member) => (
                     <ListRow
                       key={member.userId}
+                      onPress={playerActionsFor(team, member)}
+                      disabled={busyKey !== null}
                       title={
                         member.isViewer ? `${member.fullName} (you)` : member.fullName
                       }

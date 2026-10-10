@@ -61,6 +61,11 @@ import {
   userCanAccessTournamentWaiver,
   waiverSettingsFromTournament,
 } from "@/lib/tournaments/waiver-access";
+import {
+  captainAttestWaiverPlayerForUser,
+  clearWaiverCompletionForUser,
+  hostWaivePlayerWaiverForUser,
+} from "@/lib/tournaments/waiver-player-status";
 import { userCanAccessTournamentPayment } from "@/lib/tournaments/payment-access";
 import {
   MAX_TEAM_REGISTRATION_BATCH_SIZE,
@@ -171,6 +176,32 @@ export async function acknowledgeWaiverForViewer(
         waivedByUserId: null,
       },
     });
+
+  return { success: true as const };
+}
+
+export type WaiverPlayerAction = "attest" | "waive" | "clear";
+
+export async function updateWaiverPlayerForViewer(
+  slug: string,
+  user: AppUser,
+  input: { teamSlug: string; userId: string; action: WaiverPlayerAction }
+) {
+  const tournament = await requirePostedTournament(slug);
+  const team = await resolveRegisteredTeamIdBySlug(
+    tournament.id,
+    input.teamSlug
+  );
+  if (!team) throw notFound("Team registration not found.");
+
+  const run =
+    input.action === "attest"
+      ? captainAttestWaiverPlayerForUser
+      : input.action === "waive"
+        ? hostWaivePlayerWaiverForUser
+        : clearWaiverCompletionForUser;
+  const result = await run(user, tournament.id, team.teamId, input.userId);
+  if (result.error) throw badRequest(result.error);
 
   return { success: true as const };
 }
