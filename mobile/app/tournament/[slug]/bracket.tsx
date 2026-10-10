@@ -30,6 +30,7 @@ import {
 } from "react-native";
 import { fetchTournamentPlay } from "~/api/endpoints";
 import { BRACKET_TYPE_LABELS } from "~/lib/format";
+import { usePolling } from "~/lib/use-polling";
 import { DrawnBracket } from "~/tournament/bracket-draw";
 import { flattenBrackets, type DisplayBracket } from "~/tournament/flatten-brackets";
 import { HostSettingsEntry } from "~/tournament/host-settings-entry";
@@ -74,8 +75,14 @@ export default function BracketScreen() {
     [slug]
   );
 
-  const { data, error, refreshError, isRefreshing, reload, refresh, clearError } =
+  const { data, error, refreshError, isRefreshing, reload, refresh, poll, clearError } =
     usePublicLoader(load, "Could not load the bracket.");
+
+  usePolling(
+    poll,
+    15000,
+    data?.divisions.some((division) => division.released) ?? false
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: "Bracket" });

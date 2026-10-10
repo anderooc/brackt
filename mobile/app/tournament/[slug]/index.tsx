@@ -33,6 +33,7 @@ import {
   fetchTournamentTeams,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { usePolling } from "~/lib/use-polling";
 import { TournamentMatchesPanel } from "~/tournament/matches-panel";
 import { TournamentOverview } from "~/tournament/overview";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
@@ -172,6 +173,18 @@ export default function TournamentDetailScreen() {
     void loadMatches(controller.signal);
     return () => controller.abort();
   }, [tab, matches, matchesError, loadMatches]);
+
+  const pollMatches = useCallback(async () => {
+    if (!slug) return;
+    try {
+      const result = await fetchTournamentMatches(slug);
+      setMatches(result.matches);
+    } catch {
+      // Keep the last good list; pull-to-refresh surfaces errors.
+    }
+  }, [slug]);
+
+  usePolling(pollMatches, 15000, tab === "matches" && matches !== null);
 
   useLayoutEffect(() => {
     const canGoBack = navigation.canGoBack();

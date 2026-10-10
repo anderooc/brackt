@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useIsFocused } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import { ApiClientError } from "~/api/client";
 
 export function messageFor(cause: unknown, fallback: string): string {
@@ -79,6 +80,20 @@ export function usePublicLoader<T>(
       void poll();
     }, [poll])
   );
+
+  // Data can go stale while the phone is locked (chat, scores), so catch up
+  // when the app returns to the foreground on this screen.
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    if (!isFocused) return;
+    let previous = AppState.currentState;
+    const sub = AppState.addEventListener("change", (next) => {
+      if (previous !== "active" && next === "active") void poll();
+      previous = next;
+    });
+    return () => sub.remove();
+  }, [isFocused, poll]);
+
   const clearError = useCallback(() => setError(null), []);
 
   /** Error from a refresh while earlier data is still on screen; show inline, not full-screen. */

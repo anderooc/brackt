@@ -64,7 +64,11 @@ export default function MatchDetailScreen() {
   const { data, error, refreshError, isRefreshing, reload, refresh, poll } =
     usePublicLoader(load, "Could not load this match.");
 
-  usePolling(poll, 5000, data?.status === "in_progress");
+  usePolling(
+    poll,
+    data?.status === "in_progress" ? 5000 : 20000,
+    data?.status === "in_progress" || data?.status === "upcoming"
+  );
 
   useEffect(() => {
     if (!session || !slug || !matchSlug) {

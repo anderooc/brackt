@@ -16,23 +16,43 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useEffect } from "react";
+import { useIsFocused } from "expo-router";
+import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 
-/** Repeats `tick` while the screen is focused and the app is in the foreground. */
+/**
+ * Repeats `tick` while the screen is focused and the app is in the foreground.
+ * A tick that returns a promise is never overlapped by the next one, so slow
+ * networks don't pile up requests.
+ */
 export function usePolling(
-  tick: () => void,
+  tick: () => void | Promise<unknown>,
   intervalMs: number,
   enabled: boolean
 ): void {
+  const isFocused = useIsFocused();
+  const tickRef = useRef(tick);
+  tickRef.current = tick;
+
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !isFocused) return;
 
     let timer: ReturnType<typeof setInterval> | null = null;
+    let inFlight = false;
 
+    const run = () => {
+      if (inFlight) return;
+      const result = tickRef.current();
+      if (result && typeof (result as Promise<unknown>).then === "function") {
+        inFlight = true;
+        void (result as Promise<unknown>).finally(() => {
+          inFlight = false;
+        });
+      }
+    };
     const start = () => {
       if (timer) return;
-      timer = setInterval(tick, intervalMs);
+      timer = setInterval(run, intervalMs);
     };
     const stop = () => {
       if (!timer) return;
@@ -43,13 +63,17 @@ export function usePolling(
     if (AppState.currentState === "active") start();
 
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") start();
-      else stop();
+      if (state === "active") {
+        run();
+        start();
+      } else {
+        stop();
+      }
     });
 
     return () => {
       stop();
       sub.remove();
     };
-  }, [tick, intervalMs, enabled]);
+  }, [intervalMs, enabled, isFocused]);
 }

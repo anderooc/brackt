@@ -25,6 +25,7 @@ import { useCallback, useLayoutEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { fetchTournamentPlay } from "~/api/endpoints";
 import { formatSigned } from "~/lib/format";
+import { usePolling } from "~/lib/use-polling";
 import { HostSettingsEntry } from "~/tournament/host-settings-entry";
 import { MatchRow } from "~/tournament/match-row";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
@@ -58,8 +59,14 @@ export default function PoolsScreen() {
     [slug]
   );
 
-  const { data, error, refreshError, isRefreshing, reload, refresh, clearError } =
+  const { data, error, refreshError, isRefreshing, reload, refresh, poll, clearError } =
     usePublicLoader(load, "Could not load pools.");
+
+  usePolling(
+    poll,
+    15000,
+    data?.divisions.some((division) => division.released) ?? false
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: "Pools" });
