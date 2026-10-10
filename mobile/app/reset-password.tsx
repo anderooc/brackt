@@ -20,6 +20,7 @@ import { Redirect, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import type { TextInput } from "react-native";
 import { confirmPasswordReset } from "~/api/endpoints";
+import { useRecoveryState } from "~/auth/recovery-link";
 import { useSession } from "~/auth/session";
 import {
   AuthActions,
@@ -40,6 +41,7 @@ export default function ResetPasswordScreen() {
   const router = useRouter();
   const exitAuthFlow = useExitAuthFlow();
   const { session, isLoading } = useSession();
+  const recovery = useRecoveryState();
   const confirmRef = useRef<TextInput>(null);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -48,7 +50,7 @@ export default function ResetPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (isLoading) return <LoadingScreen rows={2} />;
+  if (isLoading || recovery.status === "pending") return <LoadingScreen rows={2} />;
   if (!session) return <Redirect href="/forgot-password" />;
 
   const passwordError =

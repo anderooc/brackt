@@ -19,7 +19,11 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { requestPasswordReset } from "~/api/endpoints";
-import { MOBILE_PASSWORD_RESET_REDIRECT } from "~/auth/recovery-link";
+import {
+  MOBILE_PASSWORD_RESET_REDIRECT,
+  setRecoveryState,
+  useRecoveryState,
+} from "~/auth/recovery-link";
 import {
   AuthActions,
   AuthInput,
@@ -37,6 +41,7 @@ export default function ForgotPasswordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const recovery = useRecoveryState();
 
   const canSubmit = email.trim().length > 0 && !isSubmitting;
 
@@ -52,6 +57,7 @@ export default function ForgotPasswordScreen() {
         redirectTo: MOBILE_PASSWORD_RESET_REDIRECT,
       });
       haptics.success();
+      setRecoveryState({ status: "idle" });
       setSuccessMessage(
         result.message ??
           "If an account exists for that email, we sent a link to reset your password."
@@ -85,6 +91,9 @@ export default function ForgotPasswordScreen() {
 
   return (
     <AuthScreen lead="Enter your account email and we'll send you a link to choose a new password.">
+      {recovery.status === "failed" && !error ? (
+        <Banner tone="warning" title="Link expired" message={recovery.message} />
+      ) : null}
       {error ? (
         <Banner tone="error" title="Couldn't send link" message={error} />
       ) : null}

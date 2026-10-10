@@ -129,9 +129,26 @@ async function performRequest(
 }
 
 /**
+ * Called after the server rejects our token. Returns true when a refreshed
+ * token is available to retry with. If the session can't be refreshed it is
+ * dropped locally, so the app shows its signed-out state instead of a string of
+ * permission errors.
+ */
+async function recoverFromRejectedSession(): Promise<boolean> {
+  if (!(await accessToken())) return false;
+  const { data, error } = await supabase.auth.refreshSession();
+  if (!error && data.session) return true;
+  // Only an explicit auth rejection ends the session; a network blip must not.
+  if (error && error.status !== undefined && error.status >= 400 && error.status < 500) {
+    await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+  }
+  return false;
+}
+
+/**
  * Issues a request and unwraps the response envelope.
  *
- * A `token_expired` response triggers one forced refresh and a single retry.
+ * A 401 triggers one forced refresh and a single retry.
  * Supabase refreshes on its own timer, but that timer is paused while the app
  * is backgrounded, so the first request after resuming can legitimately race a
  * expiring token.
@@ -143,14 +160,8 @@ export async function apiRequest<T>(
   let response = await performRequest(path, options);
   let body = await parseBody(response);
 
-  if (
-    response.status === 401 &&
-    isErrorBody(body) &&
-    body.error.code === "token_expired" &&
-    options.authenticated !== false
-  ) {
-    const { error } = await supabase.auth.refreshSession();
-    if (!error) {
+  if (response.status === 401 && options.authenticated !== false) {
+    if (await recoverFromRejectedSession()) {
       response = await performRequest(path, options);
       body = await parseBody(response);
     }
@@ -198,8 +209,7 @@ export async function apiDownload(
   });
 
   if (response.status === 401) {
-    const { error } = await supabase.auth.refreshSession();
-    if (!error) {
+    if (await recoverFromRejectedSession()) {
       response = await performRequest(path, {
         authenticated: true,
         signal: options.signal,
@@ -208,7 +218,20 @@ export async function apiDownload(
   }
 
   if (!response.ok) {
-    const body = await parseBody(response);
+    // Some download routes answer errors with plain text rather than the envelope.
+    const text = await response.text().catch(() => "");
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      if (text && text.length < 300 && !text.trimStart().startsWith("<")) {
+        throw new ApiClientError(
+          response.status === 403 ? "forbidden" : "malformed_response",
+          text,
+          response.status
+        );
+      }
+    }
     if (isErrorBody(body)) {
       throw new ApiClientError(
         body.error.code,

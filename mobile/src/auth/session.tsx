@@ -38,6 +38,26 @@ interface SessionState {
 
 const SessionContext = createContext<SessionState | null>(null);
 
+type BeforeSignOutHook = () => Promise<void>;
+const beforeSignOutHooks = new Set<BeforeSignOutHook>();
+
+/**
+ * Runs while the access token is still valid, so cleanup that needs an
+ * authenticated request (e.g. unregistering the push token) can succeed.
+ */
+export function registerBeforeSignOut(hook: BeforeSignOutHook): () => void {
+  beforeSignOutHooks.add(hook);
+  return () => {
+    beforeSignOutHooks.delete(hook);
+  };
+}
+
+async function runBeforeSignOutHooks(): Promise<void> {
+  await Promise.all(
+    [...beforeSignOutHooks].map((hook) => hook().catch(() => undefined))
+  );
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,6 +95,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    await runBeforeSignOutHooks();
     const { error } = await supabase.auth.signOut();
     if (error) throw new Error(error.message);
   }, []);

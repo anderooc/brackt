@@ -19,7 +19,7 @@
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, type ReactNode } from "react";
-import { useSession } from "~/auth/session";
+import { registerBeforeSignOut, useSession } from "~/auth/session";
 import {
   acquireExpoPushToken,
   clearPushTokenOnServer,
@@ -32,30 +32,38 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
   const router = useRouter();
   const { session, isLoading } = useSession();
   const tokenRef = useRef<string | null>(null);
+  const handledResponseRef = useRef<string | null>(null);
 
   useEffect(() => {
     configurePushNotifications();
   }, []);
 
+  useEffect(
+    () =>
+      registerBeforeSignOut(async () => {
+        const token = tokenRef.current;
+        tokenRef.current = null;
+        if (token) await clearPushTokenOnServer(token);
+      }),
+    []
+  );
+
   useEffect(() => {
     if (isLoading) return;
-
     if (!session) {
-      const token = tokenRef.current;
       tokenRef.current = null;
-      if (token) void clearPushTokenOnServer(token);
       return;
     }
 
     let active = true;
     void (async () => {
-      const token = await acquireExpoPushToken();
-      if (!active || !token) return;
-      tokenRef.current = token;
       try {
+        const token = await acquireExpoPushToken();
+        if (!active || !token) return;
+        tokenRef.current = token;
         await syncPushTokenWithServer(token);
       } catch {
-        // Registration retries on next session focus / sign-in.
+        // Registration retries on next sign-in / app launch.
       }
     })();
 
@@ -69,14 +77,16 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       response: Notifications.NotificationResponse | null
     ) => {
       if (!response) return;
+      // A cold-start tap is reported by both the listener and
+      // getLastNotificationResponseAsync.
+      const id = response.notification.request.identifier;
+      if (handledResponseRef.current === id) return;
+      handledResponseRef.current = id;
+
       const mobileHref = extractMobileHrefFromNotification(
         response.notification.request.content.data as Record<string, unknown>
       );
-      if (mobileHref) {
-        router.push(mobileHref as never);
-        return;
-      }
-      router.push("/notifications");
+      router.push((mobileHref ?? "/notifications") as never);
     };
 
     void Notifications.getLastNotificationResponseAsync().then(openFromResponse);

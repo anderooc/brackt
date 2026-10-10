@@ -21,7 +21,9 @@ import { useRouter } from "expo-router";
 import { useEffect, type ReactNode } from "react";
 import {
   isPasswordRecoveryUrl,
+  parseAuthRecoveryError,
   parseAuthRecoveryUrl,
+  setRecoveryState,
 } from "~/auth/recovery-link";
 import { supabase } from "~/auth/supabase";
 
@@ -32,15 +34,34 @@ export function AuthRecoveryHandler({ children }: { children: ReactNode }) {
     async function handleUrl(url: string | null) {
       if (!url || !isPasswordRecoveryUrl(url)) return;
 
-      const tokens = parseAuthRecoveryUrl(url);
-      if (!tokens) return;
+      const linkError = parseAuthRecoveryError(url);
+      const tokens = linkError ? null : parseAuthRecoveryUrl(url);
+      if (!tokens) {
+        setRecoveryState({
+          status: "failed",
+          message:
+            linkError ??
+            "This reset link is incomplete. Request a new one below.",
+        });
+        router.replace("/forgot-password");
+        return;
+      }
 
+      setRecoveryState({ status: "pending" });
       const { error } = await supabase.auth.setSession({
         access_token: tokens.accessToken,
         refresh_token: tokens.refreshToken,
       });
-      if (error) return;
+      if (error) {
+        setRecoveryState({
+          status: "failed",
+          message: "This reset link is no longer valid. Request a new one below.",
+        });
+        router.replace("/forgot-password");
+        return;
+      }
 
+      setRecoveryState({ status: "idle" });
       router.replace("/reset-password");
     }
 
