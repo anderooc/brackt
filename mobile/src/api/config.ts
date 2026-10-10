@@ -69,8 +69,25 @@ function developmentBaseUrl(): string {
   return devServerBaseUrl() ?? forLoopbackHost(`http://localhost:${API_PORT}`);
 }
 
+const PRODUCTION_BASE_URL = "https://brack-t.com";
+
+/** `.env.example` ships `KEY=` lines, which inline as "" rather than undefined. */
+function envUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+// A release build has no dev server to infer a host from, so falling back to
+// localhost would make every request fail with "Can't reach brackt".
 export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? developmentBaseUrl()
+  envUrl(process.env.EXPO_PUBLIC_API_BASE_URL) ??
+  (__DEV__ ? developmentBaseUrl() : PRODUCTION_BASE_URL)
+).replace(/\/+$/, "");
+
+/** Public website (privacy, terms, share links). Defaults to the API host. */
+export const WEB_BASE_URL = (
+  envUrl(process.env.EXPO_PUBLIC_WEB_BASE_URL) ??
+  (__DEV__ ? API_BASE_URL : PRODUCTION_BASE_URL)
 ).replace(/\/+$/, "");
 
 export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";

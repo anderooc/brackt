@@ -32,6 +32,13 @@
       "expo-secure-store",
       "expo-sharing",
       "expo-notifications"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b47b2bea-4242-460e-9103-138990e8da46"
+      }
+    },
+    "owner": "anderoocs-team"
   }
 }

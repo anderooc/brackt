@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Firebase / FCM credentials (uploaded to EAS as file env vars)
+google-services.json
+GoogleService-Info.plist
+*-firebase-adminsdk-*.json
