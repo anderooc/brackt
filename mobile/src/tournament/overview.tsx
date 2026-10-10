@@ -130,6 +130,16 @@ export function TournamentOverview({
       detail: "What's on court now",
       icon: "pulse-outline",
     },
+    ...(tournament.status === "in_progress" || participation?.isOrganizer
+      ? [
+          {
+            href: `/tournament/${slug}/scoreboard` as Href,
+            title: "Court board",
+            detail: "Full-screen scoreboard for a tablet at the venue",
+            icon: "tv-outline" as const,
+          },
+        ]
+      : []),
   ];
 
   const hostLinks: LinkItem[] = participation?.isOrganizer

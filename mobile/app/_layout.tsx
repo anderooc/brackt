@@ -174,6 +174,14 @@ function RootStack() {
         options={{ title: "Staff", headerBackTitle: "Host" }}
       />
       <Stack.Screen
+        name="tournament/[slug]/scoreboard"
+        options={{
+          headerShown: false,
+          presentation: "fullScreenModal",
+          contentStyle: { backgroundColor: "#09090b" },
+        }}
+      />
+      <Stack.Screen
         name="tournament/new"
         options={{ title: "Create tournament", headerBackTitle: "Tournaments" }}
       />

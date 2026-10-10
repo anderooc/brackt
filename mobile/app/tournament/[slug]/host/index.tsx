@@ -345,6 +345,12 @@ export default function TournamentHostScreen() {
             onPress={() => router.push(`${base}?tab=matches`)}
           />
           <ListRow
+            title="Court board"
+            subtitle="Full-screen scoreboard for a tablet at the venue"
+            icon="tv-outline"
+            onPress={() => router.push(`${base}/scoreboard`)}
+          />
+          <ListRow
             title="Chat"
             subtitle="Announcements and team discussion"
             icon="chatbubbles-outline"
