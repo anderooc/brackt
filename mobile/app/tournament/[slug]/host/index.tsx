@@ -409,6 +409,23 @@ export default function TournamentHostScreen() {
           />
         </ListGroup>
       </Section>
+
+      <Section title="Tournament">
+        <ListGroup>
+          <ListRow
+            title="Name and listing"
+            subtitle="Rename, location, description, duplicate, or delete"
+            icon="create-outline"
+            onPress={() => router.push(`${base}/host/details`)}
+          />
+          <ListRow
+            title="Staff"
+            subtitle="Co-hosts and staff who can help run the event"
+            icon="person-add-outline"
+            onPress={() => router.push(`${base}/host/staff`)}
+          />
+        </ListGroup>
+      </Section>
     </ScreenScroll>
   );
 }

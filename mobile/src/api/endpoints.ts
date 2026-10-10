@@ -61,7 +61,9 @@ import type {
   TournamentHostBulkMatchesRequestContract,
   TournamentHostBulkMatchesResultContract,
   TournamentHostBulkMutationResultContract,
+  TournamentHostListingResultContract,
   TournamentHostOverviewResultContract,
+  TournamentHostStaffContract,
   TournamentHostPoolSeedingResultContract,
   TournamentHostPoolsResultContract,
   TournamentHostRegistrationsResultContract,
@@ -1256,6 +1258,54 @@ export function updateTournamentHostMatchCourt(
     tournamentPath(slug, `/host/matches/${matchId}/court`),
     { method: "PATCH", body: { courtId } }
   );
+}
+
+export function updateTournamentHostListing(
+  slug: string,
+  body: { name: string; description: string; location: string; address: string }
+): Promise<TournamentHostListingResultContract> {
+  return apiRequest(tournamentPath(slug, "/host/listing"), {
+    method: "PATCH",
+    body,
+  });
+}
+
+export function duplicateTournament(slug: string): Promise<{ slug: string }> {
+  return apiRequest(tournamentPath(slug, "/host/duplicate"), { method: "POST" });
+}
+
+export function deleteTournament(
+  slug: string,
+  confirmationName: string
+): Promise<{ deleted: true }> {
+  return apiRequest(tournamentPath(slug, "/host"), {
+    method: "DELETE",
+    body: { confirmationName },
+  });
+}
+
+export function fetchTournamentHostStaff(
+  slug: string,
+  signal?: AbortSignal
+): Promise<TournamentHostStaffContract> {
+  return apiRequest(tournamentPath(slug, "/host/staff"), { signal });
+}
+
+export function addTournamentHostStaff(
+  slug: string,
+  body: { email: string; role: "co_host" | "staff" }
+): Promise<TournamentHostStaffContract> {
+  return apiRequest(tournamentPath(slug, "/host/staff"), { method: "POST", body });
+}
+
+export function removeTournamentHostStaff(
+  slug: string,
+  userId: string
+): Promise<TournamentHostStaffContract> {
+  return apiRequest(tournamentPath(slug, "/host/staff"), {
+    method: "DELETE",
+    body: { userId },
+  });
 }
 
 export function bulkUpdateTournamentHostMatches(

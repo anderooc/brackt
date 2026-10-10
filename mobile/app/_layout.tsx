@@ -166,6 +166,14 @@ function RootStack() {
         options={{ title: "Schedule", headerBackTitle: "Host" }}
       />
       <Stack.Screen
+        name="tournament/[slug]/host/details"
+        options={{ title: "Name and listing", headerBackTitle: "Host" }}
+      />
+      <Stack.Screen
+        name="tournament/[slug]/host/staff"
+        options={{ title: "Staff", headerBackTitle: "Host" }}
+      />
+      <Stack.Screen
         name="tournament/new"
         options={{ title: "Create tournament", headerBackTitle: "Tournaments" }}
       />

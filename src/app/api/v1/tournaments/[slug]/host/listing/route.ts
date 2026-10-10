@@ -19,23 +19,16 @@
 import { requireViewer } from "@/lib/api/auth";
 import { badRequest } from "@/lib/api/errors";
 import { apiHandler } from "@/lib/api/handler";
-import {
-  loadTournamentHostOverview,
-  updateTournamentHostDate,
-  updateTournamentHostStatus,
-} from "@/lib/api/queries/tournament-host";
-import { deleteTournamentForHost } from "@/lib/api/queries/tournament-host-admin";
+import { updateTournamentHostListing } from "@/lib/api/queries/tournament-host-admin";
 import { jsonSuccess } from "@/lib/api/response";
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
 }
 
-export const GET = apiHandler(async (request: Request, context: RouteContext) => {
-  const { user } = await requireViewer(request);
-  const { slug } = await context.params;
-  return jsonSuccess(await loadTournamentHostOverview(slug, user));
-});
+function optionalString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
 
 export const PATCH = apiHandler(async (request: Request, context: RouteContext) => {
   const { user } = await requireViewer(request);
@@ -44,32 +37,19 @@ export const PATCH = apiHandler(async (request: Request, context: RouteContext) 
     string,
     unknown
   > | null;
-  if (!body) throw badRequest("Invalid request body.");
-
-  if (typeof body.status === "string") {
-    return jsonSuccess(
-      await updateTournamentHostStatus(slug, user, body.status)
-    );
+  if (!body || typeof body.location !== "string") {
+    throw badRequest("location is required.");
+  }
+  if (body.name !== undefined && typeof body.name !== "string") {
+    throw badRequest("name must be a string.");
   }
 
-  if (typeof body.date === "string") {
-    return jsonSuccess(await updateTournamentHostDate(slug, user, body.date));
-  }
-
-  throw badRequest("Provide status or date.");
-});
-
-export const DELETE = apiHandler(async (request: Request, context: RouteContext) => {
-  const { user } = await requireViewer(request);
-  const { slug } = await context.params;
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body || typeof body.confirmationName !== "string") {
-    throw badRequest("Type the tournament name to confirm deletion.");
-  }
   return jsonSuccess(
-    await deleteTournamentForHost(slug, user, body.confirmationName)
+    await updateTournamentHostListing(slug, user, {
+      name: body.name as string | undefined,
+      description: optionalString(body.description),
+      location: body.location,
+      address: optionalString(body.address),
+    })
   );
 });

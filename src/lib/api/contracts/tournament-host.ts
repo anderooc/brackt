@@ -315,6 +315,27 @@ export interface TournamentHostScheduleFillResultContract {
   schedule: TournamentHostScheduleContract;
 }
 
+export interface TournamentHostListingResultContract {
+  /** Changes when the tournament is renamed; clients should navigate to it. */
+  slug: string;
+  description: string | null;
+  location: string;
+  address: string | null;
+}
+
+export interface TournamentHostStaffMemberContract {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: "co_host" | "staff";
+}
+
+export interface TournamentHostStaffContract {
+  /** Only the owner (or a platform admin) can add or remove staff. */
+  canManage: boolean;
+  staff: TournamentHostStaffMemberContract[];
+}
+
 export type TournamentHostBulkMatchAction =
   | "reassign_court"
   | "shift_time"

@@ -20,56 +20,46 @@ import { requireViewer } from "@/lib/api/auth";
 import { badRequest } from "@/lib/api/errors";
 import { apiHandler } from "@/lib/api/handler";
 import {
-  loadTournamentHostOverview,
-  updateTournamentHostDate,
-  updateTournamentHostStatus,
-} from "@/lib/api/queries/tournament-host";
-import { deleteTournamentForHost } from "@/lib/api/queries/tournament-host-admin";
+  addTournamentHostStaff,
+  loadTournamentHostStaff,
+  removeTournamentHostStaff,
+} from "@/lib/api/queries/tournament-host-admin";
 import { jsonSuccess } from "@/lib/api/response";
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
 }
 
-export const GET = apiHandler(async (request: Request, context: RouteContext) => {
-  const { user } = await requireViewer(request);
-  const { slug } = await context.params;
-  return jsonSuccess(await loadTournamentHostOverview(slug, user));
-});
-
-export const PATCH = apiHandler(async (request: Request, context: RouteContext) => {
-  const { user } = await requireViewer(request);
-  const { slug } = await context.params;
+async function readBody(request: Request) {
   const body = (await request.json().catch(() => null)) as Record<
     string,
     unknown
   > | null;
   if (!body) throw badRequest("Invalid request body.");
+  return body;
+}
 
-  if (typeof body.status === "string") {
-    return jsonSuccess(
-      await updateTournamentHostStatus(slug, user, body.status)
-    );
-  }
+export const GET = apiHandler(async (request: Request, context: RouteContext) => {
+  const { user } = await requireViewer(request);
+  const { slug } = await context.params;
+  return jsonSuccess(await loadTournamentHostStaff(slug, user));
+});
 
-  if (typeof body.date === "string") {
-    return jsonSuccess(await updateTournamentHostDate(slug, user, body.date));
-  }
-
-  throw badRequest("Provide status or date.");
+export const POST = apiHandler(async (request: Request, context: RouteContext) => {
+  const { user } = await requireViewer(request);
+  const { slug } = await context.params;
+  const body = await readBody(request);
+  return jsonSuccess(
+    await addTournamentHostStaff(slug, user, { email: body.email, role: body.role })
+  );
 });
 
 export const DELETE = apiHandler(async (request: Request, context: RouteContext) => {
   const { user } = await requireViewer(request);
   const { slug } = await context.params;
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body || typeof body.confirmationName !== "string") {
-    throw badRequest("Type the tournament name to confirm deletion.");
+  const body = await readBody(request);
+  if (typeof body.userId !== "string" || !body.userId) {
+    throw badRequest("userId is required.");
   }
-  return jsonSuccess(
-    await deleteTournamentForHost(slug, user, body.confirmationName)
-  );
+  return jsonSuccess(await removeTournamentHostStaff(slug, user, body.userId));
 });
