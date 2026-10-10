@@ -19,7 +19,8 @@
 import type { TournamentDetailContract } from "@/lib/api/contracts/tournament";
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useRouter, type Href } from "expo-router";
-import { Linking, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { openInMaps } from "~/lib/links";
 import {
   DIVISION_FORMAT_LABELS,
   formatCalendarDate,
@@ -260,11 +261,7 @@ function KeyFacts({ tournament }: { tournament: TournamentDetailContract }) {
         label={tournament.location}
         detail={tournament.address}
         accessibilityLabel={`Open ${tournament.location} in Maps`}
-        onPress={() =>
-          void Linking.openURL(
-            `https://maps.apple.com/?q=${encodeURIComponent(mapsQuery)}`
-          )
-        }
+        onPress={() => void openInMaps(mapsQuery)}
       />
       <FactRow
         icon="people-outline"

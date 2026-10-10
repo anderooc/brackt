@@ -17,12 +17,13 @@
  */
 
 import type { TeamListItemContract } from "@/lib/api/contracts/team";
-import { Redirect, useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { useCallback, useLayoutEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { fetchTeams } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { SignedOutScreen } from "~/components/signed-out";
 import { GENDER_LABELS, REGION_LABELS, TEAM_ROLE_LABELS } from "~/lib/format";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import {
@@ -88,7 +89,15 @@ export default function TeamsScreen() {
   }, [load]);
 
   if (sessionLoading) return <LoadingScreen />;
-  if (!session) return <Redirect href="/sign-in" />;
+  if (!session) {
+    return (
+      <SignedOutScreen
+        icon="people-outline"
+        title="Your teams live here"
+        message="Sign in to manage rosters, jersey numbers, and registrations."
+      />
+    );
+  }
   if (teams === null && error === null) return <LoadingScreen />;
   if (teams === null) {
     return (

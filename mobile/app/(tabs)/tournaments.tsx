@@ -67,6 +67,7 @@ import {
 } from "~/ui";
 
 const LIST_LIMIT = 100;
+const MAX_PAGES = 10;
 
 export default function TournamentsScreen() {
   const colors = useThemeColors();
@@ -100,8 +101,18 @@ export default function TournamentsScreen() {
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setError(null);
-      const page = await fetchTournaments({ limit: LIST_LIMIT }, signal);
-      setTournaments(page.tournaments);
+      // Search, filters, and the calendar run on the client, so they need the
+      // whole public list rather than just the first page.
+      const all: TournamentListItemContract[] = [];
+      for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
+        const page = await fetchTournaments(
+          { limit: LIST_LIMIT, offset: all.length },
+          signal
+        );
+        all.push(...page.tournaments);
+        if (page.tournaments.length === 0 || all.length >= page.total) break;
+      }
+      setTournaments(all);
     } catch (cause) {
       if (signal?.aborted) return;
       setError(

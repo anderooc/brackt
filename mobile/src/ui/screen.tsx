@@ -20,14 +20,19 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
+  Keyboard,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  TextInput,
   type StyleProp,
   type View,
   type ViewStyle,
@@ -85,6 +90,32 @@ export function ScreenScroll({
   }, []);
   const revealContext = useMemo(() => ({ reveal }), [reveal]);
 
+  // automaticallyAdjustKeyboardInsets is iOS-only, and the app is edge-to-edge
+  // on Android so the window doesn't resize either.
+  const [androidKeyboard, setAndroidKeyboard] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (event) => {
+      const keyboardTop = event.endCoordinates.screenY;
+      setAndroidKeyboard(event.endCoordinates.height);
+      requestAnimationFrame(() => {
+        const input = TextInput.State.currentlyFocusedInput() as View | null;
+        const scroll = scrollRef.current;
+        if (!input || !scroll) return;
+        input.measureInWindow((_x, top, _w, height) => {
+          const overlap = top + height + space.lg - keyboardTop;
+          if (overlap <= 0) return;
+          scroll.scrollTo({ y: offsetY.current + overlap, animated: true });
+        });
+      });
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => setAndroidKeyboard(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   return (
     <ScrollRevealContext.Provider value={revealContext}>
       <ScrollView
@@ -94,7 +125,14 @@ export function ScreenScroll({
         }}
         scrollEventThrottle={32}
         style={{ flex: 1, backgroundColor: colors.background }}
-        contentContainerStyle={[styles.content, { gap }, contentStyle]}
+        contentContainerStyle={[
+          styles.content,
+          { gap },
+          contentStyle,
+          androidKeyboard > 0 && {
+            paddingBottom: styles.content.paddingBottom + androidKeyboard,
+          },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets

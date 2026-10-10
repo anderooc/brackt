@@ -27,7 +27,8 @@ import {
   useRouter,
 } from "expo-router";
 import { useCallback, useLayoutEffect, useState } from "react";
-import { Alert, Linking, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
+import { openExternalUrl } from "~/lib/links";
 import {
   addSchoolMember,
   cancelSchoolJoin,
@@ -292,7 +293,7 @@ export default function SchoolDetailScreen() {
             icon="open-outline"
             variant="ghost"
             size="sm"
-            onPress={() => void Linking.openURL(data.websiteUrl!)}
+            onPress={() => void openExternalUrl(data.websiteUrl!)}
             style={styles.websiteButton}
           />
         ) : null}

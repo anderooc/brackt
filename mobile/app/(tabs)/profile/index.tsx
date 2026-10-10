@@ -17,13 +17,15 @@
  */
 
 import type { ViewerContract } from "@/lib/api/contracts/viewer";
-import { Redirect, useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert, Image, Linking, StyleSheet, View } from "react-native";
-import { API_BASE_URL } from "~/api/config";
+import { Alert, Image, StyleSheet, View } from "react-native";
+import { WEB_BASE_URL } from "~/api/config";
+import { openExternalUrl } from "~/lib/links";
 import { ApiClientError } from "~/api/client";
 import { fetchViewer } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { SignedOutScreen } from "~/components/signed-out";
 import {
   USER_PLAYER_GENDER_LABELS,
   VOLLEYBALL_POSITION_LABELS,
@@ -80,7 +82,15 @@ export default function ProfileScreen() {
   );
 
   if (isLoading) return <LoadingScreen />;
-  if (!session) return <Redirect href="/sign-in" />;
+  if (!session) {
+    return (
+      <SignedOutScreen
+        icon="person-circle-outline"
+        title="You're browsing as a guest"
+        message="Sign in to set up your player profile, positions, and notifications."
+      />
+    );
+  }
 
   if (!viewer && error) {
     return (
@@ -230,7 +240,7 @@ export default function ProfileScreen() {
             accessibilityHint="Opens in your browser"
             trailing={<Icon name="open-outline" size={18} tone="muted" />}
             chevron={false}
-            onPress={() => void Linking.openURL(`${API_BASE_URL}/privacy`)}
+            onPress={() => void openExternalUrl(`${WEB_BASE_URL}/privacy`)}
           />
           <ListRow
             title="Terms of use"
@@ -239,7 +249,7 @@ export default function ProfileScreen() {
             accessibilityHint="Opens in your browser"
             trailing={<Icon name="open-outline" size={18} tone="muted" />}
             chevron={false}
-            onPress={() => void Linking.openURL(`${API_BASE_URL}/terms`)}
+            onPress={() => void openExternalUrl(`${WEB_BASE_URL}/terms`)}
           />
         </ListGroup>
       </Section>

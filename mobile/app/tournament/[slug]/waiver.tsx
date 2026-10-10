@@ -18,7 +18,8 @@
 
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { Linking, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { openExternalUrl } from "~/lib/links";
 import {
   acknowledgeTournamentWaiver,
   downloadTournamentWaiverPdf,
@@ -145,7 +146,7 @@ export default function WaiverScreen() {
                 icon="open-outline"
                 size="sm"
                 variant="outline"
-                onPress={() => void Linking.openURL(externalUrl)}
+                onPress={() => void openExternalUrl(externalUrl)}
               />
             ) : null}
           </View>

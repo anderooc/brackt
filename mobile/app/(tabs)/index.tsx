@@ -18,12 +18,13 @@
 
 import type { DashboardContract } from "@/lib/api/contracts/dashboard";
 import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
-import { Redirect, useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { fetchDashboard, fetchNotifications, fetchPersonalSchedule } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { SignedOutScreen } from "~/components/signed-out";
 import {
   DASHBOARD_RELATION_LABELS,
   formatCalendarDate,
@@ -134,7 +135,16 @@ export default function DashboardScreen() {
   }, [session, load]);
 
   if (sessionLoading) return <LoadingScreen />;
-  if (!session) return <Redirect href="/sign-in" />;
+  if (!session) {
+    return (
+      <SignedOutScreen
+        icon="trophy-outline"
+        title="Welcome to brackt"
+        message="Sign in to see your teams, registrations, and match schedule. You can browse public tournaments without an account."
+        showBrowse
+      />
+    );
+  }
   if (data === null && error === null) return <LoadingScreen />;
   if (data === null) {
     return (

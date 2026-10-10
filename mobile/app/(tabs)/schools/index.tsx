@@ -17,12 +17,13 @@
  */
 
 import type { SchoolListItemContract } from "@/lib/api/contracts/school";
-import { Redirect, useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { fetchSchools } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { SignedOutScreen } from "~/components/signed-out";
 import {
   GENDER_LABELS,
   REGION_LABELS,
@@ -146,7 +147,15 @@ export default function SchoolsScreen() {
   }, [schools]);
 
   if (sessionLoading) return <LoadingScreen />;
-  if (!session) return <Redirect href="/sign-in" />;
+  if (!session) {
+    return (
+      <SignedOutScreen
+        icon="school-outline"
+        title="Find your school"
+        message="Sign in to join your school's club program and see its teams."
+      />
+    );
+  }
   if (!ready && error === null) return <LoadingScreen />;
   if (!ready && error) {
     return (
