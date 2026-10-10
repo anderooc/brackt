@@ -20,14 +20,23 @@ import type {
   TournamentHostRegistrationContract,
   TournamentHostRegistrationsContract,
 } from "@/lib/api/contracts/tournament-host";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, useNavigation } from "expo-router";
 import * as Crypto from "expo-crypto";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Alert, StyleSheet, TextInput, View } from "react-native";
 import {
   checkInTournamentHostRegistrations,
   bulkAssignTournamentHostRegistrations,
   confirmTournamentHostRegistrations,
+  downloadRegistrationsCsv,
   fetchTournamentHostRegistrations,
   promoteTournamentHostWaitlist,
   removeTournamentHostRegistrations,
@@ -36,6 +45,7 @@ import {
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { formatFeeCents, paymentStatusLabel } from "~/lib/format";
+import { shareDownloadedFile } from "~/lib/share-pdf";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
@@ -49,6 +59,7 @@ import {
   ChipRow,
   EmptyState,
   HIT_TARGET,
+  HeaderButton,
   Icon,
   ScreenScroll,
   SegmentedControl,
@@ -83,6 +94,7 @@ function plural(count: number, word: string) {
 }
 
 export default function TournamentHostRegistrationsScreen() {
+  const navigation = useNavigation();
   const { session, isLoading: sessionLoading } = useSession();
   const { slug, tab: tabParam } = useLocalSearchParams<{
     slug: string;
@@ -108,6 +120,38 @@ export default function TournamentHostRegistrationsScreen() {
   useEffect(() => {
     if (data) setRegistrations(data.registrations);
   }, [data]);
+
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = useCallback(async () => {
+    if (!slug) return;
+    setExporting(true);
+    try {
+      await shareDownloadedFile(
+        () => downloadRegistrationsCsv(slug),
+        `${slug}-registrations.csv`,
+        "csv"
+      );
+    } catch (cause) {
+      Alert.alert("Couldn't export", messageFor(cause, "Could not export registrations."));
+    } finally {
+      setExporting(false);
+    }
+  }, [slug]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: registrations
+        ? () => (
+            <HeaderButton
+              label={exporting ? "Exporting…" : "Export"}
+              accessibilityLabel="Export registrations as CSV"
+              disabled={exporting}
+              onPress={() => void exportCsv()}
+            />
+          )
+        : undefined,
+    });
+  }, [navigation, registrations, exporting, exportCsv]);
 
   useEffect(() => {
     if (!registrations || initialTabSet.current) return;

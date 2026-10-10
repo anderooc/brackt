@@ -19,7 +19,10 @@
 import type { TournamentDetailContract } from "@/lib/api/contracts/tournament";
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useRouter, type Href } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Alert, StyleSheet, View } from "react-native";
+import { ApiClientError } from "~/api/client";
+import { withdrawTournamentRegistration } from "~/api/endpoints";
 import { openInMaps } from "~/lib/links";
 import {
   DIVISION_FORMAT_LABELS,
@@ -32,6 +35,7 @@ import { useThemeColors } from "~/theme/colors";
 import {
   AppText,
   Badge,
+  Banner,
   Button,
   Card,
   Icon,
@@ -41,6 +45,7 @@ import {
   StatusBadge,
   Tappable,
   HIT_TARGET,
+  haptics,
   space,
   type IconName,
 } from "~/ui";
@@ -55,12 +60,50 @@ type LinkItem = {
 export function TournamentOverview({
   tournament,
   participation,
+  onParticipationChanged,
 }: {
   tournament: TournamentDetailContract;
   participation: TournamentParticipationContract | null;
+  onParticipationChanged?: () => void;
 }) {
   const router = useRouter();
   const slug = tournament.slug;
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+
+  function confirmWithdraw(teamSlug: string, teamName: string) {
+    Alert.alert(
+      `Withdraw ${teamName}?`,
+      "Your spot is released and the next waitlisted team may take it. You'd need to register again to get back in.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Withdraw team",
+          style: "destructive",
+          onPress: () => void withdraw(teamSlug),
+        },
+      ]
+    );
+  }
+
+  async function withdraw(teamSlug: string) {
+    setWithdrawing(teamSlug);
+    setWithdrawError(null);
+    try {
+      await withdrawTournamentRegistration(slug, teamSlug);
+      haptics.success();
+      onParticipationChanged?.();
+    } catch (cause) {
+      haptics.error();
+      setWithdrawError(
+        cause instanceof ApiClientError
+          ? cause.message
+          : "Could not withdraw this team. Try again."
+      );
+    } finally {
+      setWithdrawing(null);
+    }
+  }
 
   const alreadyEntered = (participation?.myTeams.length ?? 0) > 0;
   const showRegister =
@@ -182,13 +225,34 @@ export function TournamentOverview({
 
       {alreadyEntered ? (
         <Section title="Your teams">
+          {withdrawError ? (
+            <Banner
+              tone="error"
+              message={withdrawError}
+              onDismiss={() => setWithdrawError(null)}
+            />
+          ) : null}
           <ListGroup>
             {participation!.myTeams.map((team) => (
               <ListRow
                 key={team.slug}
                 title={team.name}
+                subtitle={
+                  withdrawing === team.slug
+                    ? "Withdrawing…"
+                    : team.status !== "waitlisted" && tournament.status !== "completed"
+                      ? "Tap to manage"
+                      : undefined
+                }
                 icon="people-outline"
                 trailing={<StatusBadge kind="registration" status={team.status} />}
+                onPress={
+                  team.status !== "waitlisted" &&
+                  tournament.status !== "completed" &&
+                  withdrawing === null
+                    ? () => confirmWithdraw(team.slug, team.name)
+                    : undefined
+                }
               />
             ))}
           </ListGroup>

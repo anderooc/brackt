@@ -20,12 +20,21 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { ApiClientError } from "~/api/client";
 
-export async function shareDownloadedPdf(
-  download: () => Promise<{
-    bytes: ArrayBuffer;
-    filename: string | null;
-  }>,
-  fallbackName: string
+type Download = () => Promise<{
+  bytes: ArrayBuffer;
+  filename: string | null;
+}>;
+
+export const SHARE_TYPES = {
+  pdf: { mimeType: "application/pdf", UTI: "com.adobe.pdf" },
+  csv: { mimeType: "text/csv", UTI: "public.comma-separated-values-text" },
+  ics: { mimeType: "text/calendar", UTI: "com.apple.ical.ics" },
+} as const;
+
+export async function shareDownloadedFile(
+  download: Download,
+  fallbackName: string,
+  kind: keyof typeof SHARE_TYPES
 ): Promise<void> {
   const file = await download();
   const filename = (file.filename ?? fallbackName).replace(/[^\w.\-]+/g, "_");
@@ -42,8 +51,14 @@ export async function shareDownloadedPdf(
   }
 
   await Sharing.shareAsync(target.uri, {
-    mimeType: "application/pdf",
-    UTI: "com.adobe.pdf",
+    ...SHARE_TYPES[kind],
     dialogTitle: filename,
   });
+}
+
+export function shareDownloadedPdf(
+  download: Download,
+  fallbackName: string
+): Promise<void> {
+  return shareDownloadedFile(download, fallbackName, "pdf");
 }

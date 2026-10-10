@@ -17,6 +17,7 @@
  */
 
 import type {
+  TournamentHostBulkMatchesRequestContract,
   TournamentHostScheduleContract,
   TournamentHostScheduleGroupContract,
   TournamentHostScheduleMatchContract,
@@ -26,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
 import {
   applyTournamentHostScheduleFill,
+  bulkUpdateTournamentHostMatches,
   fetchTournamentHostSchedule,
   updateTournamentHostMatchCourt,
   updateTournamentHostMatchRef,
@@ -54,6 +56,7 @@ import {
   ListRow,
   ScreenScroll,
   Section,
+  SegmentedControl,
   StatusBadge,
   SwitchRow,
   haptics,
@@ -115,6 +118,7 @@ export default function TournamentHostScheduleScreen() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [matchClocks, setMatchClocks] = useState<Record<string, string>>({});
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTournamentHostSchedule(slug ?? "", signal),
@@ -290,6 +294,32 @@ export default function TournamentHostScheduleScreen() {
     );
   }
 
+  function confirmBulk(
+    body: TournamentHostBulkMatchesRequestContract,
+    confirm: { title: string; message: string; destructive?: boolean }
+  ) {
+    Alert.alert(confirm.title, confirm.message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Apply",
+        style: confirm.destructive ? "destructive" : "default",
+        onPress: () => void onBulk(body),
+      },
+    ]);
+  }
+
+  async function onBulk(body: TournamentHostBulkMatchesRequestContract) {
+    if (!slug) return;
+    setBulkMessage(null);
+    const result = await runAction("bulk", () =>
+      bulkUpdateTournamentHostMatches(slug, body)
+    );
+    if (result) {
+      setSchedule(result.schedule);
+      setBulkMessage(result.message);
+    }
+  }
+
   return (
     <ScreenScroll refreshing={isRefreshing} onRefresh={() => void refresh()}>
       <ListGroup>
@@ -341,6 +371,23 @@ export default function TournamentHostScheduleScreen() {
               onIntervalChange={setIntervalText}
               onOverwriteChange={setOverwrite}
               onApply={confirmApplyFill}
+            />
+          ) : null}
+
+          {selectedGroup && schedule.canSchedule ? (
+            <GameDayAdjustSection
+              schedule={schedule}
+              group={selectedGroup}
+              busy={busyKey === "bulk"}
+              onRun={confirmBulk}
+            />
+          ) : null}
+
+          {bulkMessage ? (
+            <Banner
+              tone="success"
+              message={bulkMessage}
+              onDismiss={() => setBulkMessage(null)}
             />
           ) : null}
 
@@ -428,6 +475,231 @@ function BulkFillSection({
       <FormSubmitButton label="Apply times" busy={busy} onPress={onApply} />
     </Section>
   );
+}
+
+type AdjustMode = "delay" | "move" | "clear";
+const SHIFT_OPTIONS = [-15, 10, 15, 30, 60] as const;
+const ALL_GROUP = "__group__";
+
+function isAdjustable(match: TournamentHostScheduleMatchContract): boolean {
+  return !match.isBye && match.status !== "completed" && match.status !== "in_progress";
+}
+
+function GameDayAdjustSection({
+  schedule,
+  group,
+  busy,
+  onRun,
+}: {
+  schedule: TournamentHostScheduleContract;
+  group: TournamentHostScheduleGroupContract;
+  busy: boolean;
+  onRun: (
+    body: TournamentHostBulkMatchesRequestContract,
+    confirm: { title: string; message: string; destructive?: boolean }
+  ) => void;
+}) {
+  const [mode, setMode] = useState<AdjustMode>("delay");
+  const [delayScope, setDelayScope] = useState<string>(ALL_GROUP);
+  const [minutes, setMinutes] = useState<number>(15);
+  const [fromCourt, setFromCourt] = useState<string | null>(null);
+  const [toCourt, setToCourt] = useState<string | null>(null);
+
+  const allMatches = useMemo(
+    () => schedule.groups.flatMap((item) => item.matches),
+    [schedule.groups]
+  );
+  const groupTimed = group.matches.filter(
+    (match) => isAdjustable(match) && match.scheduledTime
+  );
+  const courtTimed = (courtId: string) =>
+    allMatches.filter(
+      (match) => isAdjustable(match) && match.scheduledTime && match.courtId === courtId
+    );
+  const moveTargets = fromCourt
+    ? allMatches.filter(
+        (match) => isAdjustable(match) && match.canAssignCourt && match.courtId === fromCourt
+      )
+    : [];
+  const groupClearable = group.matches.filter(
+    (match) => isAdjustable(match) && (match.scheduledTime || match.courtId)
+  );
+
+  const delayCount =
+    delayScope === ALL_GROUP ? groupTimed.length : courtTimed(delayScope).length;
+  const courtName = (id: string | null) =>
+    schedule.courts.find((court) => court.id === id)?.name ?? "court";
+  const minutesLabel = minutes > 0 ? `+${minutes} min` : `${minutes} min`;
+
+  return (
+    <Section
+      title="Game-day adjustments"
+      description="Change many matches at once when play runs late or a court goes down. Live and final matches are never touched."
+    >
+      <SegmentedControl
+        options={[
+          { id: "delay", label: "Delay" },
+          { id: "move", label: "Move court" },
+          { id: "clear", label: "Clear" },
+        ]}
+        value={mode}
+        onChange={setMode}
+        accessibilityLabel="Adjustment type"
+      />
+      <Card>
+        {mode === "delay" ? (
+          <View style={styles.adjust}>
+            <AppText variant="footnote" weight="600">
+              Which matches
+            </AppText>
+            <ChipRow>
+              <Chip
+                label={group.label.replace(/^(pool\b.*) pools$/i, "$1")}
+                selected={delayScope === ALL_GROUP}
+                onPress={() => setDelayScope(ALL_GROUP)}
+              />
+              {schedule.courts.map((court) => (
+                <Chip
+                  key={court.id}
+                  label={`${court.name} (all)`}
+                  selected={delayScope === court.id}
+                  onPress={() => setDelayScope(court.id)}
+                />
+              ))}
+            </ChipRow>
+            <AppText variant="footnote" weight="600">
+              Shift by
+            </AppText>
+            <ChipRow>
+              {SHIFT_OPTIONS.map((value) => (
+                <Chip
+                  key={value}
+                  label={value > 0 ? `+${value} min` : `${value} min`}
+                  selected={minutes === value}
+                  onPress={() => setMinutes(value)}
+                />
+              ))}
+            </ChipRow>
+            <Button
+              label={`Shift ${plural(delayCount, "match", "matches")} ${minutesLabel}`}
+              loading={busy}
+              disabled={delayCount === 0}
+              onPress={() =>
+                onRun(
+                  delayScope === ALL_GROUP
+                    ? {
+                        action: "shift_time",
+                        minutes,
+                        matchIds: groupTimed.map((match) => match.id),
+                      }
+                    : { action: "shift_time", minutes, courtId: delayScope },
+                  {
+                    title: `Shift ${plural(delayCount, "match", "matches")}?`,
+                    message: `Start times move ${minutesLabel}. Matches that would collide with another match on the same court are skipped.`,
+                  }
+                )
+              }
+            />
+          </View>
+        ) : null}
+
+        {mode === "move" ? (
+          schedule.courts.length < 2 ? (
+            <AppText variant="subhead" tone="muted">
+              Add a second court in setup to move matches between courts.
+            </AppText>
+          ) : (
+            <View style={styles.adjust}>
+              <AppText variant="footnote" weight="600">
+                From
+              </AppText>
+              <ChipRow>
+                {schedule.courts.map((court) => (
+                  <Chip
+                    key={court.id}
+                    label={court.name}
+                    selected={fromCourt === court.id}
+                    onPress={() => {
+                      setFromCourt(court.id);
+                      if (toCourt === court.id) setToCourt(null);
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              <AppText variant="footnote" weight="600">
+                To
+              </AppText>
+              <ChipRow>
+                {schedule.courts
+                  .filter((court) => court.id !== fromCourt)
+                  .map((court) => (
+                    <Chip
+                      key={court.id}
+                      label={court.name}
+                      selected={toCourt === court.id}
+                      onPress={() => setToCourt(court.id)}
+                    />
+                  ))}
+              </ChipRow>
+              <Button
+                label={`Move ${plural(moveTargets.length, "match", "matches")}`}
+                loading={busy}
+                disabled={!fromCourt || !toCourt || moveTargets.length === 0}
+                onPress={() =>
+                  onRun(
+                    {
+                      action: "reassign_court",
+                      courtId: toCourt,
+                      matchIds: moveTargets.map((match) => match.id),
+                    },
+                    {
+                      title: `Move to ${courtName(toCourt)}?`,
+                      message: `${plural(moveTargets.length, "upcoming match", "upcoming matches")} on ${courtName(fromCourt)} move to ${courtName(toCourt)}, keeping their times. Any that would overlap are skipped.`,
+                    }
+                  )
+                }
+              />
+            </View>
+          )
+        ) : null}
+
+        {mode === "clear" ? (
+          <View style={styles.adjust}>
+            <AppText variant="subhead" tone="muted">
+              Remove start times and courts from every upcoming match in{" "}
+              {group.label.replace(/^(pool\b.*) pools$/i, "$1")}, so you can re-plan it
+              with auto-fill.
+            </AppText>
+            <Button
+              label={`Clear ${plural(groupClearable.length, "match", "matches")}`}
+              variant="destructiveOutline"
+              loading={busy}
+              disabled={groupClearable.length === 0}
+              onPress={() =>
+                onRun(
+                  {
+                    action: "clear_schedule",
+                    matchIds: groupClearable.map((match) => match.id),
+                    clearTime: true,
+                    clearCourt: true,
+                  },
+                  {
+                    title: "Clear times and courts?",
+                    message: `${plural(groupClearable.length, "match", "matches")} lose their start time and court.`,
+                    destructive: true,
+                  }
+                )
+              }
+            />
+          </View>
+        ) : null}
+      </Card>
+    </Section>
+  );
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
 function MatchListSection({
@@ -591,4 +863,5 @@ const styles = StyleSheet.create({
   matchHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   timeRow: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.xs },
   assign: { gap: space.sm, marginTop: space.xs },
+  adjust: { gap: space.sm },
 });

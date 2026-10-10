@@ -58,6 +58,8 @@ import type {
 import type {
   TournamentHostEntityResultContract,
   TournamentHostBracketResultContract,
+  TournamentHostBulkMatchesRequestContract,
+  TournamentHostBulkMatchesResultContract,
   TournamentHostBulkMutationResultContract,
   TournamentHostOverviewResultContract,
   TournamentHostPoolSeedingResultContract,
@@ -685,6 +687,16 @@ export function submitTournamentRegistration(
   );
 }
 
+export function withdrawTournamentRegistration(
+  slug: string,
+  teamSlug: string
+): Promise<{ withdrawn: true }> {
+  return apiRequest<{ withdrawn: true }>(tournamentPath(slug, "/register"), {
+    method: "DELETE",
+    body: { teamSlug },
+  });
+}
+
 export function fetchTournamentPacket(
   slug: string,
   signal?: AbortSignal
@@ -715,6 +727,16 @@ export function downloadTournamentWaiverPdf(
   signal?: AbortSignal
 ) {
   return apiDownload(tournamentPath(slug, "/waiver/pdf"), { signal });
+}
+
+export function downloadRegistrationsCsv(slug: string, signal?: AbortSignal) {
+  return apiDownload(tournamentPath(slug, "/host/registrations/export"), {
+    signal,
+  });
+}
+
+export function downloadMyScheduleIcs(signal?: AbortSignal) {
+  return apiDownload("/api/v1/me/schedule.ics", { signal });
 }
 
 export function acknowledgeTournamentWaiver(
@@ -1234,6 +1256,16 @@ export function updateTournamentHostMatchCourt(
     tournamentPath(slug, `/host/matches/${matchId}/court`),
     { method: "PATCH", body: { courtId } }
   );
+}
+
+export function bulkUpdateTournamentHostMatches(
+  slug: string,
+  body: TournamentHostBulkMatchesRequestContract
+): Promise<TournamentHostBulkMatchesResultContract> {
+  return apiRequest(tournamentPath(slug, "/host/matches/bulk"), {
+    method: "POST",
+    body,
+  });
 }
 
 export function previewTournamentHostScheduleFill(

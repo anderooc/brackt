@@ -300,6 +300,7 @@ export default function TournamentDetailScreen() {
           <TournamentOverview
             tournament={tournament}
             participation={participation}
+            onParticipationChanged={() => void loadOverview()}
           />
         ) : null}
 

@@ -19,7 +19,10 @@
 import { requireViewer } from "@/lib/api/auth";
 import { badRequest } from "@/lib/api/errors";
 import { apiHandler } from "@/lib/api/handler";
-import { registerTeamsForViewer } from "@/lib/api/queries/tournament-ops-mutations";
+import {
+  registerTeamsForViewer,
+  withdrawRegistrationForViewer,
+} from "@/lib/api/queries/tournament-ops-mutations";
 import {
   loadTournamentRegisterOptions,
   requirePostedTournament,
@@ -57,5 +60,20 @@ export const POST = apiHandler(async (request: Request, context: RouteContext) =
       teamSlugs: body.teamSlugs,
       operationId: body.operationId,
     })
+  );
+});
+
+export const DELETE = apiHandler(async (request: Request, context: RouteContext) => {
+  const { user } = await requireViewer(request);
+  const { slug } = await context.params;
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
+  if (!body || typeof body.teamSlug !== "string" || !body.teamSlug.trim()) {
+    throw badRequest("teamSlug is required.");
+  }
+  return jsonSuccess(
+    await withdrawRegistrationForViewer(slug, user, body.teamSlug)
   );
 });

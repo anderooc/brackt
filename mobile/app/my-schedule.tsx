@@ -18,12 +18,14 @@
 
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { fetchPersonalSchedule } from "~/api/endpoints";
+import { Alert } from "react-native";
+import { downloadMyScheduleIcs, fetchPersonalSchedule } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { shareDownloadedFile } from "~/lib/share-pdf";
 import { PersonalSchedulePanel } from "~/tournament/personal-schedule-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
-import { AppText, Banner, EmptyState, ScreenScroll, space } from "~/ui";
+import { AppText, Banner, Button, EmptyState, ScreenScroll, space } from "~/ui";
 
 const FALLBACK_ERROR = "Could not load your schedule.";
 
@@ -36,6 +38,22 @@ export default function MyScheduleScreen() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportCalendar() {
+    setExporting(true);
+    try {
+      await shareDownloadedFile(
+        () => downloadMyScheduleIcs(),
+        "brackt-my-schedule.ics",
+        "ics"
+      );
+    } catch (cause) {
+      Alert.alert("Couldn't export schedule", messageFor(cause, FALLBACK_ERROR));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const schedule = await fetchPersonalSchedule(signal);
@@ -113,6 +131,18 @@ export default function MyScheduleScreen() {
             assignments.
           </AppText>
           <PersonalSchedulePanel matches={matches} />
+          <Button
+            label="Add to calendar"
+            icon="calendar-outline"
+            variant="outline"
+            loading={exporting}
+            onPress={() => void exportCalendar()}
+          />
+          <AppText variant="footnote" tone="muted">
+            Shares an .ics file you can open in Calendar or Google Calendar.
+            Times in the file won&apos;t change if the host reschedules, so
+            export again after updates.
+          </AppText>
         </>
       )}
     </ScreenScroll>

@@ -68,6 +68,7 @@ import {
   registerTeamsAtomically,
 } from "@/lib/tournaments/registrations";
 import { invalidatePublicTournamentCachesByIds } from "@/lib/tournaments/public-cache-invalidation";
+import { withdrawRegistrationAtomically } from "@/lib/tournaments/registration-roster-mutations";
 import {
   OperationConflictError,
   OperationValidationError,
@@ -697,4 +698,40 @@ export async function registerTeamsForViewer(
     acceptedCount: result.acceptedCount,
     waitlistedCount: result.waitlistedCount,
   };
+}
+
+/** Captain (or organizer) pulls a team out; same rules as the web action. */
+export async function withdrawRegistrationForViewer(
+  slug: string,
+  user: AppUser,
+  teamSlug: string
+): Promise<{ withdrawn: true }> {
+  const tournament = await requirePostedTournament(slug);
+  const [team] = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(eq(teams.slug, teamSlug.trim()))
+    .limit(1);
+  if (!team) throw notFound("Team not found.");
+
+  try {
+    await withdrawRegistrationAtomically({
+      tournamentId: tournament.id,
+      teamId: team.id,
+      actorUserId: user.id,
+    });
+  } catch (error) {
+    if (
+      error instanceof OperationConflictError ||
+      error instanceof OperationValidationError
+    ) {
+      throw badRequest(error.message);
+    }
+    throw error;
+  }
+
+  await invalidatePublicTournamentCachesByIds([tournament.id], {
+    listing: true,
+  });
+  return { withdrawn: true };
 }
