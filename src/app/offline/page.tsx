@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { WifiOff } from "lucide-react";
+import { ConnectionRecoverableIllustration } from "@/components/brand/illustrations";
 import { SiteHeader } from "@/components/layout/site-header";
 import { PublicSiteFooter } from "@/components/layout/public-site-footer";
 import { getCurrentAuthProfile } from "@/lib/auth";
@@ -49,14 +49,12 @@ export default async function OfflinePage() {
       >
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 text-foreground/[0.05] bg-dot-grid [mask-image:linear-gradient(to_bottom,black,transparent)]"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 text-foreground/[0.05] bg-court-lines [mask-image:linear-gradient(to_bottom,black,transparent)]"
         />
 
         <div className="container mx-auto max-w-2xl px-4 sm:px-6">
           <div className="text-center space-y-3 mb-8">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/10 text-destructive mb-1">
-              <WifiOff className="h-6 w-6" />
-            </div>
+            <ConnectionRecoverableIllustration className="mx-auto mb-2 h-auto w-56 sm:w-64" />
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
               You&apos;re offline
             </h1>

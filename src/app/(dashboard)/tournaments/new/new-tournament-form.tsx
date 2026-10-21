@@ -92,7 +92,7 @@ export function NewTournamentForm({
         <Card className="relative mx-auto max-w-lg overflow-hidden">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]"
+            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-court-lines [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent)]"
           />
           <CardHeader className="relative">
             <CardTitle as="h1" className="text-xl font-semibold tracking-tight">

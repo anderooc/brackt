@@ -76,6 +76,7 @@ export default async function TeamsPage() {
 
       {userTeams.length === 0 ? (
         <EmptyState
+        illustration="teams"
           icon={Users}
           title="No teams yet"
           description="Create your first team to manage your roster and register for tournaments."

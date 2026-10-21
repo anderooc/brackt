@@ -23,7 +23,7 @@ import { COPYRIGHT_HOLDER, COPYRIGHT_YEAR } from "@/lib/metadata";
 export function PublicSiteFooter({ showTagline = false }: { showTagline?: boolean }) {
   return (
     <footer className="border-t px-4 py-8 text-center text-sm text-muted-foreground">
-      <BracktMark wordmarkClassName="text-sm font-bold" />
+      <BracktMark logoClassName="mx-auto h-5" />
       {showTagline ? (
         <p className="mt-2 text-xs">
           Tournament hub for collegiate club volleyball.

@@ -19,7 +19,8 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
-import { ArrowRight, Volleyball } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { WelcomeHeroIllustration } from "@/components/brand/illustrations";
 import { getCurrentAuthProfile } from "@/lib/auth";
 import { pageMetadata } from "@/lib/metadata";
 import { PublicSiteFooter } from "@/components/layout/public-site-footer";
@@ -38,9 +39,9 @@ export const metadata = pageMetadata(
 export const dynamic = "force-dynamic";
 
 const STATS = [
-  { value: "50+", label: "Teams per tournament" },
-  { value: "1,000+", label: "Matches tracked" },
-  { value: "9", label: "Regions nationwide" },
+  { value: "9", label: "Club regions covered" },
+  { value: "1", label: "Link for teams and fans" },
+  { value: "0", label: "Spreadsheets needed" },
 ];
 
 export default async function HomePage() {
@@ -51,51 +52,32 @@ export default async function HomePage() {
       <SiteHeader user={user} />
 
       <main id="main-content" tabIndex={-1} className="flex-1">
-        <section className="relative flex min-h-[calc(100svh-3.5rem)] overflow-hidden">
-          {/* Decorative backdrop */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.07] bg-dot-grid [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,black,transparent)]"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -left-32 top-[-10%] -z-10 h-96 w-96 rounded-full bg-primary/20 blur-3xl"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -right-32 top-[10%] -z-10 h-96 w-96 rounded-full bg-secondary/20 blur-3xl"
-          />
-
-          <div className="container mx-auto flex flex-1 items-center justify-center px-4 py-16 text-center sm:py-20">
-            <div className="mx-auto flex max-w-3xl flex-col items-center">
-              <span className="inline-flex items-center gap-2 rounded-full border bg-card/70 px-4 py-1.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-sm">
-                <Volleyball className="h-3.5 w-3.5 text-primary" />
+        <section className="relative grid overflow-hidden border-b bg-hero-wash lg:min-h-[min(42rem,calc(100svh-3.5rem))] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <div className="flex items-center px-4 pb-10 pt-14 sm:pl-[calc((100vw-40rem)/2+1rem)] sm:pt-20 md:pl-[calc((100vw-48rem)/2+1rem)] lg:py-20 lg:pl-[calc((100vw-64rem)/2+1rem)] lg:pr-10 xl:pl-[calc((100vw-80rem)/2+1rem)] 2xl:pl-[calc((100vw-96rem)/2+1rem)]">
+            <div className="flex max-w-xl flex-col">
+              <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <span aria-hidden className="h-0.5 w-6 bg-net" />
                 Built for collegiate club volleyball
-              </span>
+              </p>
 
-              <h1 className="mt-6 text-balance text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl md:text-7xl">
-                Run the whole
-                <br />
-                tournament on{" "}
-                <span className="inline-flex items-baseline whitespace-nowrap">
-                  <span className="text-primary">brack</span>
-                  <span className="text-secondary">t</span>
-                </span>
+              <h1 className="mt-5 text-balance text-[2.75rem] font-extrabold leading-[1.02] tracking-[-0.03em] sm:text-6xl">
+                Run the whole tournament on{" "}
+                <span className="font-black italic text-gradient-brand">brackt</span>
               </h1>
 
-              <p className="mx-auto mt-6 max-w-xl text-pretty text-base text-muted-foreground sm:text-lg">
+              <p className="mt-6 max-w-lg text-pretty text-base text-muted-foreground sm:text-lg">
                 Pools, brackets, court scheduling, and live scores in one place,
                 so hosts, teams, and fans can ditch the spreadsheets and group
                 chats.
               </p>
 
               {!user && (
-                <div className="mt-9 flex flex-col items-center gap-3 sm:flex-row">
+                <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   <Link
                     href="/signup"
                     className={buttonVariants({
                       size: "lg",
-                      className: "group h-11 px-6 text-sm shadow-lg shadow-primary/20",
+                      className: "group h-11 px-6 text-sm",
                     })}
                   >
                     Create Account
@@ -124,22 +106,30 @@ export default async function HomePage() {
                 </div>
               )}
 
-              <dl className="mt-14 grid w-full max-w-lg grid-cols-3 gap-px overflow-hidden rounded-2xl border bg-border/60 shadow-sm">
+              <dl className="mt-12 grid max-w-md grid-cols-3 divide-x border-t pt-6">
                 {STATS.map((stat) => (
                   <div
                     key={stat.label}
-                    className="flex flex-col items-center gap-1 bg-card/80 px-3 py-5 backdrop-blur-sm"
+                    className="flex flex-col gap-1.5 px-4 first:pl-0 last:pr-0"
                   >
-                    <dt className="order-2 text-xs text-muted-foreground">
+                    <dt className="order-2 text-xs leading-snug text-muted-foreground">
                       {stat.label}
                     </dt>
-                    <dd className="order-1 font-heading text-2xl font-bold text-gradient-brand sm:text-3xl">
+                    <dd className="order-1 w-fit font-heading text-4xl font-black italic leading-none tracking-tight tabular-nums text-gradient-brand sm:text-5xl">
                       {stat.value}
                     </dd>
                   </div>
                 ))}
               </dl>
             </div>
+          </div>
+
+          <div className="relative min-h-0 lg:min-h-full">
+            <WelcomeHeroIllustration
+              viewBox="660 0 780 640"
+              preserveAspectRatio="xMidYMid slice"
+              className="block aspect-[780/560] h-auto w-full lg:absolute lg:inset-0 lg:aspect-auto lg:h-full"
+            />
           </div>
         </section>
 
@@ -155,16 +145,20 @@ export default async function HomePage() {
 
         {!user && (
           <section className="container mx-auto px-4 py-20">
-            <div className="relative overflow-hidden rounded-3xl border bg-gradient-to-br from-primary/10 via-card to-secondary/10 px-6 py-14 text-center shadow-sm sm:px-12">
+            <div className="relative overflow-hidden rounded-3xl bg-court-gradient px-6 py-16 text-center text-court-foreground sm:px-12">
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-dot-grid"
+                className="pointer-events-none absolute inset-0 text-white/15 bg-court-lines"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute bottom-10 right-0 h-2 w-14 bg-net"
               />
               <div className="relative mx-auto max-w-xl">
                 <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
                   Ready for your next tournament?
                 </h2>
-                <p className="mt-3 text-muted-foreground">
+                <p className="mt-3 text-court-foreground/80">
                   Create a free account and host your first event in minutes.
                 </p>
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -172,7 +166,8 @@ export default async function HomePage() {
                     href="/signup"
                     className={buttonVariants({
                       size: "lg",
-                      className: "group h-11 px-6 text-sm shadow-lg shadow-primary/20",
+                      className:
+                        "group h-11 bg-white px-6 text-sm text-court hover:bg-white/90 [a]:hover:bg-white/90 focus-visible:ring-white/60",
                     })}
                   >
                     Get Started
@@ -182,8 +177,9 @@ export default async function HomePage() {
                     href="/login"
                     className={buttonVariants({
                       size: "lg",
-                      variant: "outline",
-                      className: "h-11 px-6 text-sm",
+                      variant: "ghost",
+                      className:
+                        "h-11 px-6 text-sm text-court-foreground ring-1 ring-inset ring-white/40 hover:bg-white/10 hover:text-court-foreground dark:hover:bg-white/10 focus-visible:ring-white/60",
                     })}
                   >
                     Sign In

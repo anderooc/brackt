@@ -31,6 +31,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BracktSymbol } from "@/components/brand/logo";
 import { updatePassword } from "../actions";
 
 export default function ResetPasswordPage() {
@@ -57,11 +58,12 @@ export default function ResetPasswordPage() {
     <div className="relative min-h-[calc(100dvh-3.5rem)] overflow-x-hidden px-4 py-8 sm:py-10">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.06] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
+        className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.06] bg-court-lines [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
       />
       <div className="relative z-[1] mx-auto w-full max-w-md">
         <Card className="shadow-xl shadow-primary/5">
           <CardHeader className="text-center">
+          <BracktSymbol className="mx-auto mb-2 h-8 w-auto" />
             <CardTitle as="h1" className="text-2xl font-bold">
               Choose a new password
             </CardTitle>

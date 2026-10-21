@@ -19,6 +19,7 @@
 import Link from "next/link";
 import { Play, CirclePlay } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import { FollowBracketIllustration } from "@/components/brand/illustrations";
 import {
   getTournamentDemoVideo,
   TOURNAMENT_DEMO_HIGHLIGHTS,
@@ -53,16 +54,11 @@ function DemoPlayer({ video }: { video: TournamentDemoVideo }) {
 
 function DemoPlaceholder() {
   return (
-    <div className="relative flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-card to-secondary/10 p-6 sm:p-8">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 text-foreground/[0.04] bg-dot-grid"
-      />
-      <div className="relative flex w-full max-w-sm flex-col items-center gap-3 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/20">
-          <Play className="ml-0.5 h-7 w-7 fill-current" aria-hidden />
-        </span>
-        <p className="max-w-xs text-sm font-medium text-foreground">
+    <div className="relative flex h-full w-full flex-col items-center justify-center bg-card p-6 sm:p-8">
+      <div className="relative flex w-full max-w-sm flex-col items-center gap-2 text-center">
+        <FollowBracketIllustration className="mb-1 h-auto w-44 sm:w-60" />
+        <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <Play className="h-3.5 w-3.5 fill-current text-primary" aria-hidden />
           Demo video coming soon
         </p>
         <p className="max-w-sm text-xs text-muted-foreground">
@@ -135,9 +131,9 @@ export function TournamentDemoSection() {
             <div className="relative w-full">
               <div
                 aria-hidden
-                className="pointer-events-none absolute -inset-4 -z-10 rounded-[2rem] bg-gradient-to-br from-primary/15 via-transparent to-secondary/15 blur-2xl"
+                className="pointer-events-none absolute -bottom-3 -right-3 -z-10 h-full w-full rounded-2xl bg-court-mesh ring-1 ring-border/60 sm:-bottom-4 sm:-right-4"
               />
-              <div className="overflow-hidden rounded-2xl border bg-card shadow-xl shadow-primary/5 ring-1 ring-border/80">
+              <div className="overflow-hidden rounded-2xl border bg-card shadow-lg shadow-primary/5 ring-1 ring-border/80">
                 <div className="aspect-video w-full">
                   {video ? <DemoPlayer video={video} /> : <DemoPlaceholder />}
                 </div>

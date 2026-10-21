@@ -123,8 +123,8 @@ export async function AdminOverviewPanel() {
           const Icon = s.icon;
           const accent =
             i % 2 === 0
-              ? "from-primary/15 to-primary/5 text-primary"
-              : "from-secondary/15 to-secondary/5 text-secondary";
+              ? "bg-primary/10 text-primary"
+              : "bg-secondary text-secondary-foreground";
           return (
             <Card key={s.label} size="sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -132,7 +132,7 @@ export async function AdminOverviewPanel() {
                   {s.label}
                 </CardTitle>
                 <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br ${accent} ring-1 ring-inset ring-border/60`}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md ${accent} ring-1 ring-inset ring-border/60`}
                 >
                   <Icon className="h-3.5 w-3.5" />
                 </span>

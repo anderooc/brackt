@@ -40,15 +40,7 @@ export default async function AboutPage() {
       <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-x-hidden">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 text-foreground/[0.05] bg-dot-grid [mask-image:linear-gradient(to_bottom,black,transparent)]"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -left-24 top-24 -z-10 h-56 w-56 rounded-full bg-primary/15 blur-3xl sm:h-72 sm:w-72"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-20 top-40 -z-10 h-52 w-52 rounded-full bg-secondary/15 blur-3xl sm:h-64 sm:w-64"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 text-foreground/[0.05] bg-court-lines [mask-image:linear-gradient(to_bottom,black,transparent)]"
         />
 
         <article className="container mx-auto max-w-3xl px-4 py-10 sm:py-16 md:py-20">

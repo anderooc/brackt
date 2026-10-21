@@ -20,7 +20,7 @@ brackt is a tournament hub for collegiate club volleyball. It exists to let a ho
 
 ## Brand Personality
 
-Sporty but refined and trustworthy. Voice is confident and plain-spoken, never hype. Think a premium SaaS dashboard (Linear/Stripe-grade craft) wearing team colors — energy from the volleyball-red / court-blue brand, discipline from the layout. The wordmark "brackt" carries the energy (brack in primary red, t in secondary blue; domain brack-t.com); dense data screens stay calm.
+Sporty but refined and trustworthy. Voice is confident and plain-spoken, never hype. Think a premium SaaS dashboard (Linear/Stripe-grade craft) wearing team colors — energy from the "Center Court" brand, discipline from the layout. The logo is a top-down court with a red net beside a heavy italic "brackt" wordmark (domain brack-t.com). Court blue (#315CA8) leads and carries every primary action; net red (#C92F45) is scarce — the logo's net and live play only. Brand art (`src/components/brand/`) is flat line work generated from the Figma exports; dense data screens stay calm.
 
 ## Anti-references
 

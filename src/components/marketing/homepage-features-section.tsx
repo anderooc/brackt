@@ -32,25 +32,25 @@ const FEATURES: {
     icon: Trophy,
     title: "Tournament Management",
     desc: "Spin up divisions, pools, and brackets, then run the whole event from draft to finals.",
-    accent: "from-primary/15 to-primary/5 text-primary",
+    accent: "bg-primary/10 text-primary",
   },
   {
     icon: Users,
     title: "Team Registration",
     desc: "Register your club, manage rosters and jersey numbers, and track application status.",
-    accent: "from-secondary/15 to-secondary/5 text-secondary",
+    accent: "bg-secondary text-secondary-foreground",
   },
   {
     icon: Calendar,
     title: "Smart Scheduling",
     desc: "Auto-generate court assignments and time slots with warmup windows built in.",
-    accent: "from-primary/15 to-primary/5 text-primary",
+    accent: "bg-primary/10 text-primary",
   },
   {
     icon: Zap,
     title: "Live Scoring",
     desc: "Real-time set scores and standings so players, captains, and fans never lose the thread.",
-    accent: "from-secondary/15 to-secondary/5 text-secondary",
+    accent: "bg-secondary text-secondary-foreground",
   },
 ];
 
@@ -84,8 +84,8 @@ export function HomepageFeaturesSection() {
                 "group relative grid gap-6 overflow-hidden px-6 py-8 sm:grid-cols-[auto_1fr] sm:items-center sm:gap-8 sm:px-10 sm:py-10",
                 index > 0 && "border-t border-border/60",
                 index % 2 === 0
-                  ? "bg-muted/20"
-                  : "bg-gradient-to-r from-primary/[0.05] via-card to-secondary/[0.05]"
+                  ? "bg-muted/40"
+                  : "bg-card"
               )}
             >
               <feature.icon
@@ -94,7 +94,7 @@ export function HomepageFeaturesSection() {
               />
               <div
                 className={cn(
-                  "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ring-1 ring-inset ring-foreground/5 transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ring-1 ring-inset ring-foreground/5 transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                   "group-hover:scale-105 group-data-[revealed]:shadow-md",
                   feature.accent
                 )}

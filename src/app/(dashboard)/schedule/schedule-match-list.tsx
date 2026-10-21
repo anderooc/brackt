@@ -91,6 +91,7 @@ export function ScheduleMatchList({
   if (matches.length === 0) {
     return (
       <EmptyState
+        illustration="matches"
         icon={CalendarClock}
         title="No scheduled matches yet"
         description="Create a tournament and generate pools or brackets, then auto-schedule to see matches here."

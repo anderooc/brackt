@@ -33,7 +33,7 @@ export default async function AdminLayout({
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary/15 to-primary/5 text-primary ring-1 ring-inset ring-border/60">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-inset ring-border/60">
           <ShieldAlert className="h-4 w-4" />
         </span>
         <div className="min-w-0 space-y-1">

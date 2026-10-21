@@ -17,46 +17,44 @@
  */
 
 import Link from "next/link";
+import { BracktLogo } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 
 type BracktMarkProps = {
-  /** If set, wraps the wordmark in a link */
+  /** If set, wraps the logo in a link */
   href?: string;
   className?: string;
-  /** Classes on the inner wordmark (brack + t) */
-  wordmarkClassName?: string;
+  /** Sizing for the logo lockup; set a height and let width follow. */
+  logoClassName?: string;
   onClick?: () => void;
 };
 
-/**
- * Brand wordmark: "brackt" as one word — brack (primary/red), t (secondary/blue).
- * Domain: brack-t.com
- */
+/** Brand lockup (court symbol + "brackt" wordmark). Domain: brack-t.com */
 export function BracktMark({
   href,
   className,
-  wordmarkClassName,
+  logoClassName,
   onClick,
 }: BracktMarkProps) {
-  const wordmark = (
-    <span
-      className={cn(
-        "inline-flex items-baseline whitespace-nowrap font-extrabold tracking-tight",
-        wordmarkClassName
-      )}
-    >
-      <span className="text-primary">brack</span>
-      <span className="text-secondary">t</span>
-    </span>
+  const logo = (
+    <BracktLogo className={cn("block h-[1.375rem] w-auto", logoClassName)} />
   );
 
   if (href) {
     return (
-      <Link href={href} className={cn("shrink-0", className)} onClick={onClick}>
-        {wordmark}
+      <Link
+        href={href}
+        aria-label="brackt home"
+        className={cn(
+          "inline-flex shrink-0 items-center rounded-sm py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          className
+        )}
+        onClick={onClick}
+      >
+        {logo}
       </Link>
     );
   }
 
-  return <span className={className}>{wordmark}</span>;
+  return <span className={cn("inline-flex", className)}>{logo}</span>;
 }

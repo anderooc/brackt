@@ -103,7 +103,7 @@ export default async function DashboardPage() {
         <Card className="relative overflow-hidden border-dashed">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,black,transparent)]"
+            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-court-lines [mask-image:radial-gradient(ellipse_70%_60%_at_50%_30%,black,transparent)]"
           />
           <CardContent className="relative py-10">
             <div className="mx-auto max-w-xl text-center">
@@ -147,12 +147,12 @@ export default async function DashboardPage() {
                   href="/explore"
                   className="group flex flex-col items-start gap-1 p-4 text-left transition-colors duration-150 hover:bg-muted/40"
                 >
-                  <Compass className="h-4 w-4 text-secondary" />
+                  <Compass className="h-4 w-4 text-primary" />
                   <span className="mt-2 font-medium">Browse tournaments</span>
                   <span className="text-xs text-muted-foreground">
                     See what&apos;s happening across clubs.
                   </span>
-                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-secondary">
+                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary">
                     Explore
                     <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
                   </span>
@@ -238,6 +238,7 @@ export default async function DashboardPage() {
             ) : null}
             {userTeams.length === 0 ? (
               <EmptyState
+        illustration="teams"
                 variant="inline"
                 icon={Users}
                 title="No teams yet"
@@ -301,6 +302,7 @@ export default async function DashboardPage() {
           <CardContent className="pt-0">
             {myTournaments.length === 0 ? (
               <EmptyState
+        illustration="tournaments"
                 variant="inline"
                 icon={Trophy}
                 title="No tournaments yet"
@@ -375,8 +377,8 @@ function StatCard({
 }) {
   const accentClasses =
     accent === "primary"
-      ? "from-primary/15 to-primary/5 text-primary"
-      : "from-secondary/15 to-secondary/5 text-secondary";
+      ? "bg-primary/10 text-primary"
+      : "bg-secondary text-secondary-foreground";
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -385,7 +387,7 @@ function StatCard({
         </CardTitle>
         <span
           className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br ring-1 ring-inset ring-border/60",
+            "flex h-8 w-8 items-center justify-center rounded-md ring-1 ring-inset ring-border/60",
             accentClasses
           )}
         >

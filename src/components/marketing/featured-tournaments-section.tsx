@@ -17,7 +17,8 @@
  */
 
 import Link from "next/link";
-import { ArrowRight, Calendar, MapPin, Users } from "lucide-react";
+import { ArrowRight, MapPin, Users } from "lucide-react";
+import { NoTournamentsIllustration } from "@/components/brand/illustrations";
 import { buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { TeamAttributesBadges } from "@/components/team-attributes-badges";
@@ -63,16 +64,6 @@ function TournamentTile({
             : "rounded-2xl bg-muted/30 p-5 ring-1 ring-border/50"
       )}
     >
-      <div
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute rounded-full bg-primary/15 blur-3xl transition-opacity duration-300 group-hover:opacity-100",
-          isHero
-            ? "-right-16 -top-16 h-56 w-56 opacity-80"
-            : "-right-10 -top-10 h-32 w-32 opacity-50"
-        )}
-      />
-
       <div className="relative flex flex-1 flex-col gap-4">
         <div
           className={cn(
@@ -91,7 +82,7 @@ function TournamentTile({
             </span>
             <span
               className={cn(
-                "font-bold leading-none text-gradient-brand",
+                "w-fit font-bold leading-none text-gradient-brand",
                 isHero ? "text-3xl" : "text-2xl"
               )}
             >
@@ -176,10 +167,6 @@ export async function FeaturedTournamentsSection() {
       className="relative overflow-hidden border-t bg-background"
       aria-labelledby="featured-tournaments-heading"
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-secondary/10 blur-3xl"
-      />
       <div className="container relative mx-auto px-4 py-20">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
@@ -207,12 +194,9 @@ export async function FeaturedTournamentsSection() {
         </div>
 
         {tournaments.length === 0 ? (
-          <div className="mt-12 rounded-3xl bg-muted/25 px-6 py-14 text-center ring-1 ring-border/50">
-            <Calendar
-              className="mx-auto h-10 w-10 text-muted-foreground/50"
-              aria-hidden
-            />
-            <p className="mt-4 text-base font-medium">No public tournaments yet</p>
+          <div className="mt-12 rounded-3xl bg-muted/25 px-6 pb-14 pt-8 text-center ring-1 ring-border/50">
+            <NoTournamentsIllustration className="mx-auto h-auto w-48 sm:w-56" />
+            <p className="mt-2 text-base font-medium">No public tournaments yet</p>
             <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
               New events appear here as hosts publish them. Check back soon or
               start your own.

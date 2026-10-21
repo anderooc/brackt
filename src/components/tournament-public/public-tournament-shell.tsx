@@ -33,7 +33,7 @@ export async function PublicTournamentLayout({
       <main id="main-content" tabIndex={-1} className="relative flex-1">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 text-foreground/[0.05] bg-dot-grid [mask-image:linear-gradient(to_bottom,black,transparent)]"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 text-foreground/[0.05] bg-court-lines [mask-image:linear-gradient(to_bottom,black,transparent)]"
         />
         <div className="container mx-auto max-w-3xl space-y-6 px-4 py-10">
           <Link

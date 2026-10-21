@@ -34,7 +34,7 @@ export function AuthTopBar() {
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur-sm">
       <div className="container mx-auto flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
-        <BracktMark href="/" wordmarkClassName="text-lg font-bold" />
+        <BracktMark href="/" />
         <div className="flex-1" />
         <ThemeToggle />
         {!onLogin ? (

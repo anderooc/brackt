@@ -85,7 +85,7 @@ export function MobileNav({
           </SheetDescription>
           <BracktMark
             href="/dashboard"
-            wordmarkClassName="text-lg font-bold"
+           
             onClick={() => setOpen(false)}
           />
         </div>

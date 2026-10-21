@@ -52,6 +52,11 @@
   --color-info-foreground: var(--info-foreground);
   --color-live: var(--live);
   --color-live-foreground: var(--live-foreground);
+  --color-net: var(--net);
+  --color-net-foreground: var(--net-foreground);
+  /* The court itself: identical in both themes, for drenched brand panels. */
+  --color-court: oklch(0.485 0.131 261);
+  --color-court-foreground: oklch(0.99 0.005 260);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -73,21 +78,28 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * "Center Court" palette. Court blue (#315CA8) carries the brand and every
+ * primary action; net red (#C92F45) is scarce — the logo's net and live play.
+ * Neutrals are tinted toward the court hue (261).
+ */
 :root {
-  --background: oklch(0.992 0.01 255);
-  --foreground: oklch(0.21 0.04 260);
-  --card: oklch(1 0.005 260);
-  --card-foreground: oklch(0.21 0.04 260);
-  --popover: oklch(1 0.005 260);
-  --popover-foreground: oklch(0.21 0.04 260);
-  --primary: oklch(0.55 0.21 17);
-  --primary-foreground: oklch(0.99 0.01 255);
-  --secondary: oklch(0.42 0.15 257);
-  --secondary-foreground: oklch(0.98 0.01 255);
-  --muted: oklch(0.96 0.015 250);
-  --muted-foreground: oklch(0.43 0.06 255);
-  --accent: oklch(0.95 0.03 250);
-  --accent-foreground: oklch(0.33 0.1 255);
+  --background: oklch(0.99 0.004 260);
+  --foreground: oklch(0.262 0.049 262);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.262 0.049 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.262 0.049 262);
+  --primary: oklch(0.485 0.131 261);
+  --primary-foreground: oklch(0.99 0.005 260);
+  --secondary: oklch(0.934 0.02 257.5);
+  --secondary-foreground: oklch(0.38 0.11 261);
+  --muted: oklch(0.965 0.011 257);
+  --muted-foreground: oklch(0.45 0.045 260);
+  --accent: oklch(0.945 0.018 257);
+  --accent-foreground: oklch(0.38 0.11 261);
+  --net: oklch(0.554 0.189 18.6);
+  --net-foreground: oklch(0.99 0.005 18);
   --destructive: oklch(0.577 0.245 27.325);
   /* Semantic status colors. Each value is tuned to read as `text-{x}` on a
      light `bg-{x}/10` tint (≥4.5:1). `-foreground` is the on-solid color. */
@@ -95,45 +107,60 @@
   --success-foreground: oklch(0.99 0.01 150);
   --warning: oklch(0.52 0.12 75);
   --warning-foreground: oklch(0.99 0.01 90);
-  --info: oklch(0.48 0.15 257);
-  --info-foreground: oklch(0.98 0.01 255);
-  --live: oklch(0.55 0.21 17);
-  --live-foreground: oklch(0.99 0.01 255);
-  --border: oklch(0.84 0.04 255);
-  --input: oklch(0.88 0.03 255);
-  --ring: oklch(0.55 0.2 17);
-  --chart-1: oklch(0.55 0.21 17);
-  --chart-2: oklch(0.43 0.15 257);
-  --chart-3: oklch(0.66 0.14 25);
-  --chart-4: oklch(0.64 0.14 255);
-  --chart-5: oklch(0.75 0.08 250);
+  --info: oklch(0.485 0.131 261);
+  --info-foreground: oklch(0.99 0.005 260);
+  --live: oklch(0.554 0.189 18.6);
+  --live-foreground: oklch(0.99 0.005 18);
+  --border: oklch(0.885 0.026 257);
+  --input: oklch(0.865 0.032 257);
+  --ring: oklch(0.485 0.131 261);
+  --chart-1: oklch(0.485 0.131 261);
+  --chart-2: oklch(0.554 0.189 18.6);
+  --chart-3: oklch(0.7 0.09 258);
+  --chart-4: oklch(0.36 0.09 262);
+  --chart-5: oklch(0.842 0.045 257);
   --radius: 0.625rem;
-  --sidebar: oklch(0.98 0.02 252);
-  --sidebar-foreground: oklch(0.22 0.05 260);
-  --sidebar-primary: oklch(0.55 0.21 17);
-  --sidebar-primary-foreground: oklch(0.99 0.01 255);
-  --sidebar-accent: oklch(0.92 0.04 253);
-  --sidebar-accent-foreground: oklch(0.3 0.08 257);
-  --sidebar-border: oklch(0.86 0.03 252);
-  --sidebar-ring: oklch(0.53 0.19 17);
+  --sidebar: oklch(0.975 0.008 257);
+  --sidebar-foreground: oklch(0.262 0.049 262);
+  --sidebar-primary: oklch(0.485 0.131 261);
+  --sidebar-primary-foreground: oklch(0.99 0.005 260);
+  --sidebar-accent: oklch(0.934 0.02 257.5);
+  --sidebar-accent-foreground: oklch(0.38 0.11 261);
+  --sidebar-border: oklch(0.9 0.022 257);
+  --sidebar-ring: oklch(0.485 0.131 261);
+
+  /* Logo inks (see components/brand/logo.tsx). */
+  --logo-court: oklch(0.485 0.131 261);
+  --logo-net: oklch(0.554 0.189 18.6);
+
+  /* Illustration inks, matched 1:1 to the Figma exports. */
+  --art-court: oklch(0.485 0.131 261);
+  --art-net: oklch(0.554 0.189 18.6);
+  --art-line: oklch(0.842 0.045 257);
+  --art-wash: oklch(0.934 0.02 257.5);
+  --art-mist: oklch(0.965 0.011 257);
+  --art-chalk: oklch(1 0 0);
+  --art-paper: var(--card);
 }
 
+/* Night court: brand-ink navy surfaces, court blue lifted for contrast. */
 .dark {
-  --background: oklch(0.175 0.012 260);
-  --foreground: oklch(0.97 0.01 260);
-  --card: oklch(0.21 0.014 260);
-  --card-foreground: oklch(0.97 0.01 260);
-  --popover: oklch(0.21 0.014 260);
-  --popover-foreground: oklch(0.97 0.01 260);
-  /* Brand hues preserved: volleyball red + court blue, lifted for dark contrast. */
-  --primary: oklch(0.72 0.19 17);
-  --primary-foreground: oklch(0.18 0.03 17);
-  --secondary: oklch(0.72 0.12 257);
-  --secondary-foreground: oklch(0.18 0.03 257);
-  --muted: oklch(0.26 0.02 260);
-  --muted-foreground: oklch(0.72 0.03 255);
-  --accent: oklch(0.28 0.03 257);
-  --accent-foreground: oklch(0.92 0.02 255);
+  --background: oklch(0.185 0.028 262);
+  --foreground: oklch(0.965 0.008 257);
+  --card: oklch(0.22 0.032 262);
+  --card-foreground: oklch(0.965 0.008 257);
+  --popover: oklch(0.235 0.034 262);
+  --popover-foreground: oklch(0.965 0.008 257);
+  --primary: oklch(0.72 0.115 258);
+  --primary-foreground: oklch(0.2 0.04 262);
+  --secondary: oklch(0.29 0.045 261);
+  --secondary-foreground: oklch(0.9 0.035 257);
+  --muted: oklch(0.255 0.032 262);
+  --muted-foreground: oklch(0.74 0.03 257);
+  --accent: oklch(0.29 0.045 261);
+  --accent-foreground: oklch(0.93 0.025 257);
+  --net: oklch(0.68 0.17 18.6);
+  --net-foreground: oklch(0.2 0.04 18);
   --destructive: oklch(0.72 0.18 22);
   /* Dark-theme status colors: lifted lightness so `text-{x}` reads on a dark
      `bg-{x}/10` tint. */
@@ -141,26 +168,38 @@
   --success-foreground: oklch(0.22 0.05 155);
   --warning: oklch(0.83 0.13 80);
   --warning-foreground: oklch(0.24 0.05 80);
-  --info: oklch(0.76 0.12 250);
-  --info-foreground: oklch(0.22 0.05 255);
-  --live: oklch(0.72 0.19 20);
-  --live-foreground: oklch(0.21 0.05 20);
-  --border: oklch(0.92 0.02 260 / 12%);
-  --input: oklch(0.92 0.02 260 / 16%);
-  --ring: oklch(0.72 0.19 17);
-  --chart-1: oklch(0.72 0.19 17);
-  --chart-2: oklch(0.72 0.12 257);
-  --chart-3: oklch(0.74 0.12 25);
-  --chart-4: oklch(0.7 0.1 255);
-  --chart-5: oklch(0.62 0.06 250);
-  --sidebar: oklch(0.19 0.014 260);
-  --sidebar-foreground: oklch(0.97 0.01 260);
-  --sidebar-primary: oklch(0.72 0.19 17);
-  --sidebar-primary-foreground: oklch(0.18 0.03 17);
-  --sidebar-accent: oklch(0.28 0.03 257);
-  --sidebar-accent-foreground: oklch(0.92 0.02 255);
-  --sidebar-border: oklch(0.92 0.02 260 / 12%);
-  --sidebar-ring: oklch(0.72 0.19 17);
+  --info: oklch(0.76 0.1 257);
+  --info-foreground: oklch(0.2 0.04 262);
+  --live: oklch(0.7 0.17 18.6);
+  --live-foreground: oklch(0.2 0.04 18);
+  --border: oklch(0.9 0.03 257 / 12%);
+  --input: oklch(0.9 0.03 257 / 17%);
+  --ring: oklch(0.72 0.115 258);
+  --chart-1: oklch(0.72 0.115 258);
+  --chart-2: oklch(0.7 0.17 18.6);
+  --chart-3: oklch(0.58 0.1 260);
+  --chart-4: oklch(0.85 0.05 257);
+  --chart-5: oklch(0.45 0.07 261);
+  --sidebar: oklch(0.2 0.03 262);
+  --sidebar-foreground: oklch(0.965 0.008 257);
+  --sidebar-primary: oklch(0.72 0.115 258);
+  --sidebar-primary-foreground: oklch(0.2 0.04 262);
+  --sidebar-accent: oklch(0.29 0.045 261);
+  --sidebar-accent-foreground: oklch(0.93 0.025 257);
+  --sidebar-border: oklch(0.9 0.03 257 / 12%);
+  --sidebar-ring: oklch(0.72 0.115 258);
+
+  /* Reverse lockup: chalk court on navy, net keeps its red. */
+  --logo-court: oklch(0.965 0.008 257);
+  --logo-net: oklch(0.68 0.17 18.6);
+
+  --art-court: oklch(0.56 0.125 260);
+  --art-net: oklch(0.65 0.175 18.6);
+  --art-line: oklch(0.42 0.06 259);
+  --art-wash: oklch(0.31 0.05 260);
+  --art-mist: oklch(0.235 0.036 262);
+  --art-chalk: oklch(0.97 0.008 257);
+  --art-paper: var(--background);
 }
 
 @layer base {
@@ -169,21 +208,6 @@
   }
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 10% 10%, oklch(0.92 0.05 255 / 0.4), transparent 34%),
-      radial-gradient(circle at 90% 0%, oklch(0.74 0.12 20 / 0.15), transparent 30%);
-  }
-
-  .dark body {
-    background-color: var(--background);
-    background-image:
-      radial-gradient(circle at 12% 8%, oklch(0.28 0.04 255 / 0.45), transparent 42%),
-      radial-gradient(circle at 88% 4%, oklch(0.32 0.06 20 / 0.2), transparent 38%),
-      radial-gradient(
-        ellipse 140% 70% at 50% 108%,
-        oklch(0.26 0.02 260 / 0.85),
-        transparent 62%
-      );
   }
   html {
     @apply font-sans;
@@ -210,72 +234,91 @@
     @apply flex items-center justify-between px-1 py-3 transition-colors duration-150 ease-out hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset;
   }
 
-  /* Wordmark / accent gradient: volleyball red → court blue. */
-  .text-gradient-brand {
-    background-image: linear-gradient(
-      105deg,
-      var(--primary) 0%,
-      oklch(0.55 0.18 330) 42%,
-      var(--secondary) 100%
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  /* Subtle dotted "court" texture for hero / section backdrops. */
-  .bg-dot-grid {
-    background-image: radial-gradient(
-      currentColor 1px,
-      transparent 1px
-    );
-    background-size: 22px 22px;
+  /*
+   * Court-line texture: uneven vertical lanes over one baseline, echoing the
+   * launch screen. Paints in currentColor so callers set strength with
+   * `text-foreground/[0.05]` etc.
+   */
+  .bg-court-lines {
+    background-image:
+      linear-gradient(to right, currentColor 1px, transparent 1px),
+      linear-gradient(to right, currentColor 1px, transparent 1px),
+      linear-gradient(to bottom, currentColor 1px, transparent 1px);
+    background-size:
+      560px 100%,
+      560px 100%,
+      100% 440px;
+    background-position:
+      120px 0,
+      360px 0,
+      0 300px;
   }
 
   /* Faint blueprint grid used behind feature/marketing sections. */
   .bg-line-grid {
     background-image:
-      linear-gradient(to right, oklch(0.55 0.05 255 / 0.06) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.55 0.05 255 / 0.06) 1px, transparent 1px);
+      linear-gradient(to right, oklch(0.485 0.131 261 / 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.485 0.131 261 / 0.06) 1px, transparent 1px);
     background-size: 56px 56px;
   }
   .dark .bg-line-grid {
     background-image:
-      linear-gradient(to right, oklch(0.8 0.05 255 / 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.8 0.05 255 / 0.05) 1px, transparent 1px);
+      linear-gradient(to right, oklch(0.85 0.05 257 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.85 0.05 257 / 0.05) 1px, transparent 1px);
   }
 
-  /* Diagonal court mesh for marketing panels. */
+  /* Court blue → net red, echoing the logo. Interpolated in OKLCH so the
+     midpoint stays saturated violet instead of going grey. */
+  .text-gradient-brand {
+    background-image: linear-gradient(
+      100deg in oklch,
+      var(--primary) 20%,
+      var(--net) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    /* Italic glyphs overhang their box; keep the last letter's tail painted. */
+    padding-right: 0.06em;
+  }
+
+  /* Soft court-blue wash from the top-left with a faint net-red pull. */
+  .bg-hero-wash {
+    background-image:
+      radial-gradient(ellipse 60% 75% at 0% 0%, oklch(0.485 0.131 261 / 0.15), transparent 70%),
+      radial-gradient(ellipse 35% 55% at 30% 100%, oklch(0.554 0.189 18.6 / 0.08), transparent 70%);
+  }
+  .dark .bg-hero-wash {
+    background-image:
+      radial-gradient(ellipse 60% 75% at 0% 0%, oklch(0.56 0.125 260 / 0.25), transparent 70%),
+      radial-gradient(ellipse 35% 55% at 30% 100%, oklch(0.65 0.175 18.6 / 0.12), transparent 70%);
+  }
+
+  /* Solid court panel deepening to navy, with a net-red glow in one corner. */
+  .bg-court-gradient {
+    background-color: var(--color-court);
+    background-image:
+      radial-gradient(ellipse 45% 70% at 100% 100%, oklch(0.6 0.19 18.6 / 0.32), transparent 70%),
+      linear-gradient(135deg, oklch(0.53 0.14 258) 0%, var(--color-court) 45%, oklch(0.33 0.1 264) 100%);
+  }
+
+  /* Mist court panel with a gentle diagonal tint. */
   .bg-court-mesh {
-    background-image:
-      linear-gradient(
-        135deg,
-        oklch(0.55 0.21 17 / 0.07) 0%,
-        transparent 42%,
-        oklch(0.42 0.15 257 / 0.08) 100%
-      ),
-      linear-gradient(to right, oklch(0.55 0.05 255 / 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.55 0.05 255 / 0.05) 1px, transparent 1px);
-    background-size:
-      100% 100%,
-      40px 40px,
-      40px 40px;
+    background-color: var(--art-mist);
+    background-image: linear-gradient(
+      135deg,
+      oklch(0.554 0.189 18.6 / 0.06) 0%,
+      transparent 45%,
+      oklch(0.485 0.131 261 / 0.1) 100%
+    );
   }
-
   .dark .bg-court-mesh {
-    background-image:
-      linear-gradient(
-        135deg,
-        oklch(0.62 0.19 17 / 0.12) 0%,
-        transparent 42%,
-        oklch(0.52 0.14 257 / 0.12) 100%
-      ),
-      linear-gradient(to right, oklch(0.75 0.04 255 / 0.06) 1px, transparent 1px),
-      linear-gradient(to bottom, oklch(0.75 0.04 255 / 0.06) 1px, transparent 1px);
-    background-size:
-      100% 100%,
-      40px 40px,
-      40px 40px;
+    background-image: linear-gradient(
+      135deg,
+      oklch(0.65 0.175 18.6 / 0.1) 0%,
+      transparent 45%,
+      oklch(0.56 0.125 260 / 0.16) 100%
+    );
   }
 
   .marketing-scroll-rail {

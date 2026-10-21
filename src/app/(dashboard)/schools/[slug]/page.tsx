@@ -379,6 +379,7 @@ export default async function SchoolDetailPage({ params, searchParams }: Props) 
 
             {teamRows.length === 0 ? (
               <EmptyState
+        illustration="teams"
                 icon={Building2}
                 title="No teams under this school yet"
                 description={

@@ -286,7 +286,7 @@ export function RegistrationClosedView({
         <Card className="relative overflow-hidden">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
+            className="pointer-events-none absolute inset-0 text-foreground/[0.05] bg-court-lines [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
           />
           <CardContent className="relative py-12 text-center">
             <p className="font-heading text-base font-semibold tracking-tight">Registration closed</p>

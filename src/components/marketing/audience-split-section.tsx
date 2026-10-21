@@ -20,6 +20,10 @@ import Link from "next/link";
 import { ArrowRight, LayoutDashboard, UsersRound } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  BringTeamsTogetherIllustration,
+  OrganizeTournamentIllustration,
+} from "@/components/brand/illustrations";
 
 const AUDIENCES = [
   {
@@ -38,7 +42,7 @@ const AUDIENCES = [
     cta: "Start hosting",
     panelClass: "bg-court-mesh",
     iconClass: "bg-primary/15 text-primary ring-primary/20",
-    watermark: "HOST",
+    art: OrganizeTournamentIllustration,
   },
   {
     id: "team",
@@ -54,10 +58,9 @@ const AUDIENCES = [
     ],
     href: "/explore",
     cta: "Find a tournament",
-    panelClass:
-      "bg-gradient-to-bl from-secondary/14 via-card to-background",
-    iconClass: "bg-secondary/15 text-secondary ring-secondary/25",
-    watermark: "TEAM",
+    panelClass: "bg-card",
+    iconClass: "bg-secondary text-secondary-foreground ring-primary/15",
+    art: BringTeamsTogetherIllustration,
   },
 ] as const;
 
@@ -96,12 +99,7 @@ export function AudienceSplitSection() {
                   index === 1 && "border-t border-border/60 lg:border-l lg:border-t-0"
                 )}
               >
-                <p
-                  aria-hidden
-                  className="pointer-events-none absolute -right-2 top-2 select-none font-heading text-[5.5rem] font-bold leading-none tracking-tighter text-foreground/[0.04] sm:text-[7rem]"
-                >
-                  {audience.watermark}
-                </p>
+                <audience.art className="relative -mx-2 -mt-4 mb-2 h-auto w-full max-w-sm self-center sm:-mt-6" />
 
                 <div className="relative flex flex-1 flex-col gap-6">
                   <div className="flex items-center gap-3">

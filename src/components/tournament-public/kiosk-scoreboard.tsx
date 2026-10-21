@@ -489,7 +489,7 @@ function KioskMatchCard({ match }: { match: TournamentMatchContract }) {
       className={cn(
         "flex flex-col justify-between rounded-2xl border p-5 sm:p-6 transition-all duration-300",
         isLive
-          ? "border-primary/60 bg-gradient-to-b from-primary/15 to-primary/5 shadow-lg shadow-primary/10"
+          ? "border-primary/60 bg-primary/10 shadow-lg shadow-primary/10"
           : isCompleted
           ? "border-zinc-800/80 bg-zinc-900/40"
           : "border-zinc-800 bg-zinc-900/80"

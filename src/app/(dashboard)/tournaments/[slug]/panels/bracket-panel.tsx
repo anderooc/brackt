@@ -242,6 +242,7 @@ export async function TournamentBracketPanel({
 
       {!hasAnything ? (
         <EmptyState
+        illustration="results"
           icon={Trophy}
           title={isOrganizer ? "No brackets yet" : "Brackets not released yet"}
           description={
@@ -262,6 +263,7 @@ export async function TournamentBracketPanel({
               )}
               {combinedBrackets.length === 0 ? (
                 <EmptyState
+        illustration="results"
                   icon={Trophy}
                   title="No brackets yet"
                   description="Finish pool play in every pool to seed gold / silver / bronze."
@@ -308,6 +310,7 @@ export async function TournamentBracketPanel({
                 >
                   {div.brackets.length === 0 ? (
                     <EmptyState
+        illustration="results"
                       icon={Trophy}
                       title="No bracket for this division yet"
                       description="Add the division again in Setup if this persists."

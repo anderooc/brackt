@@ -17,7 +17,7 @@
  */
 
 import type { Metadata, Viewport } from "next";
-import { Outfit, Plus_Jakarta_Sans } from "next/font/google";
+import { Archivo, Plus_Jakarta_Sans } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import {
@@ -34,17 +34,17 @@ const plusJakarta = Plus_Jakarta_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
-const outfit = Outfit({
+const archivo = Archivo({
   variable: "--font-family-heading",
   subsets: ["latin"],
   display: "swap",
-  weight: ["500", "600", "700", "800"],
+  style: ["normal", "italic"],
 });
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#c92f45" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+    { media: "(prefers-color-scheme: light)", color: "#315ca8" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1626" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -103,7 +103,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${plusJakarta.variable} ${outfit.variable} h-full`}
+      className={`${plusJakarta.variable} ${archivo.variable} h-full`}
     >
       <body
         className={`${plusJakarta.className} flex min-h-full flex-col antialiased`}

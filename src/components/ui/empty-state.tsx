@@ -18,10 +18,27 @@
 
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  NoMatchesIllustration,
+  NoResultsIllustration,
+  NoTeamsIllustration,
+  NoTournamentsIllustration,
+} from "@/components/brand/illustrations";
 import { cn } from "@/lib/utils";
+
+const ILLUSTRATIONS = {
+  teams: NoTeamsIllustration,
+  tournaments: NoTournamentsIllustration,
+  matches: NoMatchesIllustration,
+  results: NoResultsIllustration,
+} as const;
+
+export type EmptyStateIllustration = keyof typeof ILLUSTRATIONS;
 
 interface EmptyStateProps {
   icon?: LucideIcon;
+  /** Brand artwork shown instead of the icon well. */
+  illustration?: EmptyStateIllustration;
   title: string;
   description?: string;
   action?: React.ReactNode;
@@ -33,6 +50,7 @@ interface EmptyStateProps {
 
 export function EmptyState({
   icon: Icon,
+  illustration,
   title,
   description,
   action,
@@ -40,35 +58,38 @@ export function EmptyState({
   variant = "card",
   accent = "primary",
 }: EmptyStateProps) {
+  const Art = illustration ? ILLUSTRATIONS[illustration] : null;
   const accentClasses =
     accent === "primary"
-      ? "from-primary/15 to-primary/5 text-primary"
-      : "from-secondary/15 to-secondary/5 text-secondary";
+      ? "bg-primary/10 text-primary"
+      : "bg-secondary text-secondary-foreground";
 
   const inner = (
     <div
       className={cn(
         "relative flex flex-col items-center justify-center overflow-hidden text-center",
         variant === "card" ? "px-6 py-12" : "py-8",
+        Art && variant === "card" && "pt-8",
         className
       )}
     >
-      {variant === "card" && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.05] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
+      {Art ? (
+        <Art
+          className={cn(
+            "mb-3 h-auto",
+            variant === "card" ? "w-44 sm:w-52" : "w-36"
+          )}
         />
-      )}
-      {Icon && (
+      ) : Icon ? (
         <span
           className={cn(
-            "mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-gradient-to-br ring-1 ring-inset ring-border/60",
+            "mb-4 flex h-10 w-10 items-center justify-center rounded-md ring-1 ring-inset ring-border/60",
             accentClasses
           )}
         >
           <Icon className="h-5 w-5" aria-hidden />
         </span>
-      )}
+      ) : null}
       <p className="font-heading text-base font-semibold tracking-tight text-foreground">
         {title}
       </p>

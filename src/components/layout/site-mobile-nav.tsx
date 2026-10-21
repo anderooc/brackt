@@ -63,7 +63,7 @@ export function SiteMobileNav({ signedIn = false }: { signedIn?: boolean }) {
           </SheetDescription>
           <BracktMark
             href="/"
-            wordmarkClassName="text-lg font-bold"
+           
             onClick={() => setOpen(false)}
           />
         </div>

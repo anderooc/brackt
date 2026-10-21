@@ -32,6 +32,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BracktSymbol } from "@/components/brand/logo";
 import { cn } from "@/lib/utils";
 import { signup } from "../actions";
 
@@ -70,15 +71,7 @@ function SignupForm() {
     <div className="relative min-h-[calc(100dvh-3.5rem)] overflow-x-hidden px-4 py-8 sm:py-10">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.06] bg-dot-grid [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-24 top-1/4 -z-10 h-80 w-80 rounded-full bg-primary/20 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-24 bottom-1/4 -z-10 h-80 w-80 rounded-full bg-secondary/20 blur-3xl"
+        className="pointer-events-none absolute inset-0 -z-10 text-foreground/[0.06] bg-court-lines [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,black,transparent)]"
       />
       {isPending && (
         <div
@@ -95,6 +88,7 @@ function SignupForm() {
       <div className="relative z-[1] mx-auto w-full max-w-md">
         <Card className="shadow-xl shadow-primary/5">
           <CardHeader className="text-center">
+          <BracktSymbol className="mx-auto mb-2 h-8 w-auto" />
             <CardTitle as="h1" className="text-2xl font-bold">
               Create account
             </CardTitle>

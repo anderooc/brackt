@@ -782,6 +782,7 @@ export function TournamentGrid({
 
       {filtered.length === 0 ? (
         <EmptyState
+          illustration="tournaments"
           icon={Trophy}
           title={
             tournaments.length === 0

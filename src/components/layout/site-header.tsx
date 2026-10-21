@@ -42,7 +42,7 @@ export function SiteHeader({ user }: { user?: SiteHeaderUser | null }) {
         <div className="container mx-auto flex h-14 items-center gap-1 px-3 sm:gap-3 sm:px-4 md:gap-4">
           <div className="flex min-w-0 items-center gap-0.5 sm:gap-2">
             <SiteMobileNav signedIn={Boolean(user)} />
-            <BracktMark href="/" wordmarkClassName="text-lg" />
+            <BracktMark href="/" />
             <HeaderNav className="min-w-0" />
           </div>
 

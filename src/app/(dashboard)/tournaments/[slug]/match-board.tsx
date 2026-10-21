@@ -389,6 +389,7 @@ export function MatchBoard({
   if (all.length === 0) {
     return (
       <EmptyState
+        illustration="matches"
         icon={CalendarClock}
         title="No matches yet"
         description="Once pools or brackets are generated, every match shows up here with live status and scores."

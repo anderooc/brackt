@@ -44,7 +44,7 @@ export default async function ExplorePage() {
       <main id="main-content" tabIndex={-1} className="relative flex-1">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 text-foreground/[0.05] bg-dot-grid [mask-image:linear-gradient(to_bottom,black,transparent)]"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-64 text-foreground/[0.05] bg-court-lines [mask-image:linear-gradient(to_bottom,black,transparent)]"
         />
         <div className="container mx-auto space-y-8 px-4 py-10">
           <div className="max-w-2xl space-y-2">

@@ -29,7 +29,7 @@ export function filterToggleClassName(
 ): string {
   const pressedTone =
     tone === "secondary"
-      ? "border-secondary bg-secondary/10 text-secondary shadow-none"
+      ? "border-primary bg-primary/10 text-primary shadow-none"
       : "border-primary bg-primary/10 text-primary shadow-none";
 
   return cn(

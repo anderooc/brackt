@@ -55,6 +55,7 @@ export function PersonalScheduleMatchList({
   if (matches.length === 0) {
     return (
       <EmptyState
+        illustration="matches"
         icon={CalendarClock}
         title="No upcoming matches"
         description="Matches for your teams will appear here once tournament schedules are released."
