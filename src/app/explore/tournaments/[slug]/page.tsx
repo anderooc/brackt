@@ -14,6 +14,10 @@ import { OverviewLiveMatches } from "@/components/tournament-public/overview-liv
 import { ShareScoreboardDialog } from "@/components/tournament-public/share-scoreboard-dialog";
 import { loadPublicTournamentShell } from "@/lib/tournament-public/load-shell";
 import { findPostedTournamentId, loadPublicTournamentMatches } from "@/lib/api/queries/tournament-detail";
+import { loadPublicTournamentPlay } from "@/lib/api/queries/tournament-play";
+import { flattenBrackets } from "@/lib/tournament-public/flatten-brackets";
+import { decidedChampions } from "@/lib/tournament-public/champions";
+import { ChampionMoment } from "@/components/brand/champion-moment";
 import { formatTournamentDateDisplay } from "@/lib/date-iso";
 import { cn } from "@/lib/utils";
 
@@ -44,10 +48,22 @@ export default async function ExploreTournamentPage({ params }: Props) {
   const shell = await loadPublicTournamentShell(slug);
   const posted = await findPostedTournamentId(slug);
   const matches = posted ? await loadPublicTournamentMatches(posted.id) : [];
+  const champions =
+    posted && shell.listItem.status === "completed"
+      ? decidedChampions(flattenBrackets(await loadPublicTournamentPlay(posted.id)))
+      : [];
 
   return (
     <PublicTournamentLayout shell={shell}>
       <div className="space-y-6">
+        {champions.length > 0 && (
+          <section aria-label="Champions" className="space-y-3">
+            {champions.map((champion) => (
+              <ChampionMoment key={champion.bracketName} {...champion} />
+            ))}
+          </section>
+        )}
+
         {/* Quick Fan Discovery Action Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-card/60 p-3.5">
           <div className="min-w-0">

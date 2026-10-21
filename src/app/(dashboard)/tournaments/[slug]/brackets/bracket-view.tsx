@@ -30,6 +30,10 @@ import {
   isBracketRoundOneByeMatch,
 } from "@/lib/utils/bracket";
 import { bracketDisplayName } from "@/lib/tournaments/bracket-tiers";
+import {
+  ChampionMoment,
+  finalSetsFor,
+} from "@/components/brand/champion-moment";
 
 interface BracketMatch {
   id: string;
@@ -129,7 +133,9 @@ export function BracketView({
     bracket.bracketType === "double_elimination" && !bracket.name;
 
   const finalMatches = sortedRounds[totalRounds - 1][1];
+  const finalMatch = finalMatches[0];
   const champion = findChampion(finalMatches);
+  const bracketDecided = Boolean(champion) && finalMatch?.status === "completed";
   /** Baseline Y where the final's advance stem meets the champion line. */
   const championY = bracketHeight / 2;
 
@@ -159,6 +165,24 @@ export function BracketView({
           )}
         </p>
       </header>
+
+      {bracketDecided && champion && finalMatch && (
+        <div className="border-b border-border/60 p-3 sm:p-4">
+          <ChampionMoment
+            teamName={champion}
+            bracketName={bracketDisplayName(bracket)}
+            runnerUpName={
+              finalMatch.winnerId === finalMatch.teamAId
+                ? finalMatch.teamBName
+                : finalMatch.teamAName
+            }
+            finalSets={finalSetsFor(
+              finalMatch.sets,
+              finalMatch.winnerId === finalMatch.teamAId
+            )}
+          />
+        </div>
+      )}
 
       <p className="border-b border-border/40 px-4 py-2 text-xs text-muted-foreground md:hidden">
         Swipe sideways to see later rounds

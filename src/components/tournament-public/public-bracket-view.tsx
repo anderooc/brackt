@@ -12,6 +12,8 @@ import {
   MATCH_STATUS_LABELS,
 } from "@/lib/tournament-public/format";
 import { cn } from "@/lib/utils";
+import { ChampionMoment } from "@/components/brand/champion-moment";
+import { findBracketChampion } from "@/lib/tournament-public/champions";
 
 export function PublicBracketView({
   brackets,
@@ -30,25 +32,35 @@ export function PublicBracketView({
 
   return (
     <div className="space-y-8">
-      {brackets.map((bracket) => (
-        <section key={`${bracket.name}-${bracket.tier}`} className="space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">
-              {bracket.name}
-            </h2>
-            {bracket.contextName ? (
-              <p className="text-sm text-muted-foreground">
-                {bracket.contextName}
-              </p>
-            ) : null}
-          </div>
+      {brackets.map((bracket) => {
+        const champion = findBracketChampion(bracket.matches);
+        return (
+          <section
+            key={`${bracket.name}-${bracket.tier}`}
+            className="space-y-4"
+          >
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                {bracket.name}
+              </h2>
+              {bracket.contextName ? (
+                <p className="text-sm text-muted-foreground">
+                  {bracket.contextName}
+                </p>
+              ) : null}
+            </div>
 
-          <BracketRounds
-            matches={bracket.matches}
-            tournamentSlug={tournamentSlug}
-          />
-        </section>
-      ))}
+            {champion ? (
+              <ChampionMoment bracketName={bracket.name} {...champion} />
+            ) : null}
+
+            <BracketRounds
+              matches={bracket.matches}
+              tournamentSlug={tournamentSlug}
+            />
+          </section>
+        );
+      })}
     </div>
   );
 }
