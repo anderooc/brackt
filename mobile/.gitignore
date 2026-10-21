@@ -44,3 +44,4 @@ yarn-error.*
 google-services.json
 GoogleService-Info.plist
 *-firebase-adminsdk-*.json
+google-play-service-account.json

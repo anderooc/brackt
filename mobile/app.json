@@ -2,7 +2,7 @@
   "expo": {
     "name": "brackt",
     "slug": "brackt",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -42,8 +42,21 @@
           }
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "brackt uses your photo library so you can choose a profile picture.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "expo-notifications"
     ],
     "extra": {
