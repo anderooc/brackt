@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { TournamentCoverIllustration } from "@/components/brand/illustrations";
+import { CoverScene } from "@/components/brand/cover-scene";
 import { cn } from "@/lib/utils";
 
 /**
- * Tournament header on the Center Court cover template: details sit on the
- * mist field, the net-and-court art fills the right side (a top band on
- * phones so long names keep the full width).
+ * Tournament header: details on the left over a soft court-blue wash, the
+ * court-and-net scene on the right (above the details on phones).
  */
 export function TournamentCover({
   children,
@@ -34,20 +33,17 @@ export function TournamentCover({
   return (
     <div
       className={cn(
-        "relative isolate overflow-hidden rounded-2xl bg-[var(--art-mist)] ring-1 ring-border/60",
+        "relative isolate overflow-hidden rounded-2xl bg-[var(--art-mist)] bg-hero-wash ring-1 ring-border/60 sm:flex sm:min-h-56 sm:items-center",
         className
       )}
     >
-      <TournamentCoverIllustration
-        viewBox="640 0 560 630"
-        preserveAspectRatio="xMinYMid slice"
-        className="absolute inset-x-0 top-0 -z-10 h-16 w-full sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:w-[34%]"
+      {/* Sized from the cover's width, not its height: wrapped text makes
+          the cover taller, and a height-driven scene would widen into it. */}
+      <CoverScene
+        preserveAspectRatio="xMidYMax meet"
+        className="absolute inset-x-0 top-2 -z-10 mx-auto h-40 w-full sm:inset-x-auto sm:-bottom-4 sm:right-1 sm:top-auto sm:h-auto sm:max-h-[calc(100%+0.5rem)] sm:w-[38%]"
       />
-      <span
-        aria-hidden
-        className="absolute bottom-4 left-0 -z-10 h-1 w-16 bg-[var(--art-line)] sm:w-24"
-      />
-      <div className="px-5 pb-8 pt-[5.25rem] sm:py-8 sm:pl-8 sm:pr-[calc(34%+1.75rem)]">
+      <div className="w-full px-5 pb-6 pt-[11.5rem] sm:py-8 sm:pl-8 sm:pr-[42%]">
         {children}
       </div>
     </div>

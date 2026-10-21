@@ -154,8 +154,8 @@ export function OrganizeTournamentIllustration(props: ArtProps) {
       <path d="M112 371L448 251L672 411L336 531L112 371Z" fill="var(--art-wash)"/>
       <path d="M112 351L448 231L672 391L336 511L112 351Z" fill="var(--art-court)"/>
       <path d="M241 322L441 456M343 286L543 420M141 358L443 250L643 384L341 492L141 358Z" strokeWidth="3" stroke="var(--art-chalk)"/>
-      <path d="M280 211L504 371V429L280 269V211Z" fill="var(--art-mist)" strokeWidth="2" stroke="var(--art-line)"/>
-      <path d="M280 211L504 404.778M280 235.222L504 429M308 211V281.244M336 235.222V305.467M364 259.444V329.689M392 283.667V353.911M420 307.889V378.133M448 332.111V402.356M476 356.333V426.578" strokeWidth="2" stroke="var(--art-line)"/>
+      <path d="M280 211L504 371V429L280 269V211Z" fill="var(--art-chalk)" fillOpacity="0.14" strokeWidth="2" stroke="var(--art-line)"/>
+      <path d="M280 230.33L504 390.33M280 249.67L504 409.67M308 231V289M336 251V309M364 271V329M392 291V349M420 311V369M448 331V389M476 351V409" strokeWidth="2" stroke="var(--art-line)"/>
       <path d="M280 201V293M504 361V443M280 211L504 371" strokeWidth="6" stroke="var(--art-net)"/>
       <path d="M118 135V45H186L170 67L186 89H118" fill="var(--art-court)" strokeWidth="3" stroke="var(--art-court)"/>
       <rect x="133" y="60" width="25" height="5" fill="var(--art-chalk)"/>
@@ -267,8 +267,8 @@ export function WelcomeHeroIllustration(props: ArtProps) {
       <path d="M846 385L1182 265L1406 425L1070 545L846 385Z" fill="var(--art-wash)"/>
       <path d="M846 365L1182 245L1406 405L1070 525L846 365Z" fill="var(--art-court)"/>
       <path d="M975 336L1175 470M1077 300L1277 434M875 372L1177 264L1377 398L1075 506L875 372Z" strokeWidth="3" stroke="var(--art-chalk)"/>
-      <path d="M1014 225L1238 385V443L1014 283V225Z" fill="var(--art-mist)" strokeWidth="2" stroke="var(--art-line)"/>
-      <path d="M1014 225L1238 418.778M1014 249.222L1238 443M1042 225V295.244M1070 249.222V319.467M1098 273.444V343.689M1126 297.667V367.911M1154 321.889V392.133M1182 346.111V416.356M1210 370.333V440.578" strokeWidth="2" stroke="var(--art-line)"/>
+      <path d="M1014 225L1238 385V443L1014 283V225Z" fill="var(--art-chalk)" fillOpacity="0.14" strokeWidth="2" stroke="var(--art-line)"/>
+      <path d="M1014 244.33L1238 404.33M1014 263.67L1238 423.67M1042 245V303M1070 265V323M1098 285V343M1126 305V363M1154 325V383M1182 345V403M1210 365V423" strokeWidth="2" stroke="var(--art-line)"/>
       <path d="M1014 215V307M1238 375V457M1014 225L1238 385" strokeWidth="6" stroke="var(--art-net)"/>
       <path d="M1130 250C1130 125 1200 80 1310 80" strokeWidth="3" stroke="var(--art-line)"/>
       <path d="M1334.5 81C1334.5 94.531 1323.53 105.5 1310 105.5C1296.47 105.5 1285.5 94.531 1285.5 81C1285.5 67.469 1296.47 56.5 1310 56.5C1323.53 56.5 1334.5 67.469 1334.5 81Z" fill="var(--art-paper)" strokeWidth="3" stroke="var(--art-court)"/>
@@ -280,67 +280,6 @@ export function WelcomeHeroIllustration(props: ArtProps) {
       </clipPath>
       <clipPath id="WelcomeHero-clip1_7_1124">
       <rect width="400" height="230" fill="white" transform="translate(1260 -120)"/>
-      </clipPath>
-      </defs>
-    </svg>
-  );
-}
-
-export function TournamentCoverIllustration(props: ArtProps) {
-  return (
-    <svg viewBox="0 0 1200 630" fill="none" aria-hidden focusable="false" {...props}>
-      <g clipPath="url(#TournamentCover-clip0_7_1227)">
-      <rect width="1200" height="630" fill="var(--art-mist)"/>
-      <rect x="736" width="464" height="630" fill="var(--art-court)"/>
-      <g clipPath="url(#TournamentCover-clip1_7_1227)">
-      <path d="M688 -98H1334V728H688V-98Z" strokeWidth="4" stroke="var(--art-chalk)"/>
-      <rect x="902.667" y="-100" width="4" height="830" fill="var(--art-chalk)"/>
-      <rect x="1011" y="-100" width="4" height="830" fill="var(--art-chalk)"/>
-      <rect x="1119.33" y="-100" width="4" height="830" fill="var(--art-chalk)"/>
-      </g>
-      <rect x="659" width="8" height="630" fill="var(--art-net)"/>
-      <g clipPath="url(#TournamentCover-clip2_7_1227)">
-      <rect width="69" height="630" transform="translate(667)" fill="var(--art-wash)"/>
-      <rect x="681" width="2" height="630" fill="var(--art-line)"/>
-      <rect x="699" width="2" height="630" fill="var(--art-line)"/>
-      <rect x="717" width="2" height="630" fill="var(--art-line)"/>
-      <rect x="667" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="28" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="56" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="84" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="112" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="140" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="168" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="196" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="224" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="252" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="280" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="308" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="336" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="364" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="392" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="420" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="448" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="476" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="504" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="532" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="560" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="588" width="69" height="2" fill="var(--art-line)"/>
-      <rect x="667" y="616" width="69" height="2" fill="var(--art-line)"/>
-      </g>
-      <path d="M940 530V450H1110V400" strokeWidth="6" stroke="var(--art-chalk)"/>
-      <circle cx="1110" cy="400" r="14" fill="var(--art-chalk)"/>
-      <rect y="580" width="160" height="6" fill="var(--art-line)"/>
-      </g>
-      <defs>
-      <clipPath id="TournamentCover-clip0_7_1227">
-      <rect width="1200" height="630" fill="white"/>
-      </clipPath>
-      <clipPath id="TournamentCover-clip1_7_1227">
-      <rect width="650" height="830" fill="white" transform="translate(686 -100)"/>
-      </clipPath>
-      <clipPath id="TournamentCover-clip2_7_1227">
-      <rect width="69" height="630" fill="white" transform="translate(667)"/>
       </clipPath>
       </defs>
     </svg>

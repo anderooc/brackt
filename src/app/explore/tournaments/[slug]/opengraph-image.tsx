@@ -12,6 +12,10 @@ import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { bracktLogoSvgMarkup } from "@/components/brand/logo";
+import {
+  COVER_SCENE_ASPECT,
+  coverSceneSvgMarkup,
+} from "@/components/brand/cover-scene";
 import { formatTournamentDateDisplay } from "@/lib/date-iso";
 import { loadPublicTournamentShell } from "@/lib/tournament-public/load-shell";
 
@@ -23,6 +27,7 @@ const INK = "#17243C";
 const COURT = "#315CA8";
 const NET = "#C92F45";
 const MUTED = "#4A5B78";
+const MIST = "#EFF4FB";
 
 const STATUS_PILLS: Record<string, { label: string; color: string } | undefined> = {
   registration_open: { label: "Registration open", color: COURT },
@@ -42,7 +47,7 @@ const asset = (path: string) => readFile(join(process.cwd(), path));
 const dataUrl = (mime: string, bytes: Buffer | string) =>
   `url("data:${mime};base64,${Buffer.from(bytes).toString("base64")}")`;
 
-/** Share card for a tournament, drawn on the Center Court cover template. */
+/** Share card for a tournament: details beside the court-and-net cover scene. */
 export default async function TournamentOpenGraphImage({
   params,
 }: {
@@ -60,11 +65,12 @@ export default async function TournamentOpenGraphImage({
     });
   }
 
-  const [cover, semibold, extrabold] = await Promise.all([
-    asset("public/brand/tournament-cover.png"),
+  const [semibold, extrabold] = await Promise.all([
     asset("src/assets/fonts/archivo-latin-600-normal.woff"),
     asset("src/assets/fonts/archivo-latin-800-normal.woff"),
   ]);
+  const sceneHeight = 560;
+  const sceneWidth = Math.round(sceneHeight * COVER_SCENE_ASPECT);
 
   const { name, date, location, status } = shell.listItem;
   const pill = STATUS_PILLS[status];
@@ -76,18 +82,31 @@ export default async function TournamentOpenGraphImage({
           width: "100%",
           height: "100%",
           display: "flex",
+          position: "relative",
           fontFamily: "Archivo",
-          backgroundImage: dataUrl("image/png", cover),
-          backgroundSize: "1200px 630px",
+          backgroundColor: MIST,
+          backgroundImage:
+            "radial-gradient(ellipse 70% 80% at 0% 0%, rgba(49, 92, 168, 0.16), transparent 70%)",
         }}
       >
         <div
           style={{
             position: "absolute",
+            right: 28,
+            top: (630 - sceneHeight) / 2,
+            width: sceneWidth,
+            height: sceneHeight,
+            backgroundImage: dataUrl("image/svg+xml", coverSceneSvgMarkup()),
+            backgroundSize: `${sceneWidth}px ${sceneHeight}px`,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
             left: 72,
             top: 64,
-            bottom: 104,
-            width: 540,
+            bottom: 84,
+            width: 500,
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",

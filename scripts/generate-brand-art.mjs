@@ -42,8 +42,9 @@ const ILLUSTRATIONS = {
   BringTeamsTogether: "brackt-onboarding-bring-teams-together.svg",
   FollowBracket: "brackt-onboarding-follow-bracket.svg",
   WelcomeHero: "brackt-web-welcome-hero.svg",
-  TournamentCover: "brackt-tournament-cover-template.svg",
 };
+
+const NET_FABRIC_OPACITY = 0.14;
 
 const PALETTE = {
   "#315ca8": "var(--art-court)",
@@ -60,9 +61,46 @@ function toJsxAttrs(markup) {
   });
 }
 
+/**
+ * Net mesh drawn from the fabric outline: rows run parallel to the top tape
+ * and columns start on the tape's centreline, so no strand pokes past the red.
+ */
+function netMesh(x0, y0, x1, y1, height, columns = 8, rows = 3) {
+  const slope = (y1 - y0) / (x1 - x0);
+  const r = (n) => Math.round(n * 100) / 100;
+  const parts = [];
+  for (let i = 1; i < rows; i++) {
+    const dy = (height * i) / rows;
+    parts.push(`M${x0} ${r(y0 + dy)}L${x1} ${r(y1 + dy)}`);
+  }
+  for (let i = 1; i < columns; i++) {
+    const x = x0 + ((x1 - x0) * i) / columns;
+    const top = y0 + slope * (x - x0);
+    parts.push(`M${r(x)} ${r(top)}V${r(top + height)}`);
+  }
+  return parts.join("");
+}
+
+// Figma's mesh rows aren't parallel to the tape and its columns start above
+// it; rebuild the mesh path that follows each net fabric outline.
+function straightenNets(markup) {
+  return markup.replace(
+    /(<path d="M(\d+) (\d+)L(\d+) (\d+)V(\d+)L\d+ \d+V\d+Z" fill="#EFF4FB" stroke-width="2" stroke="#B9CDE9"\/>\n<path d=")[^"]+(" stroke-width="2" stroke="#B9CDE9"\/>)/g,
+    (_match, head, x0, y0, x1, y1, bottom, tail) =>
+      head + netMesh(+x0, +y0, +x1, +y1, +bottom - +y1) + tail
+  );
+}
+
 function recolor(markup) {
   const [body, defs = ""] = markup.split("<defs>");
   let out = body;
+
+  // Net fabric is the one mist-filled shape with a thin line stroke. Make it
+  // a faint tint so the court shows through the mesh instead of the page.
+  out = out.replace(
+    /fill="#EFF4FB" stroke-width="2" stroke="#B9CDE9"/g,
+    `fill="var(--art-chalk)" fill-opacity="${NET_FABRIC_OPACITY}" stroke-width="2" stroke="#B9CDE9"`
+  );
 
   // White fills: on an outlined shape it's the page surface (a ball, a
   // panel); on a bare shape it's chalk drawn on court-blue.
@@ -96,7 +134,7 @@ function convert(name, file) {
       new RegExp(`<rect width="${width}" height="${height}" fill="white"/>\\n?`),
       ""
     ) + (defs === undefined ? "" : `<defs>${defs}`);
-  inner = recolor(inner);
+  inner = recolor(straightenNets(inner));
   inner = inner.replace(/id="([^"]+)"/g, `id="${name}-$1"`);
   inner = inner.replace(/url\(#([^)]+)\)/g, `url(#${name}-$1)`);
   inner = toJsxAttrs(inner);
