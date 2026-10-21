@@ -7,6 +7,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/layout/site-header";
 import { PublicSiteFooter } from "@/components/layout/public-site-footer";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { TournamentCover } from "@/components/brand/tournament-cover";
 import { TeamAttributesBadges } from "@/components/team-attributes-badges";
 import { TournamentHostSchoolLink } from "@/components/tournament-host-school-link";
 import { TournamentHeaderMeta } from "@/components/tournament-header-meta";
@@ -43,35 +44,35 @@ export async function PublicTournamentLayout({
             ← All tournaments
           </Link>
 
-          <div className="space-y-2">
-            <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-              <h1 className="min-w-0 max-w-full text-balance text-2xl font-bold tracking-tight sm:text-3xl">
-                {listItem.name}
-              </h1>
+          <TournamentCover>
+            <div className="flex min-w-0 flex-col gap-2.5">
               <StatusBadge
                 kind="tournament"
                 status={listItem.status}
                 date={listItem.date}
                 className="shrink-0 self-start"
               />
-            </div>
-            <TournamentHeaderMeta
-              location={listItem.location}
-              address={shell.address}
-              date={listItem.date}
-              organizerName={shell.organizerName}
-            />
-            <div className="flex min-w-0 max-w-full items-center gap-1.5 max-md:overflow-x-auto max-md:pb-0.5 max-md:[scrollbar-width:none]">
-              <TeamAttributesBadges
-                gender={listItem.gender}
-                region={listItem.region}
+              <h1 className="min-w-0 max-w-full text-balance text-2xl font-extrabold tracking-tight sm:text-3xl">
+                {listItem.name}
+              </h1>
+              <TournamentHeaderMeta
+                location={listItem.location}
+                address={shell.address}
+                date={listItem.date}
+                organizerName={shell.organizerName}
               />
-              <TournamentHostSchoolLink
-                school={listItem.hostSchool}
-                className="shrink-0"
-              />
+              <div className="flex min-w-0 max-w-full items-center gap-1.5 max-md:overflow-x-auto max-md:pb-0.5 max-md:[scrollbar-width:none]">
+                <TeamAttributesBadges
+                  gender={listItem.gender}
+                  region={listItem.region}
+                />
+                <TournamentHostSchoolLink
+                  school={listItem.hostSchool}
+                  className="shrink-0"
+                />
+              </div>
             </div>
-          </div>
+          </TournamentCover>
 
           <PublicTournamentNav
             slug={shell.slug}

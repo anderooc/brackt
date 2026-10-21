@@ -23,6 +23,7 @@ export async function generateMetadata({
     const shell = await loadPublicTournamentShell(slug);
     return pageMetadata(pageTitle("Pools", shell.listItem.name), undefined, {
       canonical: `/explore/tournaments/${slug}/pools`,
+      image: `/explore/tournaments/${slug}/opengraph-image`,
     });
   } catch {
     return pageMetadata("Pools");

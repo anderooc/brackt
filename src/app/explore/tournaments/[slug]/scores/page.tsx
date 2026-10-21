@@ -25,6 +25,7 @@ export async function generateMetadata({
     const shell = await loadPublicTournamentShell(slug);
     return pageMetadata(pageTitle("Live scores", shell.listItem.name), undefined, {
       canonical: `/explore/tournaments/${slug}/scores`,
+      image: `/explore/tournaments/${slug}/opengraph-image`,
     });
   } catch {
     return pageMetadata("Live scores");

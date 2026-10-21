@@ -24,6 +24,7 @@ export async function generateMetadata({
     const shell = await loadPublicTournamentShell(slug);
     return pageMetadata(pageTitle("Bracket", shell.listItem.name), undefined, {
       canonical: `/explore/tournaments/${slug}/bracket`,
+      image: `/explore/tournaments/${slug}/opengraph-image`,
     });
   } catch {
     return pageMetadata("Bracket");

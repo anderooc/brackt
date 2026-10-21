@@ -40,6 +40,7 @@ export async function generateMetadata({
   const teams = [match.teamA?.name, match.teamB?.name].filter(Boolean).join(" vs ");
   return pageMetadata(teams || "Match", undefined, {
     canonical: `/explore/tournaments/${slug}/matches/${matchSlug}`,
+    image: `/explore/tournaments/${slug}/opengraph-image`,
   });
 }
 

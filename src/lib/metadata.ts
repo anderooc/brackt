@@ -80,8 +80,11 @@ export function pageMetadata(
   options?: {
     canonical?: string;
     noIndex?: boolean;
+    /** Share image path; defaults to the site-wide social preview. */
+    image?: string;
   }
 ): Metadata {
+  const image = options?.image ?? "/opengraph-image";
   return {
     title,
     ...(description ? { description } : {}),
@@ -93,13 +96,13 @@ export function pageMetadata(
             ...(description ? { description } : {}),
             url: options.canonical,
             siteName: APP_NAME,
-            images: [{ url: "/opengraph-image", width: 1200, height: 630 }],
+            images: [{ url: image, width: 1200, height: 630 }],
           },
           twitter: {
             card: "summary_large_image",
             title,
             ...(description ? { description } : {}),
-            images: ["/opengraph-image"],
+            images: [image],
           },
         }
       : {}),

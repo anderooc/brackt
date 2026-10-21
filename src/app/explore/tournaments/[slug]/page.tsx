@@ -32,6 +32,7 @@ export async function generateMetadata({
       `${shell.listItem.name} is a collegiate club volleyball tournament in ${shell.listItem.location} on ${formatTournamentDateDisplay(shell.listItem.date)}.`;
     return pageMetadata(shell.listItem.name, description, {
       canonical: `/explore/tournaments/${slug}`,
+      image: `/explore/tournaments/${slug}/opengraph-image`,
     });
   } catch {
     return pageMetadata("Tournament not found", undefined, { noIndex: true });
