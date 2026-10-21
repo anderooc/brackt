@@ -18,7 +18,8 @@
 
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import type { TextInput } from "react-native";
+import { StyleSheet, type TextInput } from "react-native";
+import { WEB_BASE_URL } from "~/api/config";
 import { signUpAccount } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import {
@@ -29,6 +30,7 @@ import {
   useExitAuthFlow,
 } from "~/components/auth-screen";
 import { FormField } from "~/components/create-form";
+import { openExternalUrl } from "~/lib/links";
 import { useThemeColors } from "~/theme/colors";
 import { AppText, Banner, Button, haptics } from "~/ui";
 
@@ -163,6 +165,28 @@ export default function SignUpScreen() {
           disabled={!canSubmit}
           fullWidth
         />
+        <AppText variant="footnote" tone="muted" style={styles.consent}>
+          By creating an account, you agree to the{" "}
+          <AppText
+            variant="footnote"
+            tone="primary"
+            accessibilityRole="link"
+            onPress={() => void openExternalUrl(`${WEB_BASE_URL}/terms`)}
+          >
+            Terms of use
+          </AppText>
+          , including no tolerance for abusive or objectionable content, and
+          the{" "}
+          <AppText
+            variant="footnote"
+            tone="primary"
+            accessibilityRole="link"
+            onPress={() => void openExternalUrl(`${WEB_BASE_URL}/privacy`)}
+          >
+            Privacy notice
+          </AppText>
+          .
+        </AppText>
         <AuthLink
           label="Already have an account? Sign in"
           onPress={() => router.dismissTo("/sign-in")}
@@ -171,3 +195,7 @@ export default function SignUpScreen() {
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  consent: { textAlign: "center" },
+});

@@ -41,6 +41,7 @@ import {
 import { useSession } from "~/auth/session";
 import { supabase } from "~/auth/supabase";
 import { useThemeColors, withAlpha } from "~/theme/colors";
+import { ChatMessageActionsSheet } from "~/tournament/chat-message-actions";
 import { subscribeToTournamentChat } from "~/tournament/chat-realtime";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
@@ -129,7 +130,13 @@ function authorLabel(message: TournamentChatMessageContract): string {
     : message.authorName;
 }
 
-function MessageBubble({ message }: { message: TournamentChatMessageContract }) {
+function MessageBubble({
+  message,
+  onOpenActions,
+}: {
+  message: TournamentChatMessageContract;
+  onOpenActions?: () => void;
+}) {
   const colors = useThemeColors();
   const own = message.isOwn;
   const time = new Date(message.createdAt).toLocaleTimeString(undefined, {
@@ -138,10 +145,25 @@ function MessageBubble({ message }: { message: TournamentChatMessageContract }) 
   });
 
   return (
-    <View
+    <Pressable
       style={[styles.bubbleWrap, own ? styles.bubbleWrapOwn : styles.bubbleWrapOther]}
       accessible
       accessibilityLabel={`${own ? "You" : authorLabel(message)}, ${time}. ${message.body}`}
+      accessibilityHint={onOpenActions ? "Long press to report or block" : undefined}
+      accessibilityActions={
+        onOpenActions ? [{ name: "longpress", label: "Report or block" }] : undefined
+      }
+      onAccessibilityAction={onOpenActions}
+      onLongPress={
+        onOpenActions
+          ? () => {
+              haptics.selection();
+              onOpenActions();
+            }
+          : undefined
+      }
+      delayLongPress={350}
+      disabled={!onOpenActions}
     >
       {!own ? (
         <AppText
@@ -172,7 +194,7 @@ function MessageBubble({ message }: { message: TournamentChatMessageContract }) 
       <AppText variant="caption" tone="muted" style={styles.time}>
         {time}
       </AppText>
-    </View>
+    </Pressable>
   );
 }
 
@@ -227,6 +249,9 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionsFor, setActionsFor] = useState<TournamentChatMessageContract | null>(
+    null
+  );
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const nearBottom = useRef(true);
   const hasScrolled = useRef(false);
@@ -417,7 +442,13 @@ export default function ChatScreen() {
               </AppText>
             );
           }
-          return <MessageBubble message={item.message} />;
+          const message = item.message;
+          return (
+            <MessageBubble
+              message={message}
+              onOpenActions={message.isOwn ? undefined : () => setActionsFor(message)}
+            />
+          );
         }}
       />
 
@@ -485,6 +516,13 @@ export default function ChatScreen() {
           </View>
         )}
       </BottomBar>
+
+      <ChatMessageActionsSheet
+        slug={slug}
+        message={actionsFor}
+        onClose={() => setActionsFor(null)}
+        onBlocked={() => void refresh()}
+      />
     </View>
   );
 }

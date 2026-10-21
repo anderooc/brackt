@@ -212,6 +212,12 @@ export default function ProfileScreen() {
             icon="key-outline"
             onPress={() => router.push("/profile/password")}
           />
+          <ListRow
+            title="Blocked users"
+            subtitle="People whose chat messages you've hidden"
+            icon="hand-left-outline"
+            onPress={() => router.push("/profile/blocked")}
+          />
         </ListGroup>
       </Section>
 
@@ -233,6 +239,15 @@ export default function ProfileScreen() {
 
       <Section title="About">
         <ListGroup>
+          <ListRow
+            title="Help and support"
+            icon="help-buoy-outline"
+            iconTone="muted"
+            accessibilityHint="Opens in your browser"
+            trailing={<Icon name="open-outline" size={18} tone="muted" />}
+            chevron={false}
+            onPress={() => void openExternalUrl(`${WEB_BASE_URL}/support`)}
+          />
           <ListRow
             title="Privacy notice"
             icon="shield-checkmark-outline"

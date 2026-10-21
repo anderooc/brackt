@@ -80,6 +80,8 @@ import type {
 } from "@/lib/api/contracts/tournament-host";
 import type {
   TournamentBracketSettingsContract,
+  BlockedUserContract,
+  ChatReportReasonContract,
   TournamentChatContract,
   TournamentEmailContract,
   TournamentEmailPreviewContract,
@@ -818,6 +820,30 @@ export function postTournamentChatMessage(
     method: "POST",
     body,
   });
+}
+
+export function reportTournamentChatMessage(
+  slug: string,
+  body: { messageId: string; reason: ChatReportReasonContract }
+): Promise<{ reported: true }> {
+  return apiRequest(tournamentPath(slug, "/chat/report"), {
+    method: "POST",
+    body,
+  });
+}
+
+export function fetchBlockedUsers(
+  signal?: AbortSignal
+): Promise<{ users: BlockedUserContract[] }> {
+  return apiRequest("/api/v1/me/blocks", { signal });
+}
+
+export function blockUser(userId: string): Promise<{ users: BlockedUserContract[] }> {
+  return apiRequest("/api/v1/me/blocks", { method: "POST", body: { userId } });
+}
+
+export function unblockUser(userId: string): Promise<{ users: BlockedUserContract[] }> {
+  return apiRequest("/api/v1/me/blocks", { method: "DELETE", body: { userId } });
 }
 
 export function markTournamentChatRead(

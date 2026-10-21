@@ -44,6 +44,10 @@ export default function ProfileStackLayout() {
         options={{ title: "Change password", headerBackTitle: "Profile" }}
       />
       <Stack.Screen
+        name="blocked"
+        options={{ title: "Blocked users", headerBackTitle: "Profile" }}
+      />
+      <Stack.Screen
         name="delete-account"
         options={{ title: "Delete account", headerBackTitle: "Profile" }}
       />
