@@ -21,11 +21,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { parseISODate } from "@/lib/date-iso";
 import { cn } from "@/lib/utils";
+import {
+  TRACKPAD_DELTA_PER_STEP,
+  isWheelNotch,
+  takeSteps,
+} from "@/lib/wheel-input";
 
 const LINE_HEIGHT_PX = 36;
 const VISIBLE_RADIUS = 2;
 const WHEEL_HEIGHT_PX = LINE_HEIGHT_PX * (VISIBLE_RADIUS * 2 + 1);
-const WHEEL_DELTA_PER_DATE = 160;
 const FADE_IDLE_MS = 1100;
 const DRAG_STEP_PX = 36;
 const CLICK_SLOP_PX = 6;
@@ -180,19 +184,18 @@ export function DateScrollWheel({
       e.preventDefault();
       e.stopPropagation();
       if (Math.abs(e.deltaY) < 1) return;
+
+      // One date per mouse notch regardless of OS wheel acceleration.
+      if (isWheelNotch(e)) {
+        wheelAccumulatorRef.current = 0;
+        advance(Math.sign(e.deltaY));
+        return;
+      }
+
       // Accumulator lives in a ref so re-attaching this listener on each date
       // change doesn't discard leftover trackpad momentum mid-gesture.
       wheelAccumulatorRef.current += e.deltaY;
-
-      let steps = 0;
-      while (wheelAccumulatorRef.current >= WHEEL_DELTA_PER_DATE) {
-        steps += 1;
-        wheelAccumulatorRef.current -= WHEEL_DELTA_PER_DATE;
-      }
-      while (wheelAccumulatorRef.current <= -WHEEL_DELTA_PER_DATE) {
-        steps -= 1;
-        wheelAccumulatorRef.current += WHEEL_DELTA_PER_DATE;
-      }
+      const steps = takeSteps(wheelAccumulatorRef, TRACKPAD_DELTA_PER_STEP);
       // One move for the whole event: `advance` reads the committed date, so
       // repeated single steps in a fast flick would collapse into one.
       advance(steps);
