@@ -31,8 +31,8 @@ describe("PWA Manifest & Service Worker", () => {
     assert.equal(config.display, "standalone");
     assert.equal(config.start_url, "/explore");
     assert.equal(config.scope, "/");
-    assert.equal(config.theme_color, "#c92f45");
-    assert.equal(config.background_color, "#09090b");
+    assert.equal(config.theme_color, "#315ca8");
+    assert.equal(config.background_color, "#315ca8");
 
     // Must have icons including 192, 512, and maskable
     assert.ok(config.icons && config.icons.length >= 3);

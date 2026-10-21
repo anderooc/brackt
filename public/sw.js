@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `brackt-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `brackt-pages-${CACHE_VERSION}`;
 const API_CACHE = `brackt-api-${CACHE_VERSION}`;
