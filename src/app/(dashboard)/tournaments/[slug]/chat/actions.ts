@@ -25,7 +25,6 @@ import { requireUser } from "@/lib/auth";
 import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { db } from "@/lib/db";
 import {
-  contentFlags,
   teamMembers,
   tournamentChatChannels,
   tournamentChatMessages,
@@ -41,22 +40,19 @@ import {
 } from "@/lib/tournaments/chat-access";
 import { resolveIsTournamentOrganizer } from "@/lib/tournaments/permissions";
 import { TOURNAMENT_CHAT_BODY_MAX } from "@/lib/tournaments/chat-constants";
+import {
+  CHAT_REPORT_REASONS,
+  recordChatMessageReport,
+} from "@/lib/tournaments/chat-moderation";
 import { notifyRegisteredCaptainsOfChatAnnouncement } from "@/lib/notifications/tournament-events";
 import type { EligibleSpeakingTeam } from "@/lib/tournaments/chat-access";
 import type { TournamentChatChannelKind } from "@/types";
 
 const CHAT_RATE_LIMIT_PER_HOUR = 30;
 
-const REPORT_REASONS = [
-  "spam",
-  "harassment",
-  "inappropriate",
-  "other",
-] as const;
-
 const reportMessageSchema = z.object({
   messageId: z.string().uuid(),
-  reason: z.enum(REPORT_REASONS),
+  reason: z.enum(CHAT_REPORT_REASONS),
 });
 
 type ChatChannelRow = {
@@ -289,38 +285,12 @@ export async function reportTournamentChatMessage(
     } as const;
   }
 
-  const [message] = await db
-    .select({
-      id: tournamentChatMessages.id,
-      authorUserId: tournamentChatMessages.authorUserId,
-      body: tournamentChatMessages.body,
-      tournamentId: tournamentChatMessages.tournamentId,
-    })
-    .from(tournamentChatMessages)
-    .where(
-      and(
-        eq(tournamentChatMessages.id, parsed.data.messageId),
-        eq(tournamentChatMessages.tournamentId, tournamentId)
-      )
-    )
-    .limit(1);
-
-  if (!message) {
-    return { error: "Message not found." as const };
-  }
-
-  if (message.authorUserId === loaded.user.id) {
-    return { error: "You cannot report your own message." as const };
-  }
-
-  await db.insert(contentFlags).values({
-    userId: loaded.user.id,
-    area: `chat.message:${message.id}`,
-    blockedWord: "user-report",
-    text: `Reason: ${parsed.data.reason}\n\n${message.body}`,
-  });
-
-  return { success: true as const };
+  return recordChatMessageReport(
+    loaded.user.id,
+    tournamentId,
+    parsed.data.messageId,
+    parsed.data.reason
+  );
 }
 
 export async function markTournamentChatChannelRead(

@@ -62,6 +62,10 @@ import {
   waiverSettingsFromTournament,
 } from "@/lib/tournaments/waiver-access";
 import {
+  CHAT_REPORT_REASONS,
+  recordChatMessageReport,
+} from "@/lib/tournaments/chat-moderation";
+import {
   captainAttestWaiverPlayerForUser,
   clearWaiverCompletionForUser,
   hostWaivePlayerWaiverForUser,
@@ -204,6 +208,36 @@ export async function updateWaiverPlayerForViewer(
   if (result.error) throw badRequest(result.error);
 
   return { success: true as const };
+}
+
+export async function reportChatMessageForViewer(
+  slug: string,
+  user: AppUser,
+  input: { messageId: string; reason: string }
+) {
+  const tournament = await requirePostedTournament(slug);
+  const { teamIds } = await loadViewerTeamMembership(user.id);
+  const canView = await userCanViewTournamentChat(tournament, user, teamIds);
+  if (!canView) throw forbidden("You do not have access to this tournament chat.");
+
+  const parsed = z
+    .object({
+      messageId: z.string().uuid(),
+      reason: z.enum(CHAT_REPORT_REASONS),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    throw badRequest(parsed.error.issues[0]?.message ?? "Invalid report.");
+  }
+
+  const result = await recordChatMessageReport(
+    user.id,
+    tournament.id,
+    parsed.data.messageId,
+    parsed.data.reason
+  );
+  if (result.error) throw badRequest(result.error);
+  return { reported: true as const };
 }
 
 export async function submitPaymentForViewer(

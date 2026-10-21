@@ -875,6 +875,26 @@ export const userWebPushSubscriptions = pgTable(
   ]
 );
 
+/** One user hiding another's chat messages (App Store UGC requirement). */
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerUserId: uuid("blocker_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    blockedUserId: uuid("blocked_user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.blockerUserId, t.blockedUserId] }),
+    check("user_blocks_not_self", sql`${t.blockerUserId} <> ${t.blockedUserId}`),
+  ]
+);
+
 export const userNotificationPreferences = pgTable(
   "user_notification_preferences",
   {

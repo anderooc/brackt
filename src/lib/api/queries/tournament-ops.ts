@@ -28,6 +28,7 @@ import {
   tournaments,
 } from "@/lib/db/schema";
 import { formatTeamGender } from "@/lib/labels/team";
+import { loadBlockedUserIds } from "@/lib/tournaments/chat-moderation";
 import {
   canPostInChatChannel,
   canPostInTournamentChat,
@@ -592,9 +593,11 @@ export async function loadTournamentChat(
     tournament.id,
     channels.map((channel) => channel.id)
   );
+  const blocked = await loadBlockedUserIds(user.id);
 
   const messagesByChannel = new Map<string, typeof messages>();
   for (const message of messages) {
+    if (blocked.has(message.authorUserId)) continue;
     const list = messagesByChannel.get(message.channelId) ?? [];
     list.push(message);
     messagesByChannel.set(message.channelId, list);
@@ -611,6 +614,7 @@ export async function loadTournamentChat(
         .reverse()
         .map((message) => ({
           id: message.id,
+          authorUserId: message.authorUserId,
           authorName: message.authorName,
           teamName: message.teamName,
           body: message.body,

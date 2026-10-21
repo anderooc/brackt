@@ -180,6 +180,7 @@ export interface TournamentPaymentContract {
 
 export interface TournamentChatMessageContract {
   id: string;
+  authorUserId: string;
   authorName: string;
   teamName: string | null;
   body: string;
@@ -195,6 +196,18 @@ export interface TournamentChatChannelContract {
   canPost: boolean;
   unreadCount: number;
   messages: TournamentChatMessageContract[];
+}
+
+export type ChatReportReasonContract =
+  | "spam"
+  | "harassment"
+  | "inappropriate"
+  | "other";
+
+export interface BlockedUserContract {
+  userId: string;
+  fullName: string;
+  blockedAt: string;
 }
 
 export interface TournamentChatContract {
