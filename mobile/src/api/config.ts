@@ -69,7 +69,9 @@ function developmentBaseUrl(): string {
   return devServerBaseUrl() ?? forLoopbackHost(`http://localhost:${API_PORT}`);
 }
 
-const PRODUCTION_BASE_URL = "https://brack-t.com";
+// The apex domain 308-redirects here, and redirects to another host can drop
+// the Authorization header, so release builds must call www directly.
+const PRODUCTION_BASE_URL = "https://www.brack-t.com";
 
 /** `.env.example` ships `KEY=` lines, which inline as "" rather than undefined. */
 function envUrl(value: string | undefined): string | undefined {

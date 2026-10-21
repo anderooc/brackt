@@ -11,13 +11,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://brack-t.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.brack-t.com"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://brack-t.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.brack-t.com"
       }
     }
   },
