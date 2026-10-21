@@ -45,6 +45,9 @@ export function PublicSiteFooter({ showTagline = false }: { showTagline?: boolea
         <Link href="/terms" className="underline-offset-4 hover:underline">
           Terms
         </Link>
+        <Link href="/support" className="underline-offset-4 hover:underline">
+          Support
+        </Link>
       </nav>
       <p className="mt-3 text-xs">
         © {COPYRIGHT_YEAR} {COPYRIGHT_HOLDER}. Licensed under{" "}

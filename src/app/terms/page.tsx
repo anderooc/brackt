@@ -33,7 +33,7 @@ export default async function TermsPage() {
               Terms of use
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              Effective July 21, 2026
+              Effective October 21, 2026
             </p>
             <p className="mt-5 max-w-2xl text-pretty leading-relaxed text-foreground/90">
               These terms set expectations for using brackt to organize,
@@ -52,6 +52,16 @@ export default async function TermsPage() {
                 another user&apos;s account, disrupt the service, scrape protected
                 data, send spam, upload malicious material, or post abusive or
                 misleading content.
+              </p>
+              <p>
+                There is no tolerance for objectionable content or abusive
+                users. You can report chat messages and block other users from
+                the app. Reports are reviewed, and content or accounts that
+                violate these terms are removed. See{" "}
+                <Link className="underline" href="/support#report">
+                  reporting abuse
+                </Link>
+                .
               </p>
             </section>
 
