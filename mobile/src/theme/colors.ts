@@ -42,38 +42,43 @@ export interface ThemeColors {
   live: string;
 }
 
+/*
+ * "Center Court" palette: court blue leads, net red is reserved for live play.
+ * `secondary` is the web's `--secondary-foreground` (court ink), since native
+ * only uses it as a text tone.
+ */
 const light: ThemeColors = {
-  background: "#f8fdff",
-  foreground: "#0d182b",
-  card: "#fdffff",
-  primary: "#cf1743",
-  primaryForeground: "#f7fcff",
-  secondary: "#00499c",
-  muted: "#ebf3fc",
-  mutedForeground: "#395170",
-  border: "#bacce5",
+  background: "#fafcff",
+  foreground: "#17243c",
+  card: "#ffffff",
+  primary: "#315ca8",
+  primaryForeground: "#fafcff",
+  secondary: "#1e407c",
+  muted: "#eff4fb",
+  mutedForeground: "#47566f",
+  border: "#cedaeb",
   destructive: "#e7000b",
   success: "#137d41",
   warning: "#905d00",
-  info: "#195bb0",
-  live: "#cf1743",
+  info: "#315ca8",
+  live: "#c92f45",
 };
 
 const dark: ThemeColors = {
-  background: "#0d1116",
-  foreground: "#f1f5fc",
-  card: "#15181f",
-  primary: "#ff6879",
-  primaryForeground: "#1d0c0d",
-  secondary: "#73a6ef",
-  muted: "#1e242e",
-  mutedForeground: "#98a6b8",
-  border: "#2a313d",
+  background: "#0c131f",
+  foreground: "#f0f4f9",
+  card: "#121b2a",
+  primary: "#77a6ec",
+  primaryForeground: "#0c1628",
+  secondary: "#d0dff6",
+  muted: "#1a2332",
+  mutedForeground: "#9facbe",
+  border: "#293345",
   destructive: "#ff6e70",
   success: "#61da92",
   warning: "#f3bd5c",
-  info: "#73b6fa",
-  live: "#ff6879",
+  info: "#88b3f0",
+  live: "#f66b74",
 };
 
 export function useThemeColors(): ThemeColors {

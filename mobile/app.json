@@ -17,7 +17,7 @@
     "android": {
       "package": "com.brackt.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#315CA8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -29,6 +29,19 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#315CA8",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#17243C"
+          }
+        }
+      ],
       "expo-secure-store",
       "expo-sharing",
       "expo-notifications"

@@ -19,14 +19,19 @@
 import { useNavigation, useRouter } from "expo-router";
 import { useCallback, useState, type ReactNode, type Ref } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   TextInput,
   type TextInputProps,
+  useColorScheme,
   View,
 } from "react-native";
+
+const LOGO = require("../../assets/brand/logo.png");
+const LOGO_DARK = require("../../assets/brand/logo-dark.png");
 import { useThemeColors } from "~/theme/colors";
 import { AppText, Button, radius, space } from "~/ui";
 
@@ -67,6 +72,7 @@ export function AuthScreen({
   lead?: string;
 }) {
   const colors = useThemeColors();
+  const scheme = useColorScheme();
 
   return (
     <KeyboardAvoidingView
@@ -80,6 +86,13 @@ export function AuthScreen({
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
+        <Image
+          source={scheme === "dark" ? LOGO_DARK : LOGO}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityRole="image"
+          accessibilityLabel="brackt"
+        />
         {lead ? (
           <AppText variant="callout" tone="muted">
             {lead}
@@ -157,6 +170,7 @@ export function AuthLink({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  logo: { width: 132, height: 32, marginBottom: space.xs },
   content: {
     paddingHorizontal: space.xxl,
     paddingTop: space.xxl,
