@@ -18,8 +18,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useState, type ReactNode } from "react";
+import {
+  useOptimistic,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   CalendarClock,
@@ -52,6 +58,9 @@ import {
   type TournamentTabId,
   type TournamentTabItem,
 } from "./constants";
+import { TournamentPanelSkeleton } from "./panels/panel-skeleton";
+
+type SelectTab = (tab: TournamentTabId, href: string) => void;
 
 export type { TournamentTabItem } from "./constants";
 
@@ -84,22 +93,29 @@ function TabNavLink({
   slug,
   tab,
   active,
+  onSelect,
   onNavigate,
 }: {
   slug: string;
   tab: TournamentTabItem;
   active: boolean;
+  onSelect: SelectTab;
   onNavigate?: () => void;
 }) {
   const Icon = TAB_ICONS[tab.id];
   const label =
     tab.count !== undefined ? `${tab.label} (${tab.count})` : tab.label;
+  const href = tournamentTabUrl(slug, tab.id);
 
   return (
     <Link
-      href={tournamentTabUrl(slug, tab.id)}
+      href={href}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
+      onNavigate={(event) => {
+        event.preventDefault();
+        onSelect(tab.id, href);
+      }}
       className={cn(
         "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors duration-150 ease-out",
         "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
@@ -134,11 +150,13 @@ function SectionNav({
   slug,
   groups,
   activeTab,
+  onSelect,
   onNavigate,
 }: {
   slug: string;
   groups: TournamentTabGroup[];
   activeTab: TournamentTabId;
+  onSelect: SelectTab;
   onNavigate?: () => void;
 }) {
   return (
@@ -155,6 +173,7 @@ function SectionNav({
                 slug={slug}
                 tab={tab}
                 active={tab.id === activeTab}
+                onSelect={onSelect}
                 onNavigate={onNavigate}
               />
             ))}
@@ -169,10 +188,12 @@ function MobileJumpNav({
   slug,
   groups,
   activeTab,
+  onSelect,
 }: {
   slug: string;
   groups: TournamentTabGroup[];
   activeTab: TournamentTabId;
+  onSelect: SelectTab;
 }) {
   const [open, setOpen] = useState(false);
   const current = findActiveTab(groups, activeTab);
@@ -222,6 +243,7 @@ function MobileJumpNav({
             slug={slug}
             groups={groups}
             activeTab={activeTab}
+            onSelect={onSelect}
             onNavigate={() => setOpen(false)}
           />
         </div>
@@ -241,6 +263,19 @@ export function TournamentTabs({
   groups: TournamentTabGroup[];
   children: ReactNode;
 }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [displayedTab, setDisplayedTab] = useOptimistic(activeTab);
+
+  // The page re-renders on the server for every tab, so switch the nav and
+  // show the panel skeleton immediately instead of waiting on that round trip.
+  const selectTab: SelectTab = (tab, href) => {
+    startTransition(() => {
+      setDisplayedTab(tab);
+      router.push(href);
+    });
+  };
+
   if (groups.length === 0) {
     return <>{children}</>;
   }
@@ -248,16 +283,32 @@ export function TournamentTabs({
   return (
     <div className="mt-2 flex flex-col gap-4 border-t border-border/80 pt-5 lg:mt-3 lg:flex-row lg:items-start lg:gap-0 lg:pt-6">
       <div className="lg:hidden">
-        <MobileJumpNav slug={slug} groups={groups} activeTab={activeTab} />
+        <MobileJumpNav
+          slug={slug}
+          groups={groups}
+          activeTab={displayedTab}
+          onSelect={selectTab}
+        />
       </div>
 
       <aside className="hidden w-56 shrink-0 lg:block lg:border-r lg:border-border/80 lg:pr-6">
         <div className="sticky top-0 max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-y-contain rounded-xl bg-muted/45 p-2 ring-1 ring-border/50 [scrollbar-width:thin] dark:bg-muted/30">
-          <SectionNav slug={slug} groups={groups} activeTab={activeTab} />
+          <SectionNav
+            slug={slug}
+            groups={groups}
+            activeTab={displayedTab}
+            onSelect={selectTab}
+          />
         </div>
       </aside>
 
-      <div className="min-w-0 flex-1 lg:pl-8">{children}</div>
+      <div className="min-w-0 flex-1 lg:pl-8">
+        {isPending && displayedTab !== activeTab ? (
+          <TournamentPanelSkeleton />
+        ) : (
+          children
+        )}
+      </div>
     </div>
   );
 }

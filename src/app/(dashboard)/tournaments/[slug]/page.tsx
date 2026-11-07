@@ -111,28 +111,42 @@ export default async function TournamentDetailPage({
     );
   }
 
-  const tournament = await getTournamentBySlugIfVisible(slug, user);
+  const [tournament, memberRows] = await Promise.all([
+    getTournamentBySlugIfVisible(slug, user),
+    db
+      .select({ teamId: teamMembers.teamId, role: teamMembers.role })
+      .from(teamMembers)
+      .where(eq(teamMembers.userId, user.id)),
+  ]);
   if (!tournament) notFound();
 
   const id = tournament.id;
-  const isOrganizer = await resolveIsTournamentOrganizer(tournament, user);
-  const canEditSetup =
-    isOrganizer && (await canEditTournamentSetup(tournament, user));
+  const myTeamIds = memberRows.map((r) => r.teamId);
+  const myTeamIdsSet = new Set(myTeamIds);
   const canManageStaff = canManageTournamentStaff(tournament, user);
-  const preparationLockedReason = isOrganizer
-    ? tournamentPreparationLockedReason(tournament)
-    : null;
   const showRegisterLink = canRegisterTeams(tournament);
+  const isOrganizerPromise = resolveIsTournamentOrganizer(tournament, user);
 
-  // Shell queries only — tab panels load their own heavy data.
+  // Shell queries only — tab panels load their own heavy data. Everything here
+  // only needs the tournament row, so it runs in one parallel wave; the
+  // organizer check is request-cached, so the access helpers share it.
   const [
+    isOrganizer,
+    canEditSetup,
     organizerRows,
     tournamentDivisions,
     courtCountRow,
     registrationCounts,
-    memberRows,
     hostSchool,
+    playSignals,
+    canDownloadPacket,
+    canAccessWaiver,
+    canAccessPayment,
+    showChatTab,
+    myPendingRow,
   ] = await Promise.all([
+    isOrganizerPromise,
+    canEditTournamentSetup(tournament, user),
     db
       .select({ fullName: users.fullName })
       .from(users)
@@ -158,12 +172,32 @@ export default async function TournamentDetailPage({
       .from(registrations)
       .where(eq(registrations.tournamentId, id))
       .groupBy(registrations.status),
-    db
-      .select({ teamId: teamMembers.teamId, role: teamMembers.role })
-      .from(teamMembers)
-      .where(eq(teamMembers.userId, user.id)),
     getHostSchoolById(tournament.hostSchoolId),
+    isOrganizerPromise.then((forOrganizer) =>
+      getTournamentPlaySignals(id, { forOrganizer })
+    ),
+    userCanDownloadTournamentPacket(tournament, user, myTeamIdsSet),
+    userCanAccessTournamentWaiver(tournament, user, myTeamIdsSet),
+    userCanAccessTournamentPayment(tournament, user, myTeamIdsSet),
+    userCanViewTournamentChat(tournament, user, myTeamIds),
+    myTeamIds.length > 0
+      ? db
+          .select({ value: count() })
+          .from(registrations)
+          .where(
+            and(
+              eq(registrations.tournamentId, id),
+              eq(registrations.status, "pending"),
+              inArray(registrations.teamId, myTeamIds)
+            )
+          )
+          .then((rows) => rows[0])
+      : Promise.resolve(undefined),
   ]);
+
+  const preparationLockedReason = isOrganizer
+    ? tournamentPreparationLockedReason(tournament)
+    : null;
 
   const organizer = organizerRows[0] ?? null;
   const courtCount = courtCountRow[0]?.value ?? 0;
@@ -180,39 +214,8 @@ export default async function TournamentDetailPage({
     }
   }
 
-  const myTeamIds = memberRows.map((r) => r.teamId);
-  const myTeamIdsSet = new Set(myTeamIds);
-
-  const [
-    playSignals,
-    canDownloadPacket,
-    canAccessWaiver,
-    canAccessPayment,
-    showChatTab,
-    myPendingRow,
-  ] = await Promise.all([
-    getTournamentPlaySignals(id, { forOrganizer: isOrganizer }),
-    userCanDownloadTournamentPacket(tournament, user, myTeamIdsSet),
-    userCanAccessTournamentWaiver(tournament, user, myTeamIdsSet),
-    userCanAccessTournamentPayment(tournament, user, myTeamIdsSet),
-    userCanViewTournamentChat(tournament, user, myTeamIds),
-    !isOrganizer && myTeamIds.length > 0
-      ? db
-          .select({ value: count() })
-          .from(registrations)
-          .where(
-            and(
-              eq(registrations.tournamentId, id),
-              eq(registrations.status, "pending"),
-              inArray(registrations.teamId, myTeamIds)
-            )
-          )
-          .then((rows) => rows[0])
-      : Promise.resolve(undefined),
-  ]);
-
   const hasScheduledMatches = playSignals.hasScheduledMatches;
-  const myPendingCount = myPendingRow?.value ?? 0;
+  const myPendingCount = isOrganizer ? 0 : (myPendingRow?.value ?? 0);
 
   const hasPoolPlayFormat = tournamentDivisions.some(
     (d) => d.format === "pool_to_bracket"
