@@ -10,9 +10,15 @@ import type { UserNotificationKind } from "@/types";
 import {
   appBaseUrl,
   getResendClient,
-  plainTextToHtml,
   tournamentEmailFromAddress,
 } from "@/lib/email/resend";
+import {
+  emailButtonHtml,
+  emailFinePrintHtml,
+  emailLinkHtml,
+  emailParagraphsHtml,
+  renderBrandedEmail,
+} from "@/lib/email/layout";
 import {
   DEFAULT_NOTIFICATION_PREFERENCE,
   NOTIFICATION_KINDS,
@@ -142,7 +148,12 @@ export async function deliverNotificationEmails(
     if (!email) continue;
 
     const link = row.href ? `${appBaseUrl()}${row.href}` : appBaseUrl();
-    const text = [row.title, row.body, `Open: ${link}`]
+    const text = [
+      row.title,
+      row.body,
+      `Open: ${link}`,
+      `Notification settings: ${appBaseUrl()}/profile`,
+    ]
       .filter(Boolean)
       .join("\n\n");
 
@@ -152,7 +163,19 @@ export async function deliverNotificationEmails(
         to: email,
         subject: row.title,
         text,
-        html: `${plainTextToHtml(text)}<p style="margin-top: 1em;"><a href="${link}">Open in brackt</a></p>`,
+        html: renderBrandedEmail({
+          preheader: row.body ?? row.title,
+          title: row.title,
+          contentHtml: [
+            row.body ? emailParagraphsHtml(row.body) : "",
+            emailButtonHtml(link, "Open in brackt"),
+            emailFinePrintHtml(
+              `Choose which updates you get by email in your ${emailLinkHtml(`${appBaseUrl()}/profile`, "notification settings")}.`
+            ),
+          ].join(""),
+          footer:
+            "You received this because email notifications are on for this kind of update in your brackt account.",
+        }),
       });
     } catch {
       // Email delivery is best-effort.

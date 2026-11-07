@@ -18,6 +18,13 @@
 
 import { Resend } from "resend";
 import { resolveAppBaseUrl } from "@/lib/metadata";
+import {
+  emailButtonHtml,
+  emailFinePrintHtml,
+  emailParagraphsHtml,
+  escapeHtml,
+  renderBrandedEmail,
+} from "@/lib/email/layout";
 
 let resendClient: Resend | null = null;
 
@@ -52,31 +59,8 @@ export function tournamentPageUrl(slug: string, tab?: string): string {
   return `${base}?tab=${tab}`;
 }
 
-export function plainTextToHtml(text: string): string {
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-
-  return `<div style="font-family: sans-serif; line-height: 1.5; color: #1a1a1a;">${escaped
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p style="margin: 0 0 1em;">${paragraph.replace(/\n/g, "<br />")}</p>`)
-    .join("")}</div>`;
-}
-
-export function emailFooterHtml(
-  tournamentName: string,
-  reason = `You received this because you are listed as a team captain for ${tournamentName} on brackt.`
-): string {
-  return `<p style="margin-top: 2em; font-size: 12px; color: #666;">${escapeHtml(reason)}</p>`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function captainFooterReason(tournamentName: string): string {
+  return `You received this because you are listed as a team captain for ${tournamentName} on brackt.`;
 }
 
 export function formatCaptainTeamLabels(recipient: {
@@ -117,19 +101,6 @@ ${input.dateDisplay} · ${input.location}
 For: ${input.teamLabels}`;
 }
 
-export function buildTournamentEmailHeaderHtml(input: {
-  tournamentName: string;
-  dateDisplay: string;
-  location: string;
-  teamLabels: string;
-}): string {
-  return `<div style="margin: 0 0 1.25em; padding-bottom: 1em; border-bottom: 1px solid #e5e5e5;">
-  <p style="margin: 0 0 0.35em; font-size: 16px; font-weight: 600; color: #111;">${escapeHtml(input.tournamentName)}</p>
-  <p style="margin: 0 0 0.35em; font-size: 13px; color: #555;">${escapeHtml(input.dateDisplay)} · ${escapeHtml(input.location)}</p>
-  <p style="margin: 0; font-size: 13px; color: #444;"><strong>For:</strong> ${escapeHtml(input.teamLabels)}</p>
-</div>`;
-}
-
 export function buildCaptainEmailHtml(input: {
   body: string;
   tournamentName: string;
@@ -140,19 +111,18 @@ export function buildCaptainEmailHtml(input: {
   ctaLabel?: string;
   footerReason?: string;
 }): string {
-  const header = buildTournamentEmailHeaderHtml({
-    tournamentName: input.tournamentName,
-    dateDisplay: input.dateDisplay,
-    location: input.location,
-    teamLabels: input.teamLabels,
-  });
-
   const cta =
     input.ctaUrl && input.ctaLabel
-      ? `<p style="margin: 1.5em 0;"><a href="${escapeHtml(input.ctaUrl)}" style="display: inline-block; padding: 10px 16px; background: #111; color: #fff; text-decoration: none; border-radius: 6px;">${escapeHtml(input.ctaLabel)}</a></p>`
+      ? emailButtonHtml(input.ctaUrl, input.ctaLabel)
       : "";
 
-  return `${header}${plainTextToHtml(input.body)}${cta}${emailFooterHtml(input.tournamentName, input.footerReason)}`;
+  return renderBrandedEmail({
+    preheader: input.body.trim().split("\n")[0],
+    eyebrow: `${input.dateDisplay} · ${input.location}`,
+    title: input.tournamentName,
+    contentHtml: `${emailFinePrintHtml(`<strong>For:</strong> ${escapeHtml(input.teamLabels)}`)}${emailParagraphsHtml(input.body)}${cta}`,
+    footer: input.footerReason ?? captainFooterReason(input.tournamentName),
+  });
 }
 
 export function buildCaptainEmailText(input: {
@@ -178,8 +148,7 @@ export function buildCaptainEmailText(input: {
       : "";
 
   const footer = `\n\n---\n${
-    input.footerReason ??
-    `You received this because you are listed as a team captain for ${input.tournamentName} on brackt.`
+    input.footerReason ?? captainFooterReason(input.tournamentName)
   }`;
 
   return `${header}\n\n${input.body}${cta}${footer}`;

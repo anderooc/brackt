@@ -5,11 +5,16 @@
 
 import {
   appBaseUrl,
-  emailFooterHtml,
   getResendClient,
-  plainTextToHtml,
   tournamentEmailFromAddress,
 } from "@/lib/email/resend";
+import {
+  emailButtonHtml,
+  emailFinePrintHtml,
+  emailLinkHtml,
+  emailParagraphsHtml,
+  renderBrandedEmail,
+} from "@/lib/email/layout";
 
 export async function sendMemberInviteEmail(input: {
   to: string;
@@ -35,7 +40,21 @@ ${signupUrl}
 
 This invite expires in 14 days.`;
 
-  const html = `${plainTextToHtml(body)}<p style="margin-top: 1.5em;"><a href="${inviteUrl}" style="color: #C93D2E; font-weight: 600;">Accept invite</a></p>${emailFooterHtml(input.targetName, `You received this because someone invited your email to a ${targetLabel} on brackt.`)}`;
+  const html = renderBrandedEmail({
+    preheader: `${input.inviterName} invited you to join ${input.targetName} on brackt.`,
+    title: `Join ${input.targetName} on brackt`,
+    contentHtml: [
+      emailParagraphsHtml(
+        `${input.inviterName} invited you to join ${input.targetName}. Accept while signed in to brackt and you'll be added to the ${targetLabel}.`
+      ),
+      emailButtonHtml(inviteUrl, "Accept invite"),
+      `<p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6;">New to brackt? ${emailLinkHtml(signupUrl, "Create an account")} with this email first, and the invite will be waiting.</p>`,
+      emailFinePrintHtml(
+        `This invite expires in 14 days. Button not working? Open ${emailLinkHtml(inviteUrl, inviteUrl)}`
+      ),
+    ].join(""),
+    footer: `You received this because someone invited your email to a ${targetLabel} on brackt. If you weren't expecting it, you can ignore this email.`,
+  });
 
   await getResendClient().emails.send({
     from: tournamentEmailFromAddress(),
