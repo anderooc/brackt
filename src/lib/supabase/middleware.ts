@@ -69,9 +69,9 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Local JWT check only; revocation is enforced by getUser() in getCurrentUser.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims ?? null;
 
   if (!user && isProtectedPage) {
     const url = request.nextUrl.clone();
