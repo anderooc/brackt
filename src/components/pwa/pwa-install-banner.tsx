@@ -53,6 +53,7 @@ export function PwaInstallBanner() {
             alt="brackt app icon"
             width={40}
             height={40}
+            loading="eager"
             className="h-full w-full object-cover"
           />
         </div>
