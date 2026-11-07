@@ -16,7 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
+
+// Dev chunk URLs are not content-hashed, so caching them serves stale code
+// (and stale inlined env values) after edits. Push handlers still run locally.
+const IS_LOCAL_DEV = ['localhost', '127.0.0.1', '[::1]'].includes(
+  self.location.hostname
+);
 const STATIC_CACHE = `brackt-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `brackt-pages-${CACHE_VERSION}`;
 const API_CACHE = `brackt-api-${CACHE_VERSION}`;
@@ -91,6 +97,8 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event: Implement Stale-While-Revalidate and Network-First gym fallback
 self.addEventListener('fetch', (event) => {
+  if (IS_LOCAL_DEV) return;
+
   const { request } = event;
   const url = new URL(request.url);
 
