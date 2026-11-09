@@ -160,7 +160,7 @@ function PaymentInstructions({ value }: { value: string | null }) {
         {value}
       </pre>
       <p className="mt-2 text-xs text-muted-foreground">
-        After registering, mark payment as sent on the tournament Payment tab.
+        After registering, mark payment as sent in the tournament’s Payment section.
       </p>
     </div>
   );

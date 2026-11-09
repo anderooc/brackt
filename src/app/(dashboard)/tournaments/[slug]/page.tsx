@@ -19,7 +19,7 @@
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Radio } from "lucide-react";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -33,9 +33,8 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge";
 import { buttonVariants } from "@/components/ui/button";
 import { BackLink } from "@/components/layout/back-link";
-import { TeamAttributesBadges } from "@/components/team-attributes-badges";
-import { TournamentHostSchoolLink } from "@/components/tournament-host-school-link";
-import { TournamentHeaderMeta } from "@/components/tournament-header-meta";
+import { TournamentSummaryLine } from "@/components/tournament-header-meta";
+import { isTournamentArchived } from "@/lib/tournament-status";
 import {
   canEditTournamentSetup,
   canManageTournamentStaff,
@@ -56,7 +55,7 @@ import {
   userCanViewTournamentChat,
 } from "@/lib/tournaments/chat-access";
 import {
-  buildTournamentTabGroups,
+  buildTournamentSections,
   DEFAULT_TOURNAMENT_TAB,
   parseTournamentTab,
   tournamentTabUrl,
@@ -68,6 +67,10 @@ import { TournamentTabs } from "./tournament-tabs";
 import { TournamentPanelSkeleton } from "./panels/panel-skeleton";
 import { TournamentChatNotifier } from "./tournament-chat-notifier";
 import { TournamentActivePanel } from "./tournament-active-panel";
+import {
+  TournamentOverviewHostPanel,
+  TournamentOverviewPublicPanel,
+} from "./panels/overview-panel";
 import type { Metadata } from "next";
 import {
   getTournamentNameBySlug,
@@ -249,58 +252,64 @@ export default async function TournamentDetailPage({
     memberRows.filter((r) => r.role === "captain").map((r) => r.teamId)
   );
 
-  const allowedTabs = new Set<TournamentTabId>([DEFAULT_TOURNAMENT_TAB]);
-  if (showPacketTab) allowedTabs.add("packet");
-  if (showWaiverTab) allowedTabs.add("waiver");
-  if (showPaymentTab) allowedTabs.add("payment");
-  if (isOrganizer) allowedTabs.add("email");
-  if (showChatTab) allowedTabs.add("chat");
-  if (showTeamsTab) allowedTabs.add("teams");
-  if (showPendingTab) allowedTabs.add("pending");
-  if (showPoolPlayTab) allowedTabs.add("pool-play");
-  if (showBracketTab) allowedTabs.add("bracket");
-  if (showMatchesTab) allowedTabs.add("matches");
-
-  const fallbackTab: TournamentTabId =
-    !isOrganizer && myPendingCount > 0 && allowedTabs.has("pending")
-      ? "pending"
-      : DEFAULT_TOURNAMENT_TAB;
-
-  const activeTab = parseTournamentTab(sp.tab, allowedTabs, fallbackTab);
-
-  const tabItems: TournamentTabItem[] = [
-    { id: "setup", label: "Setup" },
-  ];
-  if (showPacketTab) {
-    tabItems.push({ id: "packet", label: "Packet" });
-  }
-  if (showWaiverTab) {
-    tabItems.push({ id: "waiver", label: "Waiver" });
-  }
-  if (showPaymentTab) {
-    tabItems.push({ id: "payment", label: "Payment" });
-  }
-  if (isOrganizer) {
-    tabItems.push({ id: "email", label: "Email" });
-  }
-  if (showChatTab) {
-    tabItems.push({ id: "chat", label: "Chat" });
-  }
+  // Order within each section is the order of its view switcher.
+  const views: TournamentTabItem[] = [{ id: "overview", label: "Overview" }];
   if (showTeamsTab) {
-    tabItems.push({ id: "teams", label: "Teams", count: confirmedCount });
+    views.push({ id: "teams", label: "Confirmed", count: confirmedCount });
   }
   if (showPendingTab) {
-    tabItems.push({
+    views.push({
       id: "pending",
       label: isOrganizer ? "Pending" : "Your application",
       badge: isOrganizer ? pendingCount : myPendingCount,
     });
   }
-  if (showPoolPlayTab) tabItems.push({ id: "pool-play", label: "Pools" });
-  if (showBracketTab) tabItems.push({ id: "bracket", label: "Bracket" });
-  if (showMatchesTab) tabItems.push({ id: "matches", label: "Matches" });
+  if (showPoolPlayTab) views.push({ id: "pool-play", label: "Pools" });
+  if (showBracketTab) views.push({ id: "bracket", label: "Bracket" });
+  if (showMatchesTab) views.push({ id: "matches", label: "Matches" });
+  if (isOrganizer) views.push({ id: "email", label: "Email" });
+  if (showChatTab) views.push({ id: "chat", label: "Chat" });
+  views.push({
+    id: "setup",
+    label: isOrganizer ? "General" : "Pools & courts",
+  });
+  if (showPacketTab) views.push({ id: "packet", label: "Packet" });
+  if (showWaiverTab) views.push({ id: "waiver", label: "Waiver" });
+  if (showPaymentTab) views.push({ id: "payment", label: "Payment" });
 
-  const tabGroups = buildTournamentTabGroups(tabItems);
+  const allowedTabs = new Set<TournamentTabId>(views.map((v) => v.id));
+
+  // With no explicit tab, land where this tournament's lifecycle needs you:
+  // results once play starts, the application for a waiting captain, else
+  // the overview.
+  const playUnderway =
+    tournament.status === "in_progress" || tournament.status === "completed";
+  const playLanding: TournamentTabId | undefined = playUnderway
+    ? playSignals.hasSeededBrackets && showBracketTab
+      ? "bracket"
+      : showPoolPlayTab
+        ? "pool-play"
+        : showBracketTab
+          ? "bracket"
+          : showMatchesTab
+            ? "matches"
+            : undefined
+    : undefined;
+  const fallbackTab: TournamentTabId =
+    playLanding ??
+    (!isOrganizer && myPendingCount > 0 && allowedTabs.has("pending")
+      ? "pending"
+      : DEFAULT_TOURNAMENT_TAB);
+
+  const activeTab = parseTournamentTab(sp.tab, allowedTabs, fallbackTab);
+
+  const sections = buildTournamentSections(views, {
+    overview: "Overview",
+    teams: "Teams",
+    play: "Play",
+    messages: "Messages",
+    settings: isOrganizer ? "Settings" : "Event info",
+  });
 
   const checklist = isOrganizer
     ? hostChecklistSteps({
@@ -330,10 +339,22 @@ export default async function TournamentDetailPage({
       })
     : [];
 
-  const emptySetup = divisionCount === 0 && courtCount === 0;
+  const organizerName = organizer?.fullName ?? "Unknown organizer";
+  const overviewTournament = {
+    id: tournament.id,
+    slug: tournament.slug,
+    status: tournament.status,
+    description: tournament.description,
+    location: tournament.location,
+    address: tournament.address,
+    date: tournament.date,
+    gender: tournament.gender,
+    region: tournament.region,
+    registrationCapacity: tournament.registrationCapacity,
+  };
 
   return (
-    <div className={emptySetup ? "space-y-3 pb-6" : "space-y-6 pb-6"}>
+    <div className="space-y-5 pb-6">
       <BackLink href="/tournaments">All tournaments</BackLink>
 
       {isOrganizer ? (
@@ -345,82 +366,48 @@ export default async function TournamentDetailPage({
           location={tournament.location}
           address={tournament.address}
           date={tournament.date}
-          gender={tournament.gender}
-          region={tournament.region}
-          organizerName={organizer?.fullName ?? "Unknown organizer"}
           status={tournament.status}
           showRegisterLink={showRegisterLink}
-          hostChecklistSteps={checklist}
-          hostSchool={hostSchool}
-          hasScheduledMatches={hasScheduledMatches}
-          compact={emptySetup}
         />
       ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="space-y-2">
-              <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <h1 className="min-w-0 max-w-full text-balance text-2xl font-bold tracking-tight sm:text-3xl">
-                  {tournament.name}
-                </h1>
-                <StatusBadge
-                  kind="tournament"
-                  status={tournament.status}
-                  date={tournament.date}
-                  className="shrink-0 self-start"
-                />
-              </div>
-              <TournamentHeaderMeta
-                location={tournament.location}
-                address={tournament.address}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="min-w-0 max-w-full text-balance text-2xl font-bold tracking-tight sm:text-3xl">
+                {tournament.name}
+              </h1>
+              <StatusBadge
+                kind="tournament"
+                status={tournament.status}
                 date={tournament.date}
-                organizerName={organizer?.fullName ?? "Unknown organizer"}
+                className="shrink-0"
               />
-              <div className="flex min-w-0 max-w-full items-center gap-1.5 max-md:overflow-x-auto max-md:pb-0.5 max-md:[scrollbar-width:none]">
-                <TeamAttributesBadges
-                  gender={tournament.gender}
-                  region={tournament.region}
-                />
-                <TournamentHostSchoolLink school={hostSchool} className="shrink-0" />
-              </div>
             </div>
-            {tournament.description && (
-              <p className="max-w-2xl whitespace-pre-wrap text-pretty text-sm text-muted-foreground">
-                {tournament.description}
-              </p>
-            )}
+            <TournamentSummaryLine
+              location={tournament.location}
+              address={tournament.address}
+              date={tournament.date}
+            />
           </div>
-
-          <div className="flex w-full min-w-0 flex-col gap-2.5 border-t border-border/50 pt-3 max-lg:rounded-lg max-lg:bg-muted/15 max-lg:p-3 lg:w-auto lg:border-0 lg:bg-transparent lg:p-0 lg:pt-0">
-            {showRegisterLink && (
-              <Link
-                href={`/tournaments/${tournament.slug}/register`}
-                className={buttonVariants({ className: "w-full sm:w-auto sm:self-end" })}
-              >
-                Register Team
-              </Link>
-            )}
-            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
-              {canDownloadPacket && !isOrganizer && (
-                <Link
-                  href={`/tournaments/${tournament.slug}/packet`}
-                  className={buttonVariants({
-                    variant: "outline",
-                    className: "inline-flex items-center gap-2",
-                  })}
-                >
-                  <Download className="h-4 w-4" />
-                  Tournament packet
-                </Link>
-              )}
-              <Link
-                href={`/tournaments/${tournament.slug}/scoring`}
-                className={buttonVariants({ variant: "outline" })}
-              >
-                Live Scoring
-              </Link>
-            </div>
-          </div>
+          {showRegisterLink ? (
+            <Link
+              href={`/tournaments/${tournament.slug}/register`}
+              className={buttonVariants({ className: "shrink-0" })}
+            >
+              Register a team
+            </Link>
+          ) : (
+            <Link
+              href={`/tournaments/${tournament.slug}/scoring`}
+              className={buttonVariants({
+                variant: "outline",
+                className: "shrink-0",
+              })}
+            >
+              <Radio className="size-4" aria-hidden />
+              Live scoring
+            </Link>
+          )}
         </div>
       )}
 
@@ -431,32 +418,60 @@ export default async function TournamentDetailPage({
       <TournamentTabs
         slug={tournament.slug}
         activeTab={activeTab}
-        groups={tabGroups}
+        sections={sections}
       >
-        <Suspense key={activeTab} fallback={<TournamentPanelSkeleton />}>
-          <TournamentActivePanel
-            activeTab={activeTab}
-            tournament={tournament}
-            user={user}
-            canEditSetup={canEditSetup}
-            canManageStaff={canManageStaff}
-            preparationLockedReason={preparationLockedReason}
-            myTeamIds={myTeamIds}
-            captainTeamIds={captainTeamIds}
-            isOrganizer={isOrganizer}
-            showPacketTab={showPacketTab}
-            showWaiverTab={showWaiverTab}
-            showPaymentTab={showPaymentTab}
-            showChatTab={showChatTab}
-            showTeamsTab={showTeamsTab}
-            showPendingTab={showPendingTab}
-            showPoolPlayTab={showPoolPlayTab}
-            showBracketTab={showBracketTab}
-            showMatchesTab={showMatchesTab}
-            divisionId={sp.division ?? null}
-            focusPoolId={sp.pool ?? null}
-          />
-        </Suspense>
+        {activeTab === "overview" ? (
+          isOrganizer ? (
+            <TournamentOverviewHostPanel
+              tournament={overviewTournament}
+              organizerName={organizerName}
+              hostSchool={hostSchool}
+              allowedTabs={allowedTabs}
+              confirmedCount={confirmedCount}
+              pendingCount={pendingCount}
+              divisionCount={divisionCount}
+              courtCount={courtCount}
+              steps={checklist}
+              archived={isTournamentArchived(tournament.date)}
+            />
+          ) : (
+            <TournamentOverviewPublicPanel
+              tournament={overviewTournament}
+              organizerName={organizerName}
+              hostSchool={hostSchool}
+              allowedTabs={allowedTabs}
+              confirmedCount={confirmedCount}
+              myPendingCount={myPendingCount}
+              canRegister={showRegisterLink}
+              canDownloadPacket={canDownloadPacket}
+            />
+          )
+        ) : (
+          <Suspense key={activeTab} fallback={<TournamentPanelSkeleton />}>
+            <TournamentActivePanel
+              activeTab={activeTab}
+              tournament={tournament}
+              user={user}
+              canEditSetup={canEditSetup}
+              canManageStaff={canManageStaff}
+              preparationLockedReason={preparationLockedReason}
+              myTeamIds={myTeamIds}
+              captainTeamIds={captainTeamIds}
+              isOrganizer={isOrganizer}
+              showPacketTab={showPacketTab}
+              showWaiverTab={showWaiverTab}
+              showPaymentTab={showPaymentTab}
+              showChatTab={showChatTab}
+              showTeamsTab={showTeamsTab}
+              showPendingTab={showPendingTab}
+              showPoolPlayTab={showPoolPlayTab}
+              showBracketTab={showBracketTab}
+              showMatchesTab={showMatchesTab}
+              divisionId={sp.division ?? null}
+              focusPoolId={sp.pool ?? null}
+            />
+          </Suspense>
+        )}
       </TournamentTabs>
     </div>
   );

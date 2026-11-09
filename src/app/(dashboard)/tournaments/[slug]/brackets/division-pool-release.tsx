@@ -113,7 +113,7 @@ export function DivisionPoolRelease({
       </div>
       {matchCount === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Save seeding on the Pools tab to generate matches before releasing.
+          Save seeding in Play › Pools to generate matches before releasing.
         </p>
       ) : !poolPlayComplete ? (
         <p className="text-sm text-warning">

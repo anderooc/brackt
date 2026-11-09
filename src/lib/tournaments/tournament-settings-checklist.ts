@@ -95,9 +95,9 @@ export function poolSettingsChecklistHint(
   input: PoolSettingsCheckInput
 ): string {
   if (poolSettingsUseDefaults(input)) {
-    return "Pools tab: open Pool settings and save scoring rules and tiebreak order (defaults are fine).";
+    return "Play › Pools: open Pool settings and save scoring rules and tiebreak order (defaults are fine).";
   }
-  return "Pools tab: review Pool settings before generating matches.";
+  return "Play › Pools: review Pool settings before generating matches.";
 }
 
 export function bracketSettingsChecklistHint(
@@ -105,10 +105,10 @@ export function bracketSettingsChecklistHint(
 ): string {
   const count = Math.min(3, Math.max(1, Math.floor(input.bracketCount)));
   if (count <= 1) {
-    return "Bracket tab: open Bracket settings to confirm a single combined bracket.";
+    return "Play › Bracket: open Bracket settings to confirm a single combined bracket.";
   }
   if (count === 2) {
-    return "Bracket tab: set how many teams advance to gold; the rest go to silver.";
+    return "Play › Bracket: set how many teams advance to gold; the rest go to silver.";
   }
-  return "Bracket tab: set gold and silver team counts; remaining teams go to bronze.";
+  return "Play › Bracket: set gold and silver team counts; remaining teams go to bronze.";
 }

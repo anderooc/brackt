@@ -19,42 +19,20 @@
  */
 
 import {
+  useEffect,
   useOptimistic,
-  useState,
+  useRef,
   useTransition,
   type ReactNode,
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
-import {
-  CalendarClock,
-  ChevronDown,
-  ClipboardSignature,
-  CreditCard,
-  FileText,
-  GitBranch,
-  Inbox,
-  LayoutGrid,
-  Mail,
-  MessageCircle,
-  Settings2,
-  Users,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
+  SECTION_BY_TAB,
+  sectionEntryView,
   tournamentTabUrl,
-  type TournamentTabGroup,
+  type TournamentSection,
   type TournamentTabId,
   type TournamentTabItem,
 } from "./constants";
@@ -64,203 +42,141 @@ type SelectTab = (tab: TournamentTabId, href: string) => void;
 
 export type { TournamentTabItem } from "./constants";
 
-const TAB_ICONS: Record<TournamentTabId, LucideIcon> = {
-  setup: Settings2,
-  packet: FileText,
-  waiver: ClipboardSignature,
-  payment: CreditCard,
-  email: Mail,
-  chat: MessageCircle,
-  teams: Users,
-  pending: Inbox,
-  "pool-play": LayoutGrid,
-  bracket: GitBranch,
-  matches: CalendarClock,
-};
-
-function findActiveTab(
-  groups: TournamentTabGroup[],
-  activeTab: TournamentTabId
-): TournamentTabItem | undefined {
-  for (const group of groups) {
-    const match = group.tabs.find((tab) => tab.id === activeTab);
-    if (match) return match;
-  }
-  return groups[0]?.tabs[0];
-}
-
-function TabNavLink({
-  slug,
-  tab,
-  active,
-  onSelect,
-  onNavigate,
-}: {
-  slug: string;
-  tab: TournamentTabItem;
-  active: boolean;
-  onSelect: SelectTab;
-  onNavigate?: () => void;
-}) {
-  const Icon = TAB_ICONS[tab.id];
-  const label =
-    tab.count !== undefined ? `${tab.label} (${tab.count})` : tab.label;
-  const href = tournamentTabUrl(slug, tab.id);
-
+function CountPill({ value, emphasis }: { value: number; emphasis: boolean }) {
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      onClick={onNavigate}
-      onNavigate={(event) => {
-        event.preventDefault();
-        onSelect(tab.id, href);
-      }}
+    <span
       className={cn(
-        "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors duration-150 ease-out",
-        "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-        active
-          ? "bg-background text-foreground shadow-sm ring-1 ring-border/60"
-          : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+        "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium tabular-nums",
+        emphasis
+          ? "bg-primary text-primary-foreground"
+          : "bg-muted text-muted-foreground"
       )}
     >
-      <Icon
-        className={cn(
-          "size-4 shrink-0 transition-colors duration-150 ease-out",
-          active
-            ? "text-foreground"
-            : "text-muted-foreground group-hover:text-foreground"
-        )}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {tab.badge !== undefined && tab.badge > 0 && (
-        <Badge
-          variant="default"
-          className="h-5 min-w-5 justify-center rounded-full px-1.5 text-xs tabular-nums"
-        >
-          {tab.badge}
-        </Badge>
-      )}
-    </Link>
+      {value}
+    </span>
   );
 }
 
-function SectionNav({
+function sectionBadge(section: TournamentSection): number {
+  return section.views.reduce((sum, view) => sum + (view.badge ?? 0), 0);
+}
+
+function SectionBar({
   slug,
-  groups,
+  sections,
   activeTab,
   onSelect,
-  onNavigate,
 }: {
   slug: string;
-  groups: TournamentTabGroup[];
+  sections: TournamentSection[];
   activeTab: TournamentTabId;
   onSelect: SelectTab;
-  onNavigate?: () => void;
 }) {
+  const activeSection = SECTION_BY_TAB[activeTab];
+  const activeRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeSection]);
+
   return (
-    <nav className="space-y-5" aria-label="Tournament sections">
-      {groups.map((group) => (
-        <div key={group.id} className="space-y-1">
-          <p className="px-2.5 text-xs font-semibold tracking-[0.08em] text-muted-foreground uppercase">
-            {group.label}
-          </p>
-          <div className="space-y-0.5">
-            {group.tabs.map((tab) => (
-              <TabNavLink
-                key={tab.id}
-                slug={slug}
-                tab={tab}
-                active={tab.id === activeTab}
-                onSelect={onSelect}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+    <nav
+      aria-label="Tournament sections"
+      className="-mb-px flex gap-1 overflow-x-auto [scrollbar-width:none] sm:gap-2"
+    >
+      {sections.map((section) => {
+        const active = section.id === activeSection;
+        const entry = sectionEntryView(section);
+        const href = tournamentTabUrl(slug, entry.id);
+        const badge = sectionBadge(section);
+        return (
+          <Link
+            key={section.id}
+            ref={active ? activeRef : undefined}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            onNavigate={(event) => {
+              event.preventDefault();
+              if (!active) onSelect(entry.id, href);
+            }}
+            className={cn(
+              "relative flex h-11 shrink-0 items-center gap-2 px-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-150 ease-out",
+              "rounded-t-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              "after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors after:duration-150",
+              active
+                ? "text-foreground after:bg-primary"
+                : "text-muted-foreground after:bg-transparent hover:text-foreground"
+            )}
+          >
+            {section.label}
+            {badge > 0 ? <CountPill value={badge} emphasis /> : null}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
 
-function MobileJumpNav({
+function ViewSwitcher({
   slug,
-  groups,
+  views,
   activeTab,
   onSelect,
 }: {
   slug: string;
-  groups: TournamentTabGroup[];
+  views: TournamentTabItem[];
   activeTab: TournamentTabId;
   onSelect: SelectTab;
 }) {
-  const [open, setOpen] = useState(false);
-  const current = findActiveTab(groups, activeTab);
-  const Icon = current ? TAB_ICONS[current.id] : Settings2;
-  const label = current
-    ? current.count !== undefined
-      ? `${current.label} (${current.count})`
-      : current.label
-    : "Section";
-
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger
-        render={
-          <Button
-            variant="outline"
-            className="h-11 w-full justify-between gap-3 px-3 font-medium"
-          />
-        }
-      >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="truncate">{label}</span>
-          {current?.badge !== undefined && current.badge > 0 && (
-            <Badge
-              variant="default"
-              className="h-5 min-w-5 justify-center rounded-full px-1.5 text-xs tabular-nums"
-            >
-              {current.badge}
-            </Badge>
-          )}
-        </span>
-        <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
-          <span className="text-xs font-medium">Jump to</span>
-          <ChevronDown className="size-4" aria-hidden />
-        </span>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="gap-0 p-0">
-        <SheetHeader className="border-b px-4 py-3 pr-12">
-          <SheetTitle>Jump to section</SheetTitle>
-          <SheetDescription className="sr-only">
-            Choose a tournament section to open
-          </SheetDescription>
-        </SheetHeader>
-        <div className="max-h-[min(70vh,28rem)] overflow-y-auto p-3">
-          <SectionNav
-            slug={slug}
-            groups={groups}
-            activeTab={activeTab}
-            onSelect={onSelect}
-            onNavigate={() => setOpen(false)}
-          />
-        </div>
-      </SheetContent>
-    </Sheet>
+    <nav
+      aria-label="Section views"
+      className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-lg bg-muted p-0.5 [scrollbar-width:none]"
+    >
+      {views.map((view) => {
+        const active = view.id === activeTab;
+        const href = tournamentTabUrl(slug, view.id);
+        const pill =
+          view.badge !== undefined && view.badge > 0
+            ? { value: view.badge, emphasis: true }
+            : view.count !== undefined
+              ? { value: view.count, emphasis: false }
+              : null;
+        return (
+          <Link
+            key={view.id}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            onNavigate={(event) => {
+              event.preventDefault();
+              if (!active) onSelect(view.id, href);
+            }}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-[color,background-color,box-shadow] duration-150 ease-out",
+              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {view.label}
+            {pill ? <CountPill {...pill} /> : null}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
 export function TournamentTabs({
   slug,
   activeTab,
-  groups,
+  sections,
   children,
 }: {
   slug: string;
   activeTab: TournamentTabId;
-  groups: TournamentTabGroup[];
+  sections: TournamentSection[];
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -276,33 +192,36 @@ export function TournamentTabs({
     });
   };
 
-  if (groups.length === 0) {
+  if (sections.length === 0) {
     return <>{children}</>;
   }
 
+  const displayedSection = sections.find(
+    (section) => section.id === SECTION_BY_TAB[displayedTab]
+  );
+  const showViews = (displayedSection?.views.length ?? 0) > 1;
+
   return (
-    <div className="mt-2 flex flex-col gap-4 border-t border-border/80 pt-5 lg:mt-3 lg:flex-row lg:items-start lg:gap-0 lg:pt-6">
-      <div className="lg:hidden">
-        <MobileJumpNav
+    <div className="space-y-6">
+      <div className="sticky top-14 z-20 -mx-4 border-b border-border/80 bg-background/95 px-4 backdrop-blur-sm md:-top-6 md:-mx-6 md:px-6">
+        <SectionBar
           slug={slug}
-          groups={groups}
+          sections={sections}
           activeTab={displayedTab}
           onSelect={selectTab}
         />
       </div>
 
-      <aside className="hidden w-56 shrink-0 lg:block lg:border-r lg:border-border/80 lg:pr-6">
-        <div className="sticky top-0 max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-y-contain rounded-xl bg-muted/45 p-2 ring-1 ring-border/50 [scrollbar-width:thin] dark:bg-muted/30">
-          <SectionNav
-            slug={slug}
-            groups={groups}
-            activeTab={displayedTab}
-            onSelect={selectTab}
-          />
-        </div>
-      </aside>
+      {showViews && displayedSection ? (
+        <ViewSwitcher
+          slug={slug}
+          views={displayedSection.views}
+          activeTab={displayedTab}
+          onSelect={selectTab}
+        />
+      ) : null}
 
-      <div className="min-w-0 flex-1 lg:pl-8">
+      <div className="min-w-0">
         {isPending && displayedTab !== activeTab ? (
           <TournamentPanelSkeleton />
         ) : (

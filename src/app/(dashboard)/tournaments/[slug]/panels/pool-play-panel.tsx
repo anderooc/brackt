@@ -170,7 +170,7 @@ export async function TournamentPoolPlayPanel({
           title={isOrganizer ? "No pool play yet" : "Pools not released yet"}
           description={
             isOrganizer
-              ? "Add pools on the Setup tab. Play format was set when you created the tournament."
+              ? "Add pools in Settings › General. Play format was set when you created the tournament."
               : "The host hasn’t released pools for this tournament. Check back once they’re published."
           }
         />
@@ -216,7 +216,7 @@ export async function TournamentPoolPlayPanel({
                   title="No teams in this pool yet"
                   description={
                     isOrganizer
-                      ? "Assign confirmed teams to this pool from the Teams tab."
+                      ? "Assign confirmed teams to this pool from Teams."
                       : "Teams will appear here once the host assigns them."
                   }
                 />

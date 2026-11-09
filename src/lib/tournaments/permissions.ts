@@ -421,7 +421,7 @@ export function hostChecklistSteps(input: {
       id: "setup",
       label: "Add pools and courts",
       done: divisionCount > 0 && courtCount > 0,
-      hint: "Setup tab: add pools and courts. Play format was chosen when you created the tournament.",
+      hint: "Settings › General: add pools and courts. Play format was chosen when you created the tournament.",
     },
     {
       id: "open",
@@ -438,8 +438,8 @@ export function hostChecklistSteps(input: {
         (registrationCount === 0 || pendingCount === 0),
       hint:
         pendingCount > 0
-          ? `${pendingCount} pending approval on the Pending tab`
-          : "Approve captains on Pending, then close registration.",
+          ? `${pendingCount} pending approval in Teams › Pending`
+          : "Approve captains in Teams › Pending, then close registration.",
     },
     {
       id: "pool-settings",
@@ -456,8 +456,8 @@ export function hostChecklistSteps(input: {
         : "Assign teams & seed the bracket",
       done: hasPools,
       hint: isPoolToBracket
-        ? "Teams tab: assign teams to pools. Pools tab: set seed order and save to create round-robin matches."
-        : "Teams tab: assign teams. Pools tab: save seed order to build the elimination bracket.",
+        ? "Assign teams to pools in Teams, then set seed order in Play › Pools to create round-robin matches."
+        : "Assign teams in Teams, then save seed order in Play › Pools to build the elimination bracket.",
     },
   ];
 
@@ -474,20 +474,20 @@ export function hostChecklistSteps(input: {
       id: "release",
       label: "Release pools to teams",
       done: hasPoolsReleased,
-      hint: "Pools tab: release when schedules are ready for captains and fans to view.",
+      hint: "Play › Pools: release when schedules are ready for captains and fans to view.",
     });
     steps.push({
       id: "bracket",
       label: "Seed brackets from pool play",
       done: hasSeededBrackets,
-      hint: "Bracket tab: brackets seed automatically when every pool finishes.",
+      hint: "Play › Bracket: brackets seed automatically when every pool finishes.",
     });
   } else {
     steps.push({
       id: "bracket",
       label: "Confirm bracket is seeded",
       done: hasSeededBrackets,
-      hint: "Bracket tab: teams appear once pool seeding is saved.",
+      hint: "Play › Bracket: teams appear once pool seeding is saved.",
     });
   }
 
@@ -496,7 +496,7 @@ export function hostChecklistSteps(input: {
       id: "schedule",
       label: "Schedule matches",
       done: hasScheduledMatches,
-      hint: "Schedule page: assign courts and start times, or set times on the Matches tab.",
+      hint: "Assign courts and start times in Play › Matches, or auto-schedule from All matches.",
     },
     {
       id: "run",

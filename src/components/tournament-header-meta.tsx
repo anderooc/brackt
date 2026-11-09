@@ -21,6 +21,39 @@ import { formatTournamentDateDisplay } from "@/lib/date-iso";
 import { TournamentLocationLink } from "@/components/tournament-location-link";
 import { cn } from "@/lib/utils";
 
+/** Single-line date and venue under a tournament title. */
+export function TournamentSummaryLine({
+  location,
+  address,
+  date,
+  className,
+}: {
+  location: string;
+  address?: string | null;
+  date: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground",
+        className
+      )}
+    >
+      <span className="flex shrink-0 items-center gap-1.5">
+        <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        {formatTournamentDateDisplay(date)}
+      </span>
+      <TournamentLocationLink
+        location={location}
+        address={address}
+        className="min-w-0"
+        showExternalIcon={false}
+      />
+    </div>
+  );
+}
+
 /** Venue, date, and organizer lines shared by tournament detail headers. */
 export function TournamentHeaderMeta({
   location,

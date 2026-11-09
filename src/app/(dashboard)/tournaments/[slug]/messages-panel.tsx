@@ -68,7 +68,7 @@ const AUDIENCE_OPTIONS: {
   {
     value: "captains_confirmed",
     label: "Confirmed team captains",
-    description: "Teams approved on the Teams tab (confirmed or checked in).",
+    description: "Teams approved in Teams (confirmed or checked in).",
   },
   {
     value: "captains_all",

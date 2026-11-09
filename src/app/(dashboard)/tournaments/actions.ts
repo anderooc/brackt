@@ -730,7 +730,7 @@ export async function releaseDivisionPools(
   if ((matchCount ?? 0) === 0) {
     return {
       error:
-        "Save seeding and generate pool matches on the Pools tab before releasing",
+        "Save seeding and generate pool matches in Play › Pools before releasing",
     };
   }
 
@@ -960,7 +960,7 @@ export async function confirmPendingRegistrations(
     );
     if (blocked.length > 0) {
       return {
-        error: `Payment required before confirming ${blocked.length} registration${blocked.length === 1 ? "" : "s"}. Mark paid or waive on the Payment tab.`,
+        error: `Payment required before confirming ${blocked.length} registration${blocked.length === 1 ? "" : "s"}. Mark paid or waive in Settings › Payment.`,
       };
     }
   }

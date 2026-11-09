@@ -17,6 +17,7 @@
  */
 
 export const TOURNAMENT_TABS = [
+  "overview",
   "setup",
   "packet",
   "waiver",
@@ -33,7 +34,8 @@ export const TOURNAMENT_TABS = [
 export type TournamentTabId = (typeof TOURNAMENT_TABS)[number];
 
 export const TOURNAMENT_TAB_LABELS: Record<TournamentTabId, string> = {
-  setup: "Setup",
+  overview: "Overview",
+  setup: "Settings",
   packet: "Packet",
   waiver: "Waiver",
   payment: "Payment",
@@ -46,33 +48,38 @@ export const TOURNAMENT_TAB_LABELS: Record<TournamentTabId, string> = {
   matches: "Matches",
 };
 
-export type TournamentTabGroupId = "preparation" | "matchday";
+/**
+ * Top-level sections in the tournament tab bar. Each section owns one or more
+ * views (the `?tab=` ids), so existing deep links keep resolving.
+ */
+export type TournamentSectionId =
+  | "overview"
+  | "teams"
+  | "play"
+  | "messages"
+  | "settings";
 
-export const TOURNAMENT_TAB_GROUP_ORDER = [
-  "preparation",
-  "matchday",
-] as const satisfies readonly TournamentTabGroupId[];
+export const TOURNAMENT_SECTION_ORDER = [
+  "overview",
+  "teams",
+  "play",
+  "messages",
+  "settings",
+] as const satisfies readonly TournamentSectionId[];
 
-export const TOURNAMENT_TAB_GROUP_LABELS: Record<
-  TournamentTabGroupId,
-  string
-> = {
-  preparation: "Preparation",
-  matchday: "Match day",
-};
-
-const TAB_GROUP_BY_ID: Record<TournamentTabId, TournamentTabGroupId> = {
-  setup: "preparation",
-  packet: "preparation",
-  waiver: "preparation",
-  payment: "preparation",
-  email: "preparation",
-  chat: "preparation",
-  teams: "preparation",
-  pending: "preparation",
-  "pool-play": "matchday",
-  bracket: "matchday",
-  matches: "matchday",
+export const SECTION_BY_TAB: Record<TournamentTabId, TournamentSectionId> = {
+  overview: "overview",
+  teams: "teams",
+  pending: "teams",
+  "pool-play": "play",
+  bracket: "play",
+  matches: "play",
+  email: "messages",
+  chat: "messages",
+  setup: "settings",
+  packet: "settings",
+  waiver: "settings",
+  payment: "settings",
 };
 
 export type TournamentTabItem = {
@@ -82,37 +89,53 @@ export type TournamentTabItem = {
   badge?: number;
 };
 
-export type TournamentTabGroup = {
-  id: TournamentTabGroupId;
+export type TournamentSection = {
+  id: TournamentSectionId;
   label: string;
-  tabs: TournamentTabItem[];
+  views: TournamentTabItem[];
 };
 
-export function buildTournamentTabGroups(
-  tabs: TournamentTabItem[]
-): TournamentTabGroup[] {
-  const byGroup = new Map<TournamentTabGroupId, TournamentTabItem[]>();
-  for (const tab of tabs) {
-    const groupId = TAB_GROUP_BY_ID[tab.id];
-    const list = byGroup.get(groupId) ?? [];
-    list.push(tab);
-    byGroup.set(groupId, list);
+/**
+ * Groups visible views into sections. A section with a single view takes that
+ * view's label so the tab bar never says "Messages" when only Chat exists.
+ */
+export function buildTournamentSections(
+  views: TournamentTabItem[],
+  sectionLabels: Record<TournamentSectionId, string>
+): TournamentSection[] {
+  const bySection = new Map<TournamentSectionId, TournamentTabItem[]>();
+  for (const view of views) {
+    const sectionId = SECTION_BY_TAB[view.id];
+    const list = bySection.get(sectionId) ?? [];
+    list.push(view);
+    bySection.set(sectionId, list);
   }
 
-  return TOURNAMENT_TAB_GROUP_ORDER.flatMap((groupId) => {
-    const groupTabs = byGroup.get(groupId);
-    if (!groupTabs?.length) return [];
+  return TOURNAMENT_SECTION_ORDER.flatMap((sectionId) => {
+    const sectionViews = bySection.get(sectionId);
+    if (!sectionViews?.length) return [];
     return [
       {
-        id: groupId,
-        label: TOURNAMENT_TAB_GROUP_LABELS[groupId],
-        tabs: groupTabs,
+        id: sectionId,
+        label:
+          sectionViews.length === 1
+            ? sectionViews[0].label
+            : sectionLabels[sectionId],
+        views: sectionViews,
       },
     ];
   });
 }
 
-export const DEFAULT_TOURNAMENT_TAB: TournamentTabId = "setup";
+/** The view a section opens on: whichever needs attention, else the first. */
+export function sectionEntryView(section: TournamentSection): TournamentTabItem {
+  return (
+    section.views.find((view) => view.badge !== undefined && view.badge > 0) ??
+    section.views[0]
+  );
+}
+
+export const DEFAULT_TOURNAMENT_TAB: TournamentTabId = "overview";
 
 export function isTournamentTabId(
   value: string | undefined
@@ -134,14 +157,17 @@ export function parseTournamentTab(
   return DEFAULT_TOURNAMENT_TAB;
 }
 
-/** Tournament detail URL; setup omits `tab`. Optional division/pool deep links. */
+/**
+ * Tournament detail URL. Omitting `tab` lets the page pick a view from the
+ * tournament's status, so explicit tabs (including overview) always set it.
+ */
 export function tournamentTabUrl(
   slug: string,
-  tab: TournamentTabId = DEFAULT_TOURNAMENT_TAB,
+  tab?: TournamentTabId,
   opts?: { division?: string; pool?: string }
 ): string {
   const params = new URLSearchParams();
-  if (tab !== DEFAULT_TOURNAMENT_TAB) params.set("tab", tab);
+  if (tab) params.set("tab", tab);
   if (opts?.division) params.set("division", opts.division);
   if (opts?.pool) params.set("pool", opts.pool);
   const q = params.toString();

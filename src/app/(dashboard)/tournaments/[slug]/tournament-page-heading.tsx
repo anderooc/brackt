@@ -18,15 +18,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  startTransition,
-} from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
@@ -35,23 +27,22 @@ import {
   Link2,
   MoreVertical,
   Pencil,
+  Radio,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 import {
   renameTournament,
   deleteTournament,
   duplicateTournament,
   updateTournamentDate,
-  updateTournamentListingDetails,
 } from "../actions";
 import { isTournamentArchived } from "@/lib/tournament-status";
 import { setTournamentScheduleFocus } from "@/lib/tournaments/schedule-focus";
 import { cn } from "@/lib/utils";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { DatePickerField } from "@/components/date-picker";
 import {
   DropdownMenu,
@@ -69,19 +60,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TournamentSummaryLine } from "@/components/tournament-header-meta";
 import { StatusControls } from "./status-controls";
-import { TournamentHostChecklist } from "@/components/tournament-host-checklist";
-import { TeamAttributesBadges } from "@/components/team-attributes-badges";
-import { TournamentHostSchoolLink } from "@/components/tournament-host-school-link";
-import type { HostChecklistStep } from "@/lib/tournaments/permissions";
-import {
-  evaluateListingDetailsChecklist,
-  listingDetailsHint,
-} from "@/lib/tournaments/listing-details-checklist";
-import type { TournamentHostSchool } from "@/lib/tournaments/host-school";
-import type { TeamGender, TeamRegion } from "@/types";
-import { TournamentHeaderMeta } from "@/components/tournament-header-meta";
-import { AddressMapPreview } from "@/components/address-map-preview";
+import { ListingDetailsDialog } from "./listing-details-dialog";
 
 type DeleteStep = "intro" | "confirm";
 
@@ -93,15 +74,8 @@ export function TournamentPageHeading({
   location,
   address,
   date,
-  gender,
-  region,
-  organizerName,
   status,
   showRegisterLink = false,
-  hostChecklistSteps = [],
-  hostSchool = null,
-  hasScheduledMatches = false,
-  compact = false,
 }: {
   tournamentId: string;
   initialSlug: string;
@@ -110,16 +84,8 @@ export function TournamentPageHeading({
   location: string;
   address: string | null;
   date: string;
-  gender: TeamGender;
-  region: TeamRegion;
-  organizerName: string;
   status: string;
   showRegisterLink?: boolean;
-  hostChecklistSteps?: HostChecklistStep[];
-  hostSchool?: TournamentHostSchool | null;
-  hasScheduledMatches?: boolean;
-  /** Tighter layout when setup tab has no pools or courts yet. */
-  compact?: boolean;
 }) {
   const router = useRouter();
   const [slug, setSlug] = useState(initialSlug);
@@ -132,30 +98,12 @@ export function TournamentPageHeading({
   const skipTitleBlurCommit = useRef(false);
   const titleCommitting = useRef(false);
 
-  const [listingDescription, setListingDescription] = useState(description);
-  const [listingLocation, setListingLocation] = useState(location);
-  const [listingAddress, setListingAddress] = useState(address ?? "");
-
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [draftDescription, setDraftDescription] = useState(description ?? "");
-  const [draftLocation, setDraftLocation] = useState(location);
-  const [draftAddress, setDraftAddress] = useState(address ?? "");
-  const [detailsSaving, setDetailsSaving] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
 
   const [dateOpen, setDateOpen] = useState(false);
   const [draftDate, setDraftDate] = useState(date);
   const [dateSaving, setDateSaving] = useState(false);
   const [dateError, setDateError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (detailsOpen) return;
-    queueMicrotask(() => {
-      setListingDescription(description);
-      setListingLocation(location);
-      setListingAddress(address ?? "");
-    });
-  }, [description, location, address, detailsOpen]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -166,32 +114,6 @@ export function TournamentPageHeading({
   }, [initialSlug, initialName, editingTitle]);
 
   const archived = isTournamentArchived(date);
-
-  /** Re-evaluate listing step from saved client state so the checklist updates right after save. */
-  const resolvedChecklistSteps = useMemo(() => {
-    if (hostChecklistSteps.length === 0) return hostChecklistSteps;
-    const listing = evaluateListingDetailsChecklist({
-      description: listingDescription,
-      address: listingAddress,
-      hasScheduledMatches,
-    });
-    return hostChecklistSteps.map((step) =>
-      step.id === "listing"
-        ? {
-            ...step,
-            done: listing.complete,
-            hint: listing.complete
-              ? undefined
-              : listingDetailsHint(listing, hasScheduledMatches),
-          }
-        : step
-    );
-  }, [
-    hostChecklistSteps,
-    listingDescription,
-    listingAddress,
-    hasScheduledMatches,
-  ]);
 
   const [copyHint, setCopyHint] = useState<string | null>(null);
 
@@ -324,33 +246,6 @@ export function TournamentPageHeading({
   const nameMatches =
     confirmText.trim() === name.trim() && confirmText.trim() !== "";
 
-  async function commitListingDetails() {
-    setDetailsSaving(true);
-    setDetailsError(null);
-    const result = await updateTournamentListingDetails(tournamentId, {
-      description: draftDescription,
-      location: draftLocation,
-      address: draftAddress,
-    });
-    if ("error" in result && result.error) {
-      setDetailsError(result.error);
-      setDetailsSaving(false);
-      return;
-    }
-    if ("success" in result && result.success) {
-      setListingDescription(result.description);
-      setListingLocation(result.location);
-      setListingAddress(result.address ?? "");
-      setDetailsOpen(false);
-      setDetailsSaving(false);
-      startTransition(() => {
-        router.refresh();
-      });
-      return;
-    }
-    setDetailsSaving(false);
-  }
-
   async function commitDate() {
     const next = draftDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
@@ -374,130 +269,59 @@ export function TournamentPageHeading({
   }
 
   return (
-    <div
-      className={cn(
-        "flex flex-col",
-        compact ? "gap-3" : "gap-4",
-        "lg:flex-row lg:items-start lg:justify-between"
-      )}
-    >
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="space-y-2">
-          <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            {editingTitle ? (
-              <div className="min-w-0 w-full flex-1 sm:max-w-[min(100%,42rem)]">
-                <input
-                  ref={titleInputRef}
-                  value={draftTitle}
-                  onChange={(e) => setDraftTitle(e.target.value)}
-                  disabled={titleSaving}
-                  aria-label="Tournament name"
-                  className={cn(
-                    "w-full min-w-0 border-0 border-b-2 border-primary bg-transparent px-0 py-0.5 text-2xl font-bold tracking-tight text-foreground caret-primary shadow-none outline-none ring-0 transition-[border-color] duration-150",
-                    "focus-visible:border-primary focus-visible:ring-0",
-                    "disabled:cursor-not-allowed disabled:opacity-60",
-                    compact ? "sm:text-2xl" : "sm:text-3xl"
-                  )}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void commitTitle();
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancelTitleEdit();
-                    }
-                  }}
-                  onBlur={() => {
-                    if (titleSaving || skipTitleBlurCommit.current) return;
-                    void commitTitle();
-                  }}
-                />
-                {titleError && (
-                  <p className="mt-1 text-sm text-destructive">{titleError}</p>
-                )}
-              </div>
-            ) : (
-              <h1
-                className={cn(
-                  "min-w-0 max-w-full text-balance font-bold tracking-tight",
-                  compact ? "text-xl sm:text-2xl" : "text-2xl sm:text-3xl"
-                )}
-              >
-                {name}
-              </h1>
-            )}
-            <StatusBadge
-              kind="tournament"
-              status={status}
-              date={date}
-              className="shrink-0 self-start"
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+      <div className="min-w-0 flex-1 space-y-1.5">
+        {editingTitle ? (
+          <div className="min-w-0 w-full sm:max-w-[min(100%,42rem)]">
+            <input
+              ref={titleInputRef}
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              disabled={titleSaving}
+              aria-label="Tournament name"
+              className={cn(
+                "w-full min-w-0 border-0 border-b-2 border-primary bg-transparent px-0 py-0.5 text-2xl font-bold tracking-tight text-foreground caret-primary shadow-none outline-none ring-0 transition-[border-color] duration-150 sm:text-3xl",
+                "focus-visible:border-primary focus-visible:ring-0",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commitTitle();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelTitleEdit();
+                }
+              }}
+              onBlur={() => {
+                if (titleSaving || skipTitleBlurCommit.current) return;
+                void commitTitle();
+              }}
             />
-          </div>
-          <TournamentHeaderMeta
-            location={listingLocation}
-            address={listingAddress}
-            date={date}
-            organizerName={organizerName}
-            compact={compact}
-          />
-          <div className="flex min-w-0 max-w-full items-center gap-1.5 max-md:overflow-x-auto max-md:pb-0.5 max-md:[scrollbar-width:none]">
-            <TeamAttributesBadges gender={gender} region={region} />
-            <TournamentHostSchoolLink school={hostSchool} className="shrink-0" />
-          </div>
-        </div>
-        {listingDescription ? (
-          <p
-            className={cn(
-              "max-w-2xl whitespace-pre-wrap text-muted-foreground",
-              compact
-                ? "line-clamp-2 text-xs"
-                : "text-sm"
+            {titleError && (
+              <p className="mt-1 text-sm text-destructive">{titleError}</p>
             )}
-          >
-            {listingDescription}
-          </p>
+          </div>
         ) : (
-          <p
-            className={cn(
-              "max-w-2xl italic text-muted-foreground/80",
-              compact ? "text-xs" : "text-sm"
-            )}
-          >
-            No description yet. Use the menu to edit listing details.
-          </p>
+          <h1 className="min-w-0 max-w-full text-balance text-2xl font-bold tracking-tight sm:text-3xl">
+            {name}
+          </h1>
         )}
+        <TournamentSummaryLine
+          location={location}
+          address={address}
+          date={date}
+        />
       </div>
 
-      <div
-        className={cn(
-          "flex w-full min-w-0 flex-col gap-2.5 border-t border-border/50 pt-3 max-lg:rounded-lg max-lg:bg-muted/15 max-lg:p-3 lg:w-auto lg:border-0 lg:bg-transparent lg:p-0 lg:pt-0",
-          compact ? "gap-2" : "gap-2.5"
-        )}
-      >
-        {showRegisterLink && (
-          <Link
-            href={`/tournaments/${slug}/register`}
-            className={buttonVariants({
-              size: compact ? "sm" : "default",
-              className: "w-full sm:w-auto sm:self-end",
-            })}
-          >
-            Add / register teams
-          </Link>
-        )}
-        <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-end">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {resolvedChecklistSteps.length > 0 ? (
-              <TournamentHostChecklist steps={resolvedChecklistSteps} />
-            ) : null}
-            <StatusControls
-              tournamentId={tournamentId}
-              currentStatus={status}
-              archived={archived}
-            />
-          </div>
-          <div className="relative flex shrink-0 items-center">
+      <div className="flex shrink-0 items-center gap-2">
+        <StatusControls
+          tournamentId={tournamentId}
+          currentStatus={status}
+          archived={archived}
+        />
+        <div className="relative flex shrink-0 items-center">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -514,6 +338,25 @@ export function TournamentPageHeading({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuGroup>
+                {showRegisterLink ? (
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => router.push(`/tournaments/${slug}/register`)}
+                  >
+                    <UserPlus className="size-4" />
+                    Add / register teams
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/tournaments/${slug}/scoring`)}
+                >
+                  <Radio className="size-4" />
+                  Live scoring
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
                 <DropdownMenuItem
                   className="cursor-pointer"
                   onClick={() => {
@@ -525,13 +368,7 @@ export function TournamentPageHeading({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer"
-                  onClick={() => {
-                    setDraftDescription(listingDescription ?? "");
-                    setDraftLocation(listingLocation);
-                    setDraftAddress(listingAddress);
-                    setDetailsError(null);
-                    setDetailsOpen(true);
-                  }}
+                  onClick={() => setDetailsOpen(true)}
                 >
                   <FileText className="size-4" />
                   Edit listing details
@@ -595,100 +432,15 @@ export function TournamentPageHeading({
               {duplicateError}
             </span>
           )}
-          </div>
         </div>
       </div>
 
-      <Dialog
+      <ListingDetailsDialog
+        tournamentId={tournamentId}
+        details={{ description, location, address }}
         open={detailsOpen}
-        onOpenChange={(open) => {
-          if (detailsSaving && open) return;
-          if (open) {
-            setDraftDescription(listingDescription ?? "");
-            setDraftLocation(listingLocation);
-            setDraftAddress(listingAddress);
-            setDetailsError(null);
-          } else {
-            setDetailsError(null);
-          }
-          setDetailsOpen(open);
-        }}
-      >
-        <DialogContent className="sm:max-w-lg" showCloseButton={!detailsSaving}>
-          <DialogHeader>
-            <DialogTitle>Edit listing details</DialogTitle>
-            <DialogDescription>
-              Update the public description, venue, and address. Include entry
-              fees and start time in the description so teams know what to
-              expect.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="listing-description">Description</Label>
-              <Textarea
-                id="listing-description"
-                value={draftDescription}
-                onChange={(e) => setDraftDescription(e.target.value)}
-                disabled={detailsSaving}
-                rows={5}
-                placeholder="Start time, entry fee for the first team, fee for each additional team, format, and other details..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="listing-location">Location</Label>
-              <Input
-                id="listing-location"
-                value={draftLocation}
-                onChange={(e) => setDraftLocation(e.target.value)}
-                disabled={detailsSaving}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="listing-address">Address (optional)</Label>
-              <Input
-                id="listing-address"
-                value={draftAddress}
-                onChange={(e) => setDraftAddress(e.target.value)}
-                disabled={detailsSaving}
-                placeholder="Street address or facility name"
-              />
-              {detailsOpen && !detailsSaving ? (
-                <AddressMapPreview
-                  address={draftAddress}
-                  location={draftLocation}
-                  height={160}
-                />
-              ) : null}
-            </div>
-          </div>
-          {detailsError && (
-            <p className="text-sm text-destructive" role="alert">
-              {detailsError}
-            </p>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setDetailsOpen(false)}
-              disabled={detailsSaving}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void commitListingDetails()}
-              disabled={
-                detailsSaving || draftLocation.trim().length === 0
-              }
-            >
-              {detailsSaving ? "Saving…" : "Save details"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onOpenChange={setDetailsOpen}
+      />
 
       <Dialog
         open={dateOpen}
