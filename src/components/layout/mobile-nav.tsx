@@ -60,7 +60,9 @@ export function MobileNav({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const visibleLinks = navLinks.filter((link) => !link.adminOnly || isAdmin);
+  const visibleLinks = navLinks.filter(
+    (link) => !link.hideInSidebar && (!link.adminOnly || isAdmin)
+  );
   const siteLinks = SITE_TOP_LINKS.filter((link) => link.href !== "/dashboard");
 
   return (

@@ -37,20 +37,27 @@ export interface NavLink {
   activePrefix?: string;
   /** Render only for admin users. */
   adminOnly?: boolean;
+  /** Reachable from a header control, so the nav lists skip it. */
+  hideInSidebar?: boolean;
 }
 
 export const navLinks: NavLink[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
-  { label: "My schedule", href: "/my-schedule", icon: CalendarClock },
-  { label: "Notifications", href: "/notifications", icon: Bell },
   { label: "Tournaments", href: "/tournaments", icon: Trophy },
+  { label: "Teams", href: "/teams", icon: Users },
   {
     label: "Schools",
     href: "/schools",
     icon: Building2,
     activePrefix: "/schools",
   },
-  { label: "Teams", href: "/teams", icon: Users },
-  { label: "Schedule", href: "/schedule", icon: Calendar },
+  { label: "My schedule", href: "/my-schedule", icon: CalendarClock },
+  { label: "All matches", href: "/schedule", icon: Calendar },
+  {
+    label: "Notifications",
+    href: "/notifications",
+    icon: Bell,
+    hideInSidebar: true,
+  },
   { label: "Admin", href: "/admin", icon: ShieldAlert, adminOnly: true },
 ];

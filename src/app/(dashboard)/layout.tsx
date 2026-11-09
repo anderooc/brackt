@@ -62,7 +62,7 @@ export default async function DashboardLayout({
           <main
             id="main-content"
             tabIndex={-1}
-            className="flex-1 overflow-x-clip p-4 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain md:p-6 md:[scrollbar-gutter:stable]"
+            className="min-w-0 flex-1 overflow-x-clip p-4 md:min-h-0 md:overflow-y-auto md:overscroll-y-contain md:p-6 md:[scrollbar-gutter:stable]"
           >
             <RouteFade>{children}</RouteFade>
           </main>

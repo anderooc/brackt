@@ -28,6 +28,11 @@ import { Button } from "@/components/ui/button";
 
 const SIDEBAR_COLLAPSED_KEY = "brackt-sidebar-collapsed";
 
+/** Tournament workspaces need the width, so the sidebar folds to icons there. */
+function isFocusRoute(pathname: string): boolean {
+  return /^\/tournaments\/(?!new(?:\/|$))[^/]+/.test(pathname);
+}
+
 function navHref(link: NavLink, schoolsHref?: string): string {
   if (link.activePrefix === "/schools" && schoolsHref) return schoolsHref;
   return link.href;
@@ -52,14 +57,21 @@ export function Sidebar({
   schoolsHref?: string;
 }) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const [storedCollapsed, setStoredCollapsed] = useState(false);
+  const [focusExpanded, setFocusExpanded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const visibleLinks = navLinks.filter((link) => !link.adminOnly || isAdmin);
+  const visibleLinks = navLinks.filter(
+    (link) => !link.hideInSidebar && (!link.adminOnly || isAdmin)
+  );
+  const focusRoute = isFocusRoute(pathname);
+  const collapsed = focusRoute ? !focusExpanded : storedCollapsed;
 
   useEffect(() => {
     queueMicrotask(() => {
       try {
-        setCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true");
+        setStoredCollapsed(
+          localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true"
+        );
       } catch {
         /* ignore */
       }
@@ -68,7 +80,11 @@ export function Sidebar({
   }, []);
 
   function toggleCollapsed() {
-    setCollapsed((prev) => {
+    if (focusRoute) {
+      setFocusExpanded((prev) => !prev);
+      return;
+    }
+    setStoredCollapsed((prev) => {
       const next = !prev;
       try {
         localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));

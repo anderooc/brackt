@@ -18,7 +18,6 @@
 
 import { Suspense } from "react";
 import { MobileNav } from "./mobile-nav";
-import { HeaderNav } from "./header-nav";
 import { BracktMark } from "./brackt-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { UserMenu } from "./user-menu";
@@ -48,7 +47,6 @@ export function Header({
         <div className="flex min-w-0 items-center gap-0.5 sm:gap-2">
           <MobileNav isAdmin={isAdmin} schoolsHref={schoolsHref} />
           <BracktMark href="/" />
-          <HeaderNav className="min-w-0" />
         </div>
 
         <div className="flex-1" />

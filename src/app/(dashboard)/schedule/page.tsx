@@ -30,7 +30,7 @@ import {
 import { enrichScheduledMatches } from "@/lib/schedule/enrich-scheduled-matches";
 import { pageMetadata } from "@/lib/metadata";
 
-export const metadata = pageMetadata("Schedule");
+export const metadata = pageMetadata("All matches");
 
 export default async function SchedulePage() {
   const user = await getCurrentUser();
@@ -67,7 +67,7 @@ export default async function SchedulePage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Schedule"
+        title="All matches"
         description="View all scheduled matches across tournaments."
       />
 
