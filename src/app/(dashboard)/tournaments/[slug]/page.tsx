@@ -77,7 +77,7 @@ import {
 } from "./panels/overview-panel";
 import type { Metadata } from "next";
 import {
-  getTournamentNameBySlug,
+  getTournamentTitleContextBySlug,
   tournamentDetailTitle,
 } from "@/lib/tournaments/metadata";
 import { pageMetadata } from "@/lib/metadata";
@@ -93,9 +93,17 @@ export async function generateMetadata({
 }: Pick<Props, "params" | "searchParams">): Promise<Metadata> {
   const { slug } = await params;
   const sp = (await searchParams) ?? {};
-  const name = await getTournamentNameBySlug(slug);
-  if (!name) return pageMetadata("Tournament");
-  return pageMetadata(tournamentDetailTitle(name, sp.tab));
+  const [tournament, user] = await Promise.all([
+    getTournamentTitleContextBySlug(slug),
+    getCurrentUser(),
+  ]);
+  if (!tournament) return pageMetadata("Tournament");
+  const isOrganizer = user
+    ? await resolveIsTournamentOrganizer(tournament, user)
+    : false;
+  return pageMetadata(
+    tournamentDetailTitle(tournament.name, sp.tab, { isOrganizer })
+  );
 }
 
 export default async function TournamentDetailPage({

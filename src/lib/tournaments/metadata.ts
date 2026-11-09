@@ -39,9 +39,32 @@ export async function getTournamentNameBySlug(
   return row?.name ?? null;
 }
 
+/** Fields needed to title the detail page for the current viewer's role. */
+export async function getTournamentTitleContextBySlug(slug: string) {
+  const [row] = await db
+    .select({
+      id: tournaments.id,
+      name: tournaments.name,
+      organizerId: tournaments.organizerId,
+      hostSchoolId: tournaments.hostSchoolId,
+    })
+    .from(tournaments)
+    .where(eq(tournaments.slug, slug))
+    .limit(1);
+
+  return row ?? null;
+}
+
+/** Views that teams and fans see under a different name than hosts do. */
+const PARTICIPANT_TAB_LABELS: Partial<Record<TournamentTabId, string>> = {
+  setup: "Event info",
+  pending: "Your application",
+};
+
 export function tournamentDetailTitle(
   tournamentName: string,
-  tab?: string | null
+  tab?: string | null,
+  options?: { isOrganizer?: boolean }
 ): string {
   const normalizedTab = tab === "messages" ? "email" : (tab ?? undefined);
   let tabId: TournamentTabId = DEFAULT_TOURNAMENT_TAB;
@@ -53,5 +76,8 @@ export function tournamentDetailTitle(
     return tournamentName;
   }
 
-  return pageTitle(TOURNAMENT_TAB_LABELS[tabId], tournamentName);
+  const label =
+    (options?.isOrganizer ? undefined : PARTICIPANT_TAB_LABELS[tabId]) ??
+    TOURNAMENT_TAB_LABELS[tabId];
+  return pageTitle(label, tournamentName);
 }
