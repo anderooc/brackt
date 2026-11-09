@@ -18,7 +18,7 @@
 
 import { LayoutGrid, Users } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
-import { and, count, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { divisions, registrations, tournaments } from "@/lib/db/schema";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -74,6 +74,7 @@ export async function TournamentPoolPlayPanel({
             })
             .from(divisions)
             .where(eq(divisions.tournamentId, tournament.id))
+            .orderBy(asc(divisions.createdAt), asc(divisions.id))
         : Promise.resolve([]),
     ]);
 
@@ -89,8 +90,16 @@ export async function TournamentPoolPlayPanel({
     const divsWithBracket = new Set(
       divisionPlayData.filter((d) => d.brackets.length > 0).map((d) => d.id)
     );
+    // Pool-to-bracket divisions share one set of brackets owned by the first
+    // of them, so the others are expected to have none.
+    const poolBracketOwnerId = tournamentDivisions.find(
+      (d) => d.format === "pool_to_bracket"
+    )?.id;
     for (const div of tournamentDivisions) {
       if (divsWithBracket.has(div.id)) continue;
+      if (div.format === "pool_to_bracket" && div.id !== poolBracketOwnerId) {
+        continue;
+      }
       await ensureDivisionBracketSkeleton(div.id, div.format);
     }
   }

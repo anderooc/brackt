@@ -20,7 +20,7 @@ import { Trophy } from "lucide-react";
 import type { InferSelectModel } from "drizzle-orm";
 import { asc, eq, and, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { divisions, tournaments, brackets, courts, teams, registrations } from "@/lib/db/schema";
+import { divisions, tournaments, courts, teams, registrations } from "@/lib/db/schema";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -35,7 +35,13 @@ import {
   tryFillBracketFromDivisionSeeds,
   tryFillTournamentCombinedBrackets,
 } from "@/lib/tournaments/bracket-structure";
-import { getDivisionPlayData } from "../brackets/data";
+import {
+  bracketHasStaleAdvance,
+  bracketHasTeams,
+  bracketHasUnseededTree,
+  poolPlayFinished,
+} from "@/lib/tournaments/bracket-health";
+import { getDivisionPlayData, type DivisionPlayData } from "../brackets/data";
 import { BracketView } from "../brackets/bracket-view";
 import { BracketMatchAdmin } from "../brackets/bracket-match-admin";
 import { BracketSeedingTable } from "../brackets/bracket-seeding-table";
@@ -44,6 +50,88 @@ import { buildBracketSeedingReport } from "@/lib/tournaments/combined-bracket-st
 import { bracketScheduleLabel } from "@/lib/tournaments/bracket-tiers";
 import { ScheduleMatchTimesSection } from "../matches/schedule-match-times-section";
 import { scheduleGroupsFromPlayData } from "@/lib/utils/schedule-times-groups";
+
+/**
+ * Bracket shells, seeding, and winner advancement are written when divisions,
+ * seeds, settings, or match results change. This only repairs data that is
+ * visibly out of step (legacy tournaments, interrupted writes), so a healthy
+ * bracket renders without any writes. Returns true when anything ran.
+ */
+async function repairBracketsIfNeeded({
+  tournamentId,
+  isOrganizer,
+  playData,
+  poolDivisionIds,
+  otherDivisions,
+}: {
+  tournamentId: string;
+  isOrganizer: boolean;
+  playData: DivisionPlayData[];
+  poolDivisionIds: string[];
+  otherDivisions: { id: string; format: string }[];
+}): Promise<boolean> {
+  const byId = new Map(playData.map((d) => [d.id, d]));
+  let repaired = false;
+
+  if (isOrganizer && poolDivisionIds.length > 0) {
+    const [ownerId, ...nonOwnerIds] = poolDivisionIds;
+    const ownerBrackets = byId.get(ownerId)?.brackets ?? [];
+    const needsShells =
+      ownerBrackets.length === 0 ||
+      ownerBrackets.some((b) => bracketHasUnseededTree(b.matches)) ||
+      nonOwnerIds.some((id) =>
+        (byId.get(id)?.brackets ?? []).some((b) => !bracketHasTeams(b.matches))
+      );
+    if (needsShells) {
+      await ensureTournamentCombinedBrackets(tournamentId);
+      repaired = true;
+    }
+
+    const seeded = ownerBrackets.some((b) => bracketHasTeams(b.matches));
+    const poolsDone = poolDivisionIds.every((id) =>
+      poolPlayFinished(byId.get(id)?.pools ?? [])
+    );
+    if (!seeded && poolsDone) {
+      await tryFillTournamentCombinedBrackets(tournamentId);
+      repaired = true;
+    }
+  }
+
+  if (isOrganizer) {
+    for (const div of otherDivisions) {
+      const data = byId.get(div.id);
+      const divBrackets = data?.brackets ?? [];
+      if (
+        divBrackets.length === 0 ||
+        divBrackets.some((b) => bracketHasUnseededTree(b.matches))
+      ) {
+        await ensureDivisionBracketSkeleton(div.id, div.format);
+        repaired = true;
+      }
+      const teamCount =
+        data?.pools.reduce((n, p) => n + p.teams.length, 0) ?? 0;
+      if (
+        div.format === "single_elimination" &&
+        teamCount >= 2 &&
+        !divBrackets.some((b) => bracketHasTeams(b.matches))
+      ) {
+        await tryFillBracketFromDivisionSeeds(div.id);
+        repaired = true;
+      }
+    }
+  }
+
+  for (const div of playData) {
+    for (const bracket of div.brackets) {
+      if (bracketHasStaleAdvance(bracket.matches)) {
+        await repairBracketWinnerAdvances(bracket.id);
+        repaired = true;
+      }
+    }
+  }
+
+  return repaired;
+}
 
 export async function TournamentBracketPanel({
   tournament,
@@ -54,7 +142,15 @@ export async function TournamentBracketPanel({
 }) {
   const isOrganizer = await resolveIsTournamentOrganizer(tournament, user);
 
-  const [tournamentDivisions, bracketIdRows] = await Promise.all([
+  // One parallel wave. Courts, team labels, and regenerate state only feed
+  // organizer controls, so participants skip them.
+  const [
+    tournamentDivisions,
+    tournamentCourts,
+    registeredTeams,
+    loadedPlayData,
+    loadedRegenerateState,
+  ] = await Promise.all([
     db
       .select({
         id: divisions.id,
@@ -65,11 +161,34 @@ export async function TournamentBracketPanel({
       .from(divisions)
       .where(eq(divisions.tournamentId, tournament.id))
       .orderBy(asc(divisions.createdAt), asc(divisions.id)),
-    db
-      .select({ id: brackets.id })
-      .from(brackets)
-      .innerJoin(divisions, eq(brackets.divisionId, divisions.id))
-      .where(eq(divisions.tournamentId, tournament.id)),
+    isOrganizer
+      ? db
+          .select({ id: courts.id, name: courts.name })
+          .from(courts)
+          .where(eq(courts.tournamentId, tournament.id))
+          .orderBy(asc(courts.name), asc(courts.id))
+      : Promise.resolve([]),
+    isOrganizer
+      ? db
+          .select({
+            id: teams.id,
+            name: teams.name,
+            university: teams.university,
+          })
+          .from(registrations)
+          .innerJoin(teams, eq(registrations.teamId, teams.id))
+          .where(
+            and(
+              eq(registrations.tournamentId, tournament.id),
+              inArray(registrations.status, ["confirmed", "checked_in"])
+            )
+          )
+          .orderBy(asc(teams.name))
+      : Promise.resolve([]),
+    getDivisionPlayData(tournament.id, { forOrganizer: isOrganizer }),
+    isOrganizer
+      ? tournamentCombinedBracketsRegenerateState(tournament.id)
+      : Promise.resolve({ canRegenerate: false, reason: undefined }),
   ]);
 
   const poolDivisions = tournamentDivisions.filter(
@@ -80,49 +199,21 @@ export async function TournamentBracketPanel({
       d.format === "single_elimination" || d.format === "double_elimination"
   );
 
-  if (poolDivisions.length > 0) {
-    await ensureTournamentCombinedBrackets(tournament.id);
-    await tryFillTournamentCombinedBrackets(tournament.id);
-  }
-  if (isOrganizer) {
-    for (const div of otherDivisions) {
-      await ensureDivisionBracketSkeleton(div.id, div.format);
-      if (div.format === "single_elimination") {
-        await tryFillBracketFromDivisionSeeds(div.id);
-      }
-    }
-  }
-
-  for (const row of bracketIdRows) {
-    await repairBracketWinnerAdvances(row.id);
-  }
-
-  const [tournamentCourts, registeredTeams] = await Promise.all([
-    db
-      .select({ id: courts.id, name: courts.name })
-      .from(courts)
-      .where(eq(courts.tournamentId, tournament.id))
-      .orderBy(asc(courts.name), asc(courts.id)),
-    db
-      .select({
-        id: teams.id,
-        name: teams.name,
-        university: teams.university,
-      })
-      .from(registrations)
-      .innerJoin(teams, eq(registrations.teamId, teams.id))
-      .where(
-        and(
-          eq(registrations.tournamentId, tournament.id),
-          inArray(registrations.status, ["confirmed", "checked_in"])
-        )
-      )
-      .orderBy(asc(teams.name)),
-  ]);
-
-  const playData = await getDivisionPlayData(tournament.id, {
-    forOrganizer: isOrganizer,
+  const repaired = await repairBracketsIfNeeded({
+    tournamentId: tournament.id,
+    isOrganizer,
+    playData: loadedPlayData,
+    poolDivisionIds: poolDivisions.map((d) => d.id),
+    otherDivisions,
   });
+  const [playData, regenerateState] = repaired
+    ? await Promise.all([
+        getDivisionPlayData(tournament.id, { forOrganizer: isOrganizer }),
+        isOrganizer
+          ? tournamentCombinedBracketsRegenerateState(tournament.id)
+          : loadedRegenerateState,
+      ])
+    : [loadedPlayData, loadedRegenerateState];
 
   const teamLabels = registeredTeams.map((t) => ({
     id: t.id,
@@ -138,11 +229,6 @@ export async function TournamentBracketPanel({
   const combinedLocked = combinedBrackets.some((b) =>
     b.matches.some((m) => m.teamAId || m.teamBId)
   );
-
-  const regenerateState =
-    poolDivisions.length > 0
-      ? await tournamentCombinedBracketsRegenerateState(tournament.id)
-      : { canRegenerate: false, reason: undefined };
 
   const poolDivisionIds = new Set(poolDivisions.map((d) => d.id));
   const totalBracketTeams = [
