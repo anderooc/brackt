@@ -261,6 +261,5 @@ export async function applyMatchTimeFill(
 
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/tournaments/[slug]/matches/[matchSlug]", "page");
-  revalidatePath("/schedule");
   return { success: true as const, updated: toApply.length };
 }

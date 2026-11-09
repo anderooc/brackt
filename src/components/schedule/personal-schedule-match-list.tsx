@@ -21,7 +21,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
-import { CalendarClock } from "lucide-react";
+import { ArrowRight, CalendarClock } from "lucide-react";
 import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -35,12 +35,84 @@ const ROLE_LABELS: Record<PersonalScheduleMatchContract["role"], string> = {
   scorekeeping: "Scorekeeping",
 };
 
+/** The viewer's next match, with enough detail to know where to be. */
+export function UpNextMatch({
+  match,
+  showTournament = true,
+}: {
+  match: PersonalScheduleMatchContract;
+  showTournament?: boolean;
+}) {
+  const scheduledTime = new Date(match.scheduledTime);
+  const warmupStart = match.warmupStart ? new Date(match.warmupStart) : null;
+  const href = `/tournaments/${match.tournamentSlug}/matches/${match.matchSlug}`;
+  const where = [match.courtName, match.contextLabel || null].filter(Boolean);
+
+  return (
+    <Link
+      href={href}
+      className="group flex flex-col gap-3 rounded-xl border bg-primary/[0.04] p-4 transition-colors duration-150 ease-out hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:flex-row sm:items-center sm:gap-5 dark:bg-primary/[0.08] dark:hover:bg-primary/[0.12]"
+    >
+      <div className="flex shrink-0 items-baseline gap-2 sm:w-36 sm:flex-col sm:gap-0.5">
+        <span className="text-sm text-muted-foreground">
+          {format(scheduledTime, "EEE, MMM d")}
+        </span>
+        <time
+          dateTime={scheduledTime.toISOString()}
+          className="text-2xl font-semibold tabular-nums tracking-tight"
+        >
+          {format(scheduledTime, "h:mm a")}
+        </time>
+        {warmupStart ? (
+          <span className="text-xs tabular-nums text-muted-foreground">
+            Warmup {format(warmupStart, "h:mm a")}
+          </span>
+        ) : null}
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        {showTournament ? (
+          <p className="truncate text-xs font-medium text-muted-foreground">
+            {match.tournamentName}
+          </p>
+        ) : null}
+        <p className="font-medium leading-snug">
+          {match.teamAName}
+          <span className="text-muted-foreground"> vs </span>
+          {match.teamBName}
+        </p>
+        {where.length > 0 ? (
+          <p className="text-sm text-muted-foreground">{where.join(" · ")}</p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <Badge variant="secondary" className="text-[10px] uppercase">
+            {ROLE_LABELS[match.role]}
+          </Badge>
+          {match.myTeamName ? (
+            <span className="text-xs text-muted-foreground">
+              {match.myTeamName}
+            </span>
+          ) : null}
+          <StatusBadge kind="match" status={match.status} />
+        </div>
+      </div>
+      <ArrowRight
+        className="hidden size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-out group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transition-none sm:block"
+        aria-hidden
+      />
+    </Link>
+  );
+}
+
 export function PersonalScheduleMatchList({
   matches,
   compact,
+  emptyTitle = "No upcoming matches",
+  emptyDescription = "Matches for your teams will appear here once tournament schedules are released.",
 }: {
   matches: PersonalScheduleMatchContract[];
   compact?: boolean;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const byDate = useMemo(() => {
     const groups = new Map<string, PersonalScheduleMatchContract[]>();
@@ -57,8 +129,8 @@ export function PersonalScheduleMatchList({
       <EmptyState
         illustration="matches"
         icon={CalendarClock}
-        title="No upcoming matches"
-        description="Matches for your teams will appear here once tournament schedules are released."
+        title={emptyTitle}
+        description={emptyDescription}
       />
     );
   }

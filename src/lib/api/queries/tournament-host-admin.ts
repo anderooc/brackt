@@ -47,7 +47,6 @@ function revalidateTournamentLists() {
   revalidatePath("/tournaments");
   revalidatePath("/explore");
   revalidatePath("/dashboard");
-  revalidatePath("/schedule");
   revalidatePath("/tournaments/[slug]", "page");
 }
 

@@ -188,7 +188,6 @@ export async function renameTournament(tournamentId: string, name: string) {
   revalidatePath("/tournaments");
   revalidatePath("/explore");
   revalidatePath("/dashboard");
-  revalidatePath("/schedule");
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/tournaments/[slug]/brackets", "page");
   revalidatePath("/tournaments/[slug]/scoring", "page");
@@ -446,7 +445,6 @@ export async function updateTournamentMatchFormat(
 
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/tournaments/[slug]/scoring", "page");
-  revalidatePath("/schedule");
   return { success: true as const };
 }
 
@@ -461,7 +459,6 @@ export async function deleteTournament(
   revalidatePath("/tournaments");
   revalidatePath("/explore");
   revalidatePath("/dashboard");
-  revalidatePath("/schedule");
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/tournaments/[slug]/brackets", "page");
   revalidatePath("/tournaments/[slug]/scoring", "page");
@@ -477,7 +474,6 @@ export async function duplicateTournament(tournamentId: string) {
 
   revalidatePath("/tournaments");
   revalidatePath("/dashboard");
-  revalidatePath("/schedule");
   return { success: true as const, slug: result.slug };
 }
 
@@ -588,7 +584,6 @@ export async function updateTournamentDate(
   revalidatePath("/tournaments");
   revalidatePath("/explore");
   revalidatePath("/dashboard");
-  revalidatePath("/schedule");
   revalidatePath("/tournaments/[slug]", "page");
   revalidatePath("/tournaments/[slug]/brackets", "page");
   revalidatePath("/tournaments/[slug]/scoring", "page");

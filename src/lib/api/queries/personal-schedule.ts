@@ -80,12 +80,13 @@ function resolveRole(
   return { role: "playing", myTeamName: null };
 }
 
-export async function loadPersonalScheduleForViewer(
-  user: AppUser,
-  options?: { limit?: number; includeCompleted?: boolean }
-): Promise<PersonalScheduleContract> {
-  const limit = options?.limit ?? DEFAULT_LIMIT;
+type ScheduleFilterOptions = {
+  includeCompleted?: boolean;
+  /** Restrict to one tournament (the tournament page's "Your matches"). */
+  tournamentId?: string;
+};
 
+async function loadViewerInvolvement(user: AppUser) {
   const [teamRows, crewRows] = await Promise.all([
     db
       .select({ teamId: teamMembers.teamId })
@@ -98,7 +99,6 @@ export async function loadPersonalScheduleForViewer(
   ]);
 
   const teamIds = teamRows.map((row) => row.teamId);
-  const teamIdSet = new Set(teamIds);
   const crewMatchIds = new Set(crewRows.map((row) => row.matchId));
 
   const involvement: ReturnType<typeof or>[] = [];
@@ -114,13 +114,58 @@ export async function loadPersonalScheduleForViewer(
   }
   involvement.push(eq(matches.pointKeeperUserId, user.id));
 
-  if (involvement.length === 0) {
-    return { matches: [] };
-  }
+  return { teamIdSet: new Set(teamIds), crewMatchIds, involvement };
+}
 
-  const statusFilter = options?.includeCompleted
-    ? undefined
-    : ne(matches.status, "completed");
+/** Scheduled, released, non-draft matches the viewer plays, refs, or works. */
+function scheduleWhere(
+  involvement: ReturnType<typeof or>[],
+  options?: ScheduleFilterOptions
+) {
+  return and(
+    ne(tournaments.status, "draft"),
+    isNotNull(matches.scheduledTime),
+    or(...involvement),
+    or(
+      isNotNull(divFromPool.poolsReleasedAt),
+      isNotNull(divFromBracket.poolsReleasedAt)
+    ),
+    options?.includeCompleted ? undefined : ne(matches.status, "completed"),
+    options?.tournamentId
+      ? eq(matches.tournamentId, options.tournamentId)
+      : undefined
+  );
+}
+
+/** Cheap check used to decide whether a tournament shows "Your matches". */
+export async function viewerHasScheduleInTournament(
+  user: AppUser,
+  tournamentId: string
+): Promise<boolean> {
+  const { involvement } = await loadViewerInvolvement(user);
+  const rows = await db
+    .select({ id: matches.id })
+    .from(matches)
+    .innerJoin(tournaments, eq(tournaments.id, matches.tournamentId))
+    .leftJoin(pools, eq(pools.id, matches.poolId))
+    .leftJoin(divFromPool, eq(divFromPool.id, pools.divisionId))
+    .leftJoin(brackets, eq(brackets.id, matches.bracketId))
+    .leftJoin(divFromBracket, eq(divFromBracket.id, brackets.divisionId))
+    .where(
+      scheduleWhere(involvement, { includeCompleted: true, tournamentId })
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function loadPersonalScheduleForViewer(
+  user: AppUser,
+  options?: { limit?: number } & ScheduleFilterOptions
+): Promise<PersonalScheduleContract> {
+  const limit = options?.limit ?? DEFAULT_LIMIT;
+
+  const { teamIdSet, crewMatchIds, involvement } =
+    await loadViewerInvolvement(user);
 
   const rows = await db
     .select({
@@ -135,18 +180,7 @@ export async function loadPersonalScheduleForViewer(
     .leftJoin(divFromPool, eq(divFromPool.id, pools.divisionId))
     .leftJoin(brackets, eq(brackets.id, matches.bracketId))
     .leftJoin(divFromBracket, eq(divFromBracket.id, brackets.divisionId))
-    .where(
-      and(
-        ne(tournaments.status, "draft"),
-        isNotNull(matches.scheduledTime),
-        or(...involvement),
-        or(
-          isNotNull(divFromPool.poolsReleasedAt),
-          isNotNull(divFromBracket.poolsReleasedAt)
-        ),
-        statusFilter
-      )
-    )
+    .where(scheduleWhere(involvement, options))
     .orderBy(asc(matches.scheduledTime))
     .limit(limit);
 

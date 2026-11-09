@@ -39,6 +39,7 @@ type TournamentActivePanelProps = {
   showChatTab: boolean;
   showTeamsTab: boolean;
   showPendingTab: boolean;
+  showMyMatchesTab: boolean;
   showPoolPlayTab: boolean;
   showBracketTab: boolean;
   showMatchesTab: boolean;
@@ -63,6 +64,7 @@ export async function TournamentActivePanel({
   showChatTab,
   showTeamsTab,
   showPendingTab,
+  showMyMatchesTab,
   showPoolPlayTab,
   showBracketTab,
   showMatchesTab,
@@ -191,6 +193,16 @@ export async function TournamentActivePanel({
             user={user}
             listKind="pending"
           />
+        );
+      }
+    case "my-matches":
+      if (!showMyMatchesTab) return null;
+      {
+        const { TournamentMyMatchesPanel } = await import(
+          "./panels/my-matches-panel"
+        );
+        return (
+          <TournamentMyMatchesPanel tournamentId={tournament.id} user={user} />
         );
       }
     case "pool-play":

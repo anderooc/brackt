@@ -173,7 +173,7 @@ export function OfflineControls() {
               Review saved referee assignments, upcoming game times, and court numbers.
             </p>
             <Link
-              href="/my-schedule"
+              href="/dashboard#your-schedule"
               className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full text-xs h-8 mt-1")}
             >
               <CalendarDays className="mr-1.5 h-3.5 w-3.5" />

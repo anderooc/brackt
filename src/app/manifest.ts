@@ -69,7 +69,7 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "My Schedule",
         short_name: "Schedule",
         description: "View your personal tournament match and ref schedule",
-        url: "/my-schedule",
+        url: "/dashboard#your-schedule",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
       },
       {

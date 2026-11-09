@@ -19,11 +19,14 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  CalendarClock,
   Check,
   ChevronRight,
   Download,
   Radio,
 } from "lucide-react";
+import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
+import { UpNextMatch } from "@/components/schedule/personal-schedule-match-list";
 import { buttonVariants } from "@/components/ui/button";
 import { TeamAttributesBadges } from "@/components/team-attributes-badges";
 import { TournamentHostSchoolLink } from "@/components/tournament-host-school-link";
@@ -109,7 +112,7 @@ function stepAction(
     case "bracket":
       return link(tab("bracket"), "Open bracket");
     case "schedule":
-      return link(tab("matches") ?? "/schedule", "Schedule matches");
+      return link(tab("matches", "pool-play", "bracket"), "Schedule matches");
     case "run":
       return status("in_progress", "Start event");
     default:
@@ -152,7 +155,7 @@ function stepDestination(
     case "release":
       return tab("pool-play");
     case "schedule":
-      return tab("matches") ?? { kind: "link", href: "/schedule" };
+      return tab("matches", "pool-play", "bracket");
     case "run":
       return { kind: "link", href: `/tournaments/${ctx.slug}/scoring` };
     default:
@@ -509,13 +512,18 @@ export function TournamentOverviewPublicPanel({
   allowedTabs,
   confirmedCount,
   myPendingCount,
+  hasMyMatches,
+  upNext,
   canRegister,
   canDownloadPacket,
 }: SharedProps & {
   myPendingCount: number;
+  hasMyMatches: boolean;
+  upNext: PersonalScheduleMatchContract | null;
   canRegister: boolean;
   canDownloadPacket: boolean;
 }) {
+  const myMatchesHref = tournamentTabUrl(tournament.slug, "my-matches");
   const playTab = (["pool-play", "bracket", "matches"] as const).find((id) =>
     allowedTabs.has(id)
   );
@@ -526,6 +534,31 @@ export function TournamentOverviewPublicPanel({
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
       <div className="min-w-0 space-y-8">
+        {hasMyMatches ? (
+          <section aria-labelledby="overview-up-next" className="space-y-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2
+                id="overview-up-next"
+                className="text-base font-semibold tracking-tight"
+              >
+                {upNext ? "Your next match" : "Your matches"}
+              </h2>
+              <Link
+                href={myMatchesHref}
+                className="rounded-sm text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {upNext ? "All your matches" : "See your results"}
+              </Link>
+            </div>
+            {upNext ? (
+              <UpNextMatch match={upNext} showTournament={false} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                You’ve played all your scheduled matches here.
+              </p>
+            )}
+          </section>
+        ) : null}
         {myPendingCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-primary/[0.04] p-4 dark:bg-primary/[0.08]">
             <p className="text-sm">
@@ -565,6 +598,18 @@ export function TournamentOverviewPublicPanel({
                 className={buttonVariants({ className: "w-full" })}
               >
                 Register a team
+              </Link>
+            ) : null}
+            {hasMyMatches ? (
+              <Link
+                href={myMatchesHref}
+                className={buttonVariants({
+                  variant: canRegister ? "outline" : "default",
+                  className: "w-full",
+                })}
+              >
+                <CalendarClock className="size-4" aria-hidden />
+                Your matches
               </Link>
             ) : null}
             {playTab ? (

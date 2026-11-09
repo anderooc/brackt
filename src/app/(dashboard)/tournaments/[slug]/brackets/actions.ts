@@ -361,7 +361,6 @@ export async function updateBracketMatchCourt(
   });
 
   revalidatePath("/tournaments/[slug]", "page");
-  revalidatePath("/schedule");
   return { success: true as const };
 }
 

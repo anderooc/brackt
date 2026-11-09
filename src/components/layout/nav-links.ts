@@ -21,8 +21,6 @@ import {
   Trophy,
   Users,
   Building2,
-  Calendar,
-  CalendarClock,
   ShieldAlert,
   Bell,
   type LucideIcon,
@@ -51,8 +49,6 @@ export const navLinks: NavLink[] = [
     icon: Building2,
     activePrefix: "/schools",
   },
-  { label: "My schedule", href: "/my-schedule", icon: CalendarClock },
-  { label: "All matches", href: "/schedule", icon: Calendar },
   {
     label: "Notifications",
     href: "/notifications",

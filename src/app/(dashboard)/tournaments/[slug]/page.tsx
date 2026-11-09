@@ -55,6 +55,10 @@ import {
   userCanViewTournamentChat,
 } from "@/lib/tournaments/chat-access";
 import {
+  loadPersonalScheduleForViewer,
+  viewerHasScheduleInTournament,
+} from "@/lib/api/queries/personal-schedule";
+import {
   buildTournamentSections,
   DEFAULT_TOURNAMENT_TAB,
   parseTournamentTab,
@@ -147,6 +151,7 @@ export default async function TournamentDetailPage({
     canAccessPayment,
     showChatTab,
     myPendingRow,
+    hasMyMatches,
   ] = await Promise.all([
     isOrganizerPromise,
     canEditTournamentSetup(tournament, user),
@@ -196,6 +201,7 @@ export default async function TournamentDetailPage({
           )
           .then((rows) => rows[0])
       : Promise.resolve(undefined),
+    viewerHasScheduleInTournament(user, id),
   ]);
 
   const preparationLockedReason = isOrganizer
@@ -264,6 +270,7 @@ export default async function TournamentDetailPage({
       badge: isOrganizer ? pendingCount : myPendingCount,
     });
   }
+  if (hasMyMatches) views.push({ id: "my-matches", label: "Your matches" });
   if (showPoolPlayTab) views.push({ id: "pool-play", label: "Pools" });
   if (showBracketTab) views.push({ id: "bracket", label: "Bracket" });
   if (showMatchesTab) views.push({ id: "matches", label: "Matches" });
@@ -280,20 +287,22 @@ export default async function TournamentDetailPage({
   const allowedTabs = new Set<TournamentTabId>(views.map((v) => v.id));
 
   // With no explicit tab, land where this tournament's lifecycle needs you:
-  // results once play starts, the application for a waiting captain, else
-  // the overview.
+  // your own matches on game day, results once play starts, the application
+  // for a waiting captain, else the overview.
   const playUnderway =
     tournament.status === "in_progress" || tournament.status === "completed";
   const playLanding: TournamentTabId | undefined = playUnderway
-    ? playSignals.hasSeededBrackets && showBracketTab
-      ? "bracket"
-      : showPoolPlayTab
-        ? "pool-play"
-        : showBracketTab
-          ? "bracket"
-          : showMatchesTab
-            ? "matches"
-            : undefined
+    ? tournament.status === "in_progress" && hasMyMatches
+      ? "my-matches"
+      : playSignals.hasSeededBrackets && showBracketTab
+        ? "bracket"
+        : showPoolPlayTab
+          ? "pool-play"
+          : showBracketTab
+            ? "bracket"
+            : showMatchesTab
+              ? "matches"
+              : undefined
     : undefined;
   const fallbackTab: TournamentTabId =
     playLanding ??
@@ -302,6 +311,16 @@ export default async function TournamentDetailPage({
       : DEFAULT_TOURNAMENT_TAB);
 
   const activeTab = parseTournamentTab(sp.tab, allowedTabs, fallbackTab);
+
+  const upNext =
+    activeTab === "overview" && !isOrganizer && hasMyMatches
+      ? ((
+          await loadPersonalScheduleForViewer(user, {
+            tournamentId: id,
+            limit: 1,
+          })
+        ).matches[0] ?? null)
+      : null;
 
   const sections = buildTournamentSections(views, {
     overview: "Overview",
@@ -442,6 +461,8 @@ export default async function TournamentDetailPage({
               allowedTabs={allowedTabs}
               confirmedCount={confirmedCount}
               myPendingCount={myPendingCount}
+              hasMyMatches={hasMyMatches}
+              upNext={upNext}
               canRegister={showRegisterLink}
               canDownloadPacket={canDownloadPacket}
             />
@@ -464,6 +485,7 @@ export default async function TournamentDetailPage({
               showChatTab={showChatTab}
               showTeamsTab={showTeamsTab}
               showPendingTab={showPendingTab}
+              showMyMatchesTab={hasMyMatches}
               showPoolPlayTab={showPoolPlayTab}
               showBracketTab={showBracketTab}
               showMatchesTab={showMatchesTab}

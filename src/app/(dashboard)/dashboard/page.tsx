@@ -40,17 +40,23 @@ import {
   ArrowRight,
   Clock,
   GraduationCap,
-  CalendarClock,
+  CalendarPlus,
+  ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { pageMetadata } from "@/lib/metadata";
 import { cn } from "@/lib/utils";
-import { PersonalScheduleMatchList } from "../my-schedule/personal-schedule-match-list";
+import {
+  PersonalScheduleMatchList,
+  UpNextMatch,
+} from "@/components/schedule/personal-schedule-match-list";
 
 export const metadata = pageMetadata("Dashboard");
 
 export const dynamic = "force-dynamic";
+
+const SCHEDULE_PREVIEW_COUNT = 4;
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -76,8 +82,12 @@ export default async function DashboardPage() {
     // and stats should reflect the full set.
     getDashboardTournaments(user.id),
     getUserSchoolSummary(user.id),
-    loadPersonalScheduleForViewer(user, { limit: 5 }),
+    loadPersonalScheduleForViewer(user),
   ]);
+
+  const [nextMatch, ...laterMatches] = personalSchedule.matches;
+  const shownLater = laterMatches.slice(0, SCHEDULE_PREVIEW_COUNT);
+  const hiddenLater = laterMatches.slice(SCHEDULE_PREVIEW_COUNT);
 
   const upcomingCount = allMyTournaments.filter((t) => t.relation !== "past").length;
   const pendingCount = allMyTournaments.filter((t) => t.relation === "pending").length;
@@ -98,6 +108,60 @@ export default async function DashboardPage() {
             : "Your teams, signups, and tournaments."
         }
       />
+
+      {!isNewUser && (userTeams.length > 0 || nextMatch) ? (
+        <section
+          id="your-schedule"
+          aria-labelledby="dashboard-schedule"
+          className="scroll-mt-20 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2
+              id="dashboard-schedule"
+              className="text-lg font-semibold tracking-tight"
+            >
+              Your schedule
+            </h2>
+            {nextMatch ? (
+              <a
+                href="/api/v1/me/schedule.ics"
+                className={buttonVariants({ size: "sm", variant: "outline" })}
+              >
+                <CalendarPlus className="mr-2 h-4 w-4" />
+                Add to calendar
+              </a>
+            ) : null}
+          </div>
+          {nextMatch ? (
+            <UpNextMatch match={nextMatch} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No matches scheduled yet. Your teams’ matches and ref duties show
+              up here once a host releases the schedule.
+            </p>
+          )}
+          {shownLater.length > 0 ? (
+            <PersonalScheduleMatchList matches={shownLater} />
+          ) : null}
+          {hiddenLater.length > 0 ? (
+            <details className="group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-sm text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+                <ChevronDown
+                  className="h-4 w-4 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+                  aria-hidden
+                />
+                <span className="group-open:hidden">
+                  Show {hiddenLater.length} more
+                </span>
+                <span className="hidden group-open:inline">Show fewer</span>
+              </summary>
+              <div className="mt-4">
+                <PersonalScheduleMatchList matches={hiddenLater} />
+              </div>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
 
       {isNewUser ? (
         <Card className="relative overflow-hidden border-dashed">
@@ -188,27 +252,6 @@ export default async function DashboardPage() {
           />
         </div>
       )}
-
-      {!isNewUser && personalSchedule.matches.length > 0 ? (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Upcoming matches</CardTitle>
-            <Link
-              href="/my-schedule"
-              className={buttonVariants({ size: "sm", variant: "outline" })}
-            >
-              <CalendarClock className="mr-2 h-4 w-4" />
-              View all
-            </Link>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <PersonalScheduleMatchList
-              matches={personalSchedule.matches}
-              compact
-            />
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

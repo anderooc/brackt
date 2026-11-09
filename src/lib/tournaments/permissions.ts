@@ -496,7 +496,7 @@ export function hostChecklistSteps(input: {
       id: "schedule",
       label: "Schedule matches",
       done: hasScheduledMatches,
-      hint: "Assign courts and start times in Play › Matches, or auto-schedule from All matches.",
+      hint: "Assign courts and start times in Play › Matches.",
     },
     {
       id: "run",
