@@ -46,11 +46,11 @@ import {
   type DashboardHostingStats,
   type DashboardTournament,
 } from "@/lib/tournaments/dashboard";
-import type {
-  AttentionItem,
-  AttentionKind,
+import {
+  describeAttentionItem,
+  type AttentionItem,
+  type AttentionKind,
 } from "@/lib/tournaments/dashboard-attention";
-import { formatFeeCents } from "@/lib/tournaments/payment-settings";
 import { loadPersonalScheduleForViewer } from "@/lib/api/queries/personal-schedule";
 import { tournamentTabUrl } from "@/app/(dashboard)/tournaments/[slug]/constants";
 import { buttonVariants } from "@/components/ui/button";
@@ -447,61 +447,12 @@ function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-function attentionCopy(item: AttentionItem): {
-  title: string;
-  detail: string | null;
-  cta: string;
-  href: string;
-} {
-  const slug = item.tournament.slug;
-  const count = item.count ?? 0;
-  switch (item.kind) {
-    case "approve_teams":
-      return {
-        title: `Approve ${plural(count, "team", "teams")}`,
-        detail: null,
-        cta: "Review",
-        href: tournamentTabUrl(slug, "pending"),
-      };
-    case "review_payments":
-      return {
-        title: `Confirm ${plural(count, "payment", "payments")}`,
-        detail: null,
-        cta: "Review",
-        href: tournamentTabUrl(slug, "payment"),
-      };
-    case "pay_fee":
-      return {
-        title:
-          item.amountCents != null
-            ? `Pay the ${formatFeeCents(item.amountCents)} entry fee`
-            : "Pay the entry fee",
-        detail: item.teamName ?? null,
-        cta: "Pay",
-        href: tournamentTabUrl(slug, "payment"),
-      };
-    case "sign_waiver":
-      return {
-        title: "Sign the waiver",
-        detail: null,
-        cta: "Sign",
-        href: tournamentTabUrl(slug, "waiver"),
-      };
-    case "collect_waivers":
-      return {
-        title: `${plural(count, "teammate hasn’t", "teammates haven’t")} signed the waiver`,
-        detail: item.teamName ?? null,
-        cta: "View",
-        href: tournamentTabUrl(slug, "waiver"),
-      };
-  }
-}
-
 function AttentionList({ items, today }: { items: AttentionItem[]; today: string }) {
   return (
     <ul className="divide-y divide-border/70 overflow-hidden rounded-xl border">
       {items.map((item) => {
-        const copy = attentionCopy(item);
+        const copy = describeAttentionItem(item);
+        const href = tournamentTabUrl(item.tournament.slug, copy.target);
         const Icon = ATTENTION_ICON[item.kind];
         const when =
           relativeDay(item.tournament.date, today) ??
@@ -510,7 +461,7 @@ function AttentionList({ items, today }: { items: AttentionItem[]; today: string
         return (
           <li key={item.key}>
             <Link
-              href={copy.href}
+              href={href}
               className="group flex items-center gap-3 px-4 py-3 transition-colors duration-150 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">

@@ -17,6 +17,7 @@
  */
 
 import type { RegistrationPaymentStatus } from "@/types";
+import { formatFeeCents } from "@/lib/tournaments/payment-settings";
 
 export type AttentionKind =
   | "approve_teams"
@@ -24,6 +25,9 @@ export type AttentionKind =
   | "pay_fee"
   | "sign_waiver"
   | "collect_waivers";
+
+/** Where an item is resolved: the host's pending list, payments, or waivers. */
+export type AttentionTarget = "pending" | "payment" | "waiver";
 
 export type AttentionTournament = {
   id: string;
@@ -70,6 +74,61 @@ export type AttentionInputs = {
   /** teamId → roster user ids, for teams the viewer captains. */
   rosterByTeam: Map<string, string[]>;
 };
+
+function plural(n: number, one: string, many: string) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** Shared wording so web and mobile ask for the same thing. */
+export function describeAttentionItem(item: AttentionItem): {
+  title: string;
+  /** Team the item is about, when it isn't obvious from the tournament. */
+  detail: string | null;
+  cta: string;
+  target: AttentionTarget;
+} {
+  const count = item.count ?? 0;
+  switch (item.kind) {
+    case "approve_teams":
+      return {
+        title: `Approve ${plural(count, "team", "teams")}`,
+        detail: null,
+        cta: "Review",
+        target: "pending",
+      };
+    case "review_payments":
+      return {
+        title: `Confirm ${plural(count, "payment", "payments")}`,
+        detail: null,
+        cta: "Review",
+        target: "payment",
+      };
+    case "pay_fee":
+      return {
+        title:
+          item.amountCents != null
+            ? `Pay the ${formatFeeCents(item.amountCents)} entry fee`
+            : "Pay the entry fee",
+        detail: item.teamName ?? null,
+        cta: "Pay",
+        target: "payment",
+      };
+    case "sign_waiver":
+      return {
+        title: "Sign the waiver",
+        detail: null,
+        cta: "Sign",
+        target: "waiver",
+      };
+    case "collect_waivers":
+      return {
+        title: `${plural(count, "teammate hasn’t", "teammates haven’t")} signed the waiver`,
+        detail: item.teamName ?? null,
+        cta: "View",
+        target: "waiver",
+      };
+  }
+}
 
 const KIND_ORDER: Record<AttentionKind, number> = {
   approve_teams: 0,

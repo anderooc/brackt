@@ -21,15 +21,23 @@ import type { AppUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { teamMembers, teams } from "@/lib/db/schema";
 import { getUserSchoolSummary } from "@/lib/schools/navigation";
-import { getDashboardTournaments } from "@/lib/tournaments/dashboard";
+import {
+  getDashboardActivity,
+  getDashboardTournaments,
+} from "@/lib/tournaments/dashboard";
+import { describeAttentionItem } from "@/lib/tournaments/dashboard-attention";
 import type { DashboardContract } from "../contracts/dashboard";
+
+const PAST_LIMIT = 8;
 
 export async function loadDashboardForViewer(
   user: AppUser
 ): Promise<DashboardContract> {
-  const [userTeams, allMyTournaments, school] = await Promise.all([
+  // Wrapped so the query runs once even though two consumers await it.
+  const userTeamsPromise = Promise.resolve(
     db
       .select({
+        teamId: teams.id,
         slug: teams.slug,
         name: teams.name,
         university: teams.university,
@@ -41,41 +49,88 @@ export async function loadDashboardForViewer(
       .from(teamMembers)
       .innerJoin(teams, eq(teamMembers.teamId, teams.id))
       .where(eq(teamMembers.userId, user.id))
-      .orderBy(asc(teams.name)),
-    getDashboardTournaments(user.id),
+      .orderBy(asc(teams.name))
+  );
+
+  const [userTeams, school, { allMyTournaments, activity }] = await Promise.all([
+    userTeamsPromise,
     getUserSchoolSummary(user.id),
+    Promise.all([getDashboardTournaments(user.id), userTeamsPromise]).then(
+      async ([allMyTournaments, memberships]) => ({
+        allMyTournaments,
+        activity: await getDashboardActivity(
+          user.id,
+          allMyTournaments,
+          memberships.map((m) => ({ teamId: m.teamId, role: m.role }))
+        ),
+      })
+    ),
   ]);
 
-  const upcomingCount = allMyTournaments.filter(
-    (tournament) => tournament.relation !== "past"
-  ).length;
-  const pendingCount = allMyTournaments.filter(
-    (tournament) => tournament.relation === "pending"
-  ).length;
-  const pastCount = allMyTournaments.filter(
-    (tournament) => tournament.relation === "past"
-  ).length;
+  const upcoming = allMyTournaments.filter((t) => t.relation !== "past");
+  const past = allMyTournaments.filter((t) => t.relation === "past");
 
   return {
     firstName: user.fullName.split(" ")[0] ?? user.fullName,
     school,
     stats: {
       teamCount: userTeams.length,
-      upcomingCount,
-      pendingCount,
-      pastCount,
+      upcomingCount: upcoming.length,
+      pendingCount: upcoming.filter((t) => t.relation === "pending").length,
+      pastCount: past.length,
     },
-    teams: userTeams,
-    tournaments: allMyTournaments.slice(0, 12).map((tournament) => ({
-      slug: tournament.slug,
-      name: tournament.name,
-      date: tournament.date,
-      location: tournament.location,
-      status: tournament.status,
-      relation: tournament.relation,
-      teamName: tournament.teamName,
-      divisionName: tournament.divisionName,
-      registrationStatus: tournament.registrationStatus,
+    teams: userTeams.map((team) => ({
+      slug: team.slug,
+      name: team.name,
+      university: team.university,
+      gender: team.gender,
+      region: team.region,
+      role: team.role,
+      jerseyNumber: team.jerseyNumber,
     })),
+    tournaments: [...upcoming, ...past.slice(0, PAST_LIMIT)].map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      date: t.date,
+      location: t.location,
+      status: t.status,
+      relation: t.relation,
+      teamName: t.teamName,
+      divisionName: t.divisionName,
+      registrationStatus: t.registrationStatus,
+      isOrganizer: t.isOrganizer,
+    })),
+    attention: activity.attention.map((item) => {
+      const copy = describeAttentionItem(item);
+      return {
+        key: item.key,
+        kind: item.kind,
+        target: copy.target,
+        title: copy.title,
+        detail: copy.detail,
+        cta: copy.cta,
+        tournament: {
+          slug: item.tournament.slug,
+          name: item.tournament.name,
+          date: item.tournament.date,
+        },
+      };
+    }),
+    hosting: upcoming
+      .filter((t) => t.isOrganizer)
+      .map((t) => {
+        const stats = activity.hosting.get(t.id);
+        return {
+          slug: t.slug,
+          name: t.name,
+          date: t.date,
+          status: t.status,
+          teamCount: stats?.teamCount ?? 0,
+          pendingCount: stats?.pendingCount ?? 0,
+          capacity: stats?.capacity ?? null,
+          deadline: stats?.deadline?.toISOString() ?? null,
+          deadlinePassed: stats?.deadlinePassed ?? false,
+        };
+      }),
   };
 }

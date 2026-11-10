@@ -51,11 +51,47 @@ export interface DashboardTournamentContract {
   teamName: string | null;
   divisionName: string | null;
   registrationStatus: RegistrationStatus | null;
+  /** Organizer or staff; these appear under Hosting rather than Upcoming. */
+  isOrganizer: boolean;
+}
+
+/** Something the viewer can act on now, soonest event first. */
+export interface DashboardAttentionContract {
+  key: string;
+  kind:
+    | "approve_teams"
+    | "review_payments"
+    | "pay_fee"
+    | "sign_waiver"
+    | "collect_waivers";
+  /** Which screen resolves it: the host's pending list, payments, or waivers. */
+  target: "pending" | "payment" | "waiver";
+  title: string;
+  /** Team the item is about, when it isn't obvious from the tournament. */
+  detail: string | null;
+  cta: string;
+  tournament: { slug: string; name: string; date: string };
+}
+
+/** An upcoming tournament the viewer runs, with registration at a glance. */
+export interface DashboardHostingContract {
+  slug: string;
+  name: string;
+  date: string;
+  status: TournamentStatus;
+  /** Confirmed + checked-in teams. */
+  teamCount: number;
+  pendingCount: number;
+  capacity: number | null;
+  /** ISO timestamp. */
+  deadline: string | null;
+  deadlinePassed: boolean;
 }
 
 export interface DashboardContract {
   firstName: string;
   school: { slug: string; name: string } | null;
+  /** Kept for app builds that still show the count strip. */
   stats: {
     teamCount: number;
     upcomingCount: number;
@@ -63,5 +99,8 @@ export interface DashboardContract {
     pastCount: number;
   };
   teams: DashboardTeamContract[];
+  /** Every upcoming tournament, then the most recent past ones. */
   tournaments: DashboardTournamentContract[];
+  attention: DashboardAttentionContract[];
+  hosting: DashboardHostingContract[];
 }
