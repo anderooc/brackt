@@ -16,10 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type {
-  TournamentHostChecklistStepContract,
-  TournamentHostOverviewContract,
-} from "@/lib/api/contracts/tournament-host";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
@@ -33,11 +29,11 @@ import {
   TOURNAMENT_STATUS_LABELS,
   TOURNAMENT_STATUS_VALUES,
 } from "~/lib/format";
+import { statusConfirmMessage } from "~/tournament/host-checklist";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
 import {
   AppText,
-  Badge,
   Banner,
   Card,
   Chip,
@@ -53,79 +49,6 @@ import {
 
 function plural(count: number, word: string, pluralWord = `${word}s`) {
   return `${count} ${count === 1 ? word : pluralWord}`;
-}
-
-type StepAction =
-  | { kind: "route"; path: string }
-  | { kind: "status"; status: string }
-  | null;
-
-function stepAction(
-  step: TournamentHostChecklistStepContract,
-  overview: TournamentHostOverviewContract
-): StepAction {
-  const base = `/tournament/${overview.slug}`;
-  switch (step.id) {
-    case "setup":
-      return { kind: "route", path: `${base}/host/setup` };
-    case "open":
-      return step.done ? null : { kind: "status", status: "registration_open" };
-    case "confirm":
-      return { kind: "route", path: `${base}/host/registrations?tab=pending` };
-    case "pool-settings":
-      return { kind: "route", path: `${base}/settings/pool` };
-    case "bracket-settings":
-      return { kind: "route", path: `${base}/settings/bracket` };
-    case "pools":
-    case "release":
-      return { kind: "route", path: `${base}/host/pools` };
-    case "bracket":
-      return {
-        kind: "route",
-        path: overview.sections.bracket ? `${base}/host/bracket` : `${base}/bracket`,
-      };
-    case "schedule":
-      return overview.sections.schedule
-        ? { kind: "route", path: `${base}/host/schedule` }
-        : null;
-    case "run":
-      return step.done ? null : { kind: "status", status: "in_progress" };
-    default:
-      return null;
-  }
-}
-
-function stepHint(
-  step: TournamentHostChecklistStepContract,
-  overview: TournamentHostOverviewContract
-): string | undefined {
-  if (step.done) return undefined;
-  switch (step.id) {
-    case "setup":
-      return "Add pools and courts in Setup.";
-    case "open":
-      return "Tap to set status to Registration open when teams can sign up.";
-    case "confirm":
-      return overview.counts.pendingCount > 0
-        ? `${plural(overview.counts.pendingCount, "team")} waiting for approval.`
-        : "Approve pending teams, then close registration.";
-    case "pools":
-      return overview.playFormat === "pool_to_bracket"
-        ? "Assign teams to pools in Registrations, then save seeding in Pools to create matches."
-        : "Assign teams in Registrations, then save seeding to build the bracket.";
-    case "release":
-      return "Release pools when schedules are ready for teams and fans.";
-    case "bracket":
-      return overview.playFormat === "pool_to_bracket"
-        ? "Brackets seed automatically when every pool finishes."
-        : "Teams appear once seeding is saved.";
-    case "schedule":
-      return "Set start times and courts in Schedule.";
-    case "run":
-      return "Tap to set status to In progress on event day.";
-    default:
-      return step.hint;
-  }
 }
 
 export default function TournamentHostScreen() {
@@ -203,7 +126,6 @@ export default function TournamentHostScreen() {
   const overview = data.overview;
   const base = `/tournament/${slug}`;
   const { counts, sections } = overview;
-  const doneCount = overview.checklist.filter((step) => step.done).length;
   const teamCount = counts.confirmedCount + counts.checkedInCount;
   const statusBusy = pendingStatus != null;
 
@@ -264,40 +186,6 @@ export default function TournamentHostScreen() {
         ) : null}
       </Section>
 
-      <Section
-        title="Readiness"
-        description={`${doneCount} of ${overview.checklist.length} steps done`}
-      >
-        <ListGroup>
-          {overview.checklist.map((step) => {
-            const action = stepAction(step, overview);
-            const onPress =
-              action?.kind === "route"
-                ? () => router.push(action.path)
-                : action?.kind === "status" && !statusBusy && !overview.isArchived
-                  ? () => confirmStatus(action.status)
-                  : undefined;
-            return (
-              <ListRow
-                key={step.id}
-                title={step.label}
-                subtitle={stepHint(step, overview)}
-                icon={step.done ? "checkmark-circle" : "ellipse-outline"}
-                iconTone={step.done ? "success" : "muted"}
-                trailing={
-                  <Badge
-                    label={step.done ? "Done" : "To do"}
-                    tone={step.done ? "success" : "neutral"}
-                  />
-                }
-                onPress={onPress}
-                numberOfLines={3}
-              />
-            );
-          })}
-        </ListGroup>
-      </Section>
-
       <Section title="Game day">
         <ListGroup>
           {overview.canCheckIn ? (
@@ -342,7 +230,7 @@ export default function TournamentHostScreen() {
             title="Matches"
             subtitle="Public schedule and results"
             icon="list-outline"
-            onPress={() => router.push(`${base}?tab=matches`)}
+            onPress={() => router.push(`${base}?tab=play&view=all`)}
           />
           <ListRow
             title="Court board"
@@ -440,23 +328,6 @@ export default function TournamentHostScreen() {
       </Section>
     </ScreenScroll>
   );
-}
-
-function statusConfirmMessage(status: string): string {
-  switch (status) {
-    case "draft":
-      return "Teams won't be able to register while the tournament is a draft.";
-    case "registration_open":
-      return "Teams will be able to find and register for this tournament.";
-    case "registration_closed":
-      return "New teams will no longer be able to register.";
-    case "in_progress":
-      return "Teams and fans will see the event as live.";
-    case "completed":
-      return "The event will be marked as finished.";
-    default:
-      return "This changes what teams and fans see.";
-  }
 }
 
 const styles = StyleSheet.create({

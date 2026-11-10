@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import type { TournamentDetailContract } from "@/lib/api/contracts/tournament";
+import type { TournamentHostOverviewContract } from "@/lib/api/contracts/tournament-host";
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
@@ -32,9 +34,10 @@ import {
   REGION_LABELS,
 } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { HostChecklistCard } from "~/tournament/host-checklist-card";
+import { UpNextMatch } from "~/tournament/up-next-match";
 import {
   AppText,
-  Badge,
   Banner,
   Button,
   Card,
@@ -60,11 +63,19 @@ type LinkItem = {
 export function TournamentOverview({
   tournament,
   participation,
+  hostOverview,
+  myMatches,
   onParticipationChanged,
+  onOpenMyMatches,
 }: {
   tournament: TournamentDetailContract;
   participation: TournamentParticipationContract | null;
-  onParticipationChanged?: () => void;
+  /** Loaded for organizers only; drives the setup checklist. */
+  hostOverview: TournamentHostOverviewContract | null;
+  /** The viewer's matches here (played, reffing, or crew), oldest first. */
+  myMatches: PersonalScheduleMatchContract[];
+  onParticipationChanged?: () => void | Promise<void>;
+  onOpenMyMatches: () => void;
 }) {
   const router = useRouter();
   const slug = tournament.slug;
@@ -111,60 +122,6 @@ export function TournamentOverview({
     !alreadyEntered &&
     (participation == null || participation.canRegister);
 
-  const playLinks: LinkItem[] = [
-    {
-      href: `/tournament/${slug}/pools`,
-      title: "Pools",
-      detail: "Standings and pool matches",
-      icon: "grid-outline",
-    },
-    {
-      href: `/tournament/${slug}/bracket`,
-      title: "Bracket",
-      detail: "Elimination rounds",
-      icon: "git-network-outline",
-    },
-    {
-      href: `/tournament/${slug}/scoring`,
-      title: "Live scores",
-      detail: "What's on court now",
-      icon: "pulse-outline",
-    },
-    ...(tournament.status === "in_progress" || participation?.isOrganizer
-      ? [
-          {
-            href: `/tournament/${slug}/scoreboard` as Href,
-            title: "Court board",
-            detail: "Full-screen scoreboard for a tablet at the venue",
-            icon: "tv-outline" as const,
-          },
-        ]
-      : []),
-  ];
-
-  const hostLinks: LinkItem[] = participation?.isOrganizer
-    ? [
-        {
-          href: `/tournament/${slug}/host`,
-          title: "Host dashboard",
-          detail: "Status, checklist, and tournament ops",
-          icon: "construct-outline",
-        },
-        {
-          href: `/tournament/${slug}/settings/pool`,
-          title: "Pool settings",
-          detail: "Match format, scoring, and tie-breaks",
-          icon: "settings-outline",
-        },
-        {
-          href: `/tournament/${slug}/settings/bracket`,
-          title: "Bracket settings",
-          detail: "Gold / silver / bronze structure",
-          icon: "settings-outline",
-        },
-      ]
-    : [];
-
   const access = participation?.access;
   const teamLinks: LinkItem[] = access
     ? ([
@@ -200,16 +157,11 @@ export function TournamentOverview({
               icon: "chatbubbles-outline" as const,
             }
           : null,
-        access.email
-          ? {
-              href: `/tournament/${slug}/email` as Href,
-              title: "Email captains",
-              detail: "Message registered team captains",
-              icon: "mail-outline" as const,
-            }
-          : null,
       ] as (LinkItem | null)[]).filter((link): link is LinkItem => link !== null)
     : [];
+
+  const isOrganizer = participation?.isOrganizer ?? false;
+  const upNext = myMatches.find((m) => m.status !== "completed") ?? null;
 
   return (
     <View style={styles.stack}>
@@ -224,6 +176,25 @@ export function TournamentOverview({
         </AppText>
       </View>
 
+      {isOrganizer ? (
+        <>
+          {hostOverview ? (
+            <HostChecklistCard
+              overview={hostOverview}
+              onChanged={() => onParticipationChanged?.()}
+            />
+          ) : null}
+          <ListGroup>
+            <ListRow
+              icon="construct-outline"
+              title="Manage tournament"
+              subtitle="Status, teams, schedule, settings, and staff"
+              onPress={() => router.push(`/tournament/${slug}/host`)}
+            />
+          </ListGroup>
+        </>
+      ) : null}
+
       {showRegister ? (
         <Button
           label="Register a team"
@@ -231,6 +202,24 @@ export function TournamentOverview({
           fullWidth
           onPress={() => router.push(`/tournament/${slug}/register`)}
         />
+      ) : null}
+
+      {!isOrganizer && myMatches.length > 0 ? (
+        <Section
+          title={upNext ? "Your next match" : "Your matches"}
+          action={{
+            label: upNext ? "All your matches" : "See results",
+            onPress: onOpenMyMatches,
+          }}
+        >
+          {upNext ? (
+            <UpNextMatch match={upNext} showTournament={false} />
+          ) : (
+            <AppText variant="subhead" tone="muted">
+              You’ve played all your scheduled matches here.
+            </AppText>
+          )}
+        </Section>
       ) : null}
 
       {alreadyEntered ? (
@@ -269,21 +258,17 @@ export function TournamentOverview({
         </Section>
       ) : null}
 
+      {!isOrganizer ? <LinkSection title="Team tools" links={teamLinks} /> : null}
+
       <KeyFacts tournament={tournament} />
 
       <Availability tournament={tournament} />
-
-      <LinkSection title="Follow play" links={playLinks} />
-      <LinkSection title="Host tools" links={hostLinks} />
-      <LinkSection title="Team tools" links={teamLinks} />
 
       {tournament.description ? (
         <Section title="About">
           <AppText variant="body">{tournament.description}</AppText>
         </Section>
       ) : null}
-
-      <Formats tournament={tournament} />
     </View>
   );
 }
@@ -436,34 +421,6 @@ function Availability({ tournament }: { tournament: TournamentDetailContract }) 
         </View>
       ))}
     </Card>
-  );
-}
-
-function Formats({ tournament }: { tournament: TournamentDetailContract }) {
-  return (
-    <Section title="Pools and brackets">
-      {tournament.divisions.length === 0 ? (
-        <AppText variant="subhead" tone="muted">
-          Not posted yet. Check back closer to the event.
-        </AppText>
-      ) : (
-        <ListGroup>
-          {tournament.divisions.map((division) => (
-            <ListRow
-              key={division.name}
-              title={division.name}
-              subtitle={DIVISION_FORMAT_LABELS[division.format] ?? division.format}
-              trailing={
-                <Badge
-                  label={division.poolsReleased ? "Posted" : "Not posted"}
-                  tone={division.poolsReleased ? "success" : "neutral"}
-                />
-              }
-            />
-          ))}
-        </ListGroup>
-      )}
-    </Section>
   );
 }
 

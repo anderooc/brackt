@@ -332,7 +332,7 @@ export default function TournamentHostScheduleScreen() {
           icon="eye-outline"
           title="View public matches"
           subtitle="What teams see"
-          onPress={() => router.push(`/tournament/${slug}?tab=matches`)}
+          onPress={() => router.push(`/tournament/${slug}?tab=play&view=all`)}
         />
       </ListGroup>
 

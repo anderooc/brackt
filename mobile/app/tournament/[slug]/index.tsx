@@ -16,28 +16,40 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import type {
   TournamentDetailContract,
   TournamentMatchContract,
   TournamentTeamContract,
 } from "@/lib/api/contracts/tournament";
+import type { TournamentHostOverviewContract } from "@/lib/api/contracts/tournament-host";
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import {
+  fetchPersonalSchedule,
   fetchTournament,
+  fetchTournamentHostOverview,
   fetchTournamentMatches,
   fetchTournamentParticipation,
   fetchTournamentTeams,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { usePolling } from "~/lib/use-polling";
-import { TournamentMatchesPanel } from "~/tournament/matches-panel";
 import { TournamentOverview } from "~/tournament/overview";
+import { TournamentPlayPanel } from "~/tournament/play-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { TournamentTeamsPanel } from "~/tournament/teams-panel";
+import {
+  defaultTournamentTab,
+  parseTournamentLink,
+  resolvePlayView,
+  TOURNAMENT_TABS,
+  type PlayView,
+  type TournamentTabId,
+} from "~/tournament/tournament-tabs";
 import { messageFor as loaderMessageFor } from "~/tournament/use-public-loader";
 import { useThemeColors } from "~/theme/colors";
 import {
@@ -52,38 +64,40 @@ import {
   space,
 } from "~/ui";
 
-type TabId = "overview" | "teams" | "matches";
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "teams", label: "Teams" },
-  { id: "matches", label: "Matches" },
-];
-
 export default function TournamentDetailScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
-  const { slug, tab: tabParam } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     slug: string;
     tab?: string;
+    view?: string;
   }>();
+  const slug = params.slug;
 
-  const initialTab: TabId =
-    tabParam === "teams" || tabParam === "matches" ? tabParam : "overview";
-  const [tab, setTab] = useState<TabId>(initialTab);
+  // Null until the viewer or a link picks one; then the status decides.
+  const [chosenTab, setChosenTab] = useState<TournamentTabId | null>(
+    () => parseTournamentLink(params.tab, params.view).tab
+  );
+  const [chosenView, setChosenView] = useState<PlayView | null>(
+    () => parseTournamentLink(params.tab, params.view).view
+  );
 
   useEffect(() => {
-    if (tabParam === "teams" || tabParam === "matches" || tabParam === "overview") {
-      setTab(tabParam);
-    }
-  }, [tabParam]);
+    const link = parseTournamentLink(params.tab, params.view);
+    if (link.tab) setChosenTab(link.tab);
+    if (link.view) setChosenView(link.view);
+  }, [params.tab, params.view]);
+
   const [tournament, setTournament] = useState<TournamentDetailContract | null>(
     null
   );
   const [participation, setParticipation] =
     useState<TournamentParticipationContract | null>(null);
+  const [hostOverview, setHostOverview] =
+    useState<TournamentHostOverviewContract | null>(null);
+  const [myMatches, setMyMatches] = useState<PersonalScheduleMatchContract[]>([]);
   const [teams, setTeams] = useState<TournamentTeamContract[] | null>(null);
   const [matches, setMatches] = useState<TournamentMatchContract[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +108,7 @@ export default function TournamentDetailScreen() {
   const loadOverview = useCallback(
     async (signal?: AbortSignal) => {
       if (!slug) return;
-      // Wait for auth so Team tools can load with the rest of the overview.
+      // Wait for auth so viewer-specific sections load with the rest.
       if (sessionLoading) return;
       try {
         setError(null);
@@ -103,15 +117,31 @@ export default function TournamentDetailScreen() {
           if (signal?.aborted) return;
           setTournament(detail);
           setParticipation(null);
+          setHostOverview(null);
+          setMyMatches([]);
           return;
         }
-        const [detail, part] = await Promise.all([
+        const [detail, part, mine] = await Promise.all([
           fetchTournament(slug, signal),
           fetchTournamentParticipation(slug, signal).catch(() => null),
+          fetchPersonalSchedule(signal, {
+            tournament: slug,
+            includeCompleted: true,
+          })
+            // Servers that ignore `tournament` return every event's matches.
+            .then((result) => result.matches.filter((m) => m.tournamentSlug === slug))
+            .catch(() => [] as PersonalScheduleMatchContract[]),
         ]);
+        const host = part?.isOrganizer
+          ? await fetchTournamentHostOverview(slug, signal)
+              .then((result) => result.overview)
+              .catch(() => null)
+          : null;
         if (signal?.aborted) return;
         setTournament(detail);
         setParticipation(part);
+        setMyMatches(mine);
+        setHostOverview(host);
       } catch (cause) {
         if (signal?.aborted) return;
         setError(messageFor(cause, "Could not load this tournament."));
@@ -160,6 +190,11 @@ export default function TournamentDetailScreen() {
     }, [loadOverview])
   );
 
+  const tab: TournamentTabId =
+    chosenTab ?? (tournament ? defaultTournamentTab(tournament.status) : "overview");
+  const view = resolvePlayView(chosenView, myMatches.length > 0);
+  const showAllMatches = tab === "play" && view === "all";
+
   useEffect(() => {
     if (tab !== "teams" || teams !== null || teamsError !== null) return;
     const controller = new AbortController();
@@ -168,23 +203,35 @@ export default function TournamentDetailScreen() {
   }, [tab, teams, teamsError, loadTeams]);
 
   useEffect(() => {
-    if (tab !== "matches" || matches !== null || matchesError !== null) return;
+    if (!showAllMatches || matches !== null || matchesError !== null) return;
     const controller = new AbortController();
     void loadMatches(controller.signal);
     return () => controller.abort();
-  }, [tab, matches, matchesError, loadMatches]);
+  }, [showAllMatches, matches, matchesError, loadMatches]);
 
-  const pollMatches = useCallback(async () => {
+  const pollPlay = useCallback(async () => {
     if (!slug) return;
     try {
-      const result = await fetchTournamentMatches(slug);
-      setMatches(result.matches);
+      if (showAllMatches) {
+        const result = await fetchTournamentMatches(slug);
+        setMatches(result.matches);
+      } else {
+        const result = await fetchPersonalSchedule(undefined, {
+          tournament: slug,
+          includeCompleted: true,
+        });
+        setMyMatches(result.matches.filter((m) => m.tournamentSlug === slug));
+      }
     } catch {
       // Keep the last good list; pull-to-refresh surfaces errors.
     }
-  }, [slug]);
+  }, [showAllMatches, slug]);
 
-  usePolling(pollMatches, 15000, tab === "matches" && matches !== null);
+  usePolling(
+    pollPlay,
+    15000,
+    tab === "play" && (showAllMatches ? matches !== null : myMatches.length > 0)
+  );
 
   useLayoutEffect(() => {
     const canGoBack = navigation.canGoBack();
@@ -223,27 +270,41 @@ export default function TournamentDetailScreen() {
       setTeams(null);
       setTeamsError(null);
     }
-    if (tab !== "matches") {
+    if (!showAllMatches) {
       setMatches(null);
       setMatchesError(null);
     }
     if (tab === "teams" && teams === null) setTeamsError(null);
-    if (tab === "matches" && matches === null) setMatchesError(null);
+    if (showAllMatches && matches === null) setMatchesError(null);
     await Promise.all([
       loadOverview(),
       tab === "teams" && teams !== null ? loadTeams() : null,
-      tab === "matches" && matches !== null ? loadMatches() : null,
+      showAllMatches && matches !== null ? loadMatches() : null,
     ]);
     setIsRefreshing(false);
-  }, [loadOverview, loadTeams, loadMatches, tab, teams, matches]);
+  }, [loadOverview, loadTeams, loadMatches, tab, showAllMatches, teams, matches]);
 
   const selectTab = useCallback(
-    (next: TabId) => {
-      setTab(next);
+    (next: TournamentTabId) => {
+      setChosenTab(next);
       router.setParams({ tab: next });
     },
     [router]
   );
+
+  const selectView = useCallback(
+    (next: PlayView) => {
+      setChosenView(next);
+      router.setParams({ view: next });
+    },
+    [router]
+  );
+
+  const openMyMatches = useCallback(() => {
+    setChosenTab("play");
+    setChosenView("mine");
+    router.setParams({ tab: "play", view: "mine" });
+  }, [router]);
 
   if (!slug) {
     return (
@@ -280,7 +341,7 @@ export default function TournamentDetailScreen() {
       >
         <SegmentedControl
           accessibilityLabel="Tournament sections"
-          options={TABS}
+          options={TOURNAMENT_TABS}
           value={tab}
           onChange={selectTab}
         />
@@ -300,19 +361,15 @@ export default function TournamentDetailScreen() {
           <TournamentOverview
             tournament={tournament}
             participation={participation}
-            onParticipationChanged={() => void loadOverview()}
+            hostOverview={hostOverview}
+            myMatches={myMatches}
+            onParticipationChanged={() => loadOverview()}
+            onOpenMyMatches={openMyMatches}
           />
         ) : null}
 
         {tab === "teams" && teams !== null && teamsError ? (
           <Banner tone="error" message={teamsError} onDismiss={() => setTeamsError(null)} />
-        ) : null}
-        {tab === "matches" && matches !== null && matchesError ? (
-          <Banner
-            tone="error"
-            message={matchesError}
-            onDismiss={() => setMatchesError(null)}
-          />
         ) : null}
 
         {tab === "teams" ? (
@@ -330,22 +387,17 @@ export default function TournamentDetailScreen() {
           )
         ) : null}
 
-        {tab === "matches" ? (
-          matches !== null ? (
-            <TournamentMatchesPanel
-              matches={matches}
-              tournamentSlug={tournament.slug}
-            />
-          ) : matchesError ? (
-            <Banner
-              tone="error"
-              title="Matches unavailable"
-              message={matchesError}
-              action={{ label: "Try again", onPress: () => setMatchesError(null) }}
-            />
-          ) : (
-            <SkeletonList rows={4} header={false} />
-          )
+        {tab === "play" ? (
+          <TournamentPlayPanel
+            tournament={tournament}
+            isOrganizer={participation?.isOrganizer ?? false}
+            myMatches={myMatches}
+            view={view}
+            onViewChange={selectView}
+            matches={matches}
+            matchesError={matchesError}
+            onRetryMatches={() => setMatchesError(null)}
+          />
         ) : null}
       </ScreenScroll>
     </View>

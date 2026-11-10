@@ -135,35 +135,35 @@ function RootStack() {
       />
       <Stack.Screen
         name="tournament/[slug]/host/index"
-        options={{ title: "Host", headerBackTitle: "Tournament" }}
+        options={{ title: "Manage", headerBackTitle: "Tournament" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/setup"
-        options={{ title: "Setup", headerBackTitle: "Host" }}
+        options={{ title: "Setup", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/registrations"
-        options={{ title: "Registrations", headerBackTitle: "Host" }}
+        options={{ title: "Registrations", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/pools"
-        options={{ title: "Pools", headerBackTitle: "Host" }}
+        options={{ title: "Pools", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/bracket"
-        options={{ title: "Bracket", headerBackTitle: "Host" }}
+        options={{ title: "Bracket", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/schedule"
-        options={{ title: "Schedule", headerBackTitle: "Host" }}
+        options={{ title: "Schedule", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/details"
-        options={{ title: "Name and listing", headerBackTitle: "Host" }}
+        options={{ title: "Name and listing", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/host/staff"
-        options={{ title: "Staff", headerBackTitle: "Host" }}
+        options={{ title: "Staff", headerBackTitle: "Manage" }}
       />
       <Stack.Screen
         name="tournament/[slug]/scoreboard"
