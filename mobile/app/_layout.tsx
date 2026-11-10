@@ -70,14 +70,6 @@ function RootStack() {
         options={{ title: "Notifications", headerBackTitle: "Back" }}
       />
       <Stack.Screen
-        name="my-schedule"
-        options={{ title: "My schedule", headerBackTitle: "Home" }}
-      />
-      <Stack.Screen
-        name="schedule"
-        options={{ title: "All matches", headerBackTitle: "Home" }}
-      />
-      <Stack.Screen
         name="tournament/[slug]/index"
         options={{
           headerBackTitle: "Tournaments",

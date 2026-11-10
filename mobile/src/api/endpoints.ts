@@ -32,7 +32,6 @@ import type {
   MatchConsoleMutationResultContract,
 } from "@/lib/api/contracts/match-console";
 import type { DashboardContract } from "@/lib/api/contracts/dashboard";
-import type { GlobalScheduleContract } from "@/lib/api/contracts/global-schedule";
 import type { PersonalScheduleContract } from "@/lib/api/contracts/personal-schedule";
 import type {
   NotificationsContract,
@@ -262,30 +261,23 @@ export function fetchDashboard(
 
 export function fetchPersonalSchedule(
   signal?: AbortSignal,
-  params?: { limit?: number }
+  params?: {
+    limit?: number;
+    /** Skip leftovers from events whose date has passed. */
+    upcomingOnly?: boolean;
+    /** Only this tournament (by slug). */
+    tournament?: string;
+    includeCompleted?: boolean;
+  }
 ): Promise<PersonalScheduleContract> {
   const search = new URLSearchParams();
-  if (params?.limit != null) {
-    search.set("limit", String(params.limit));
-  }
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.upcomingOnly) search.set("upcomingOnly", "1");
+  if (params?.tournament) search.set("tournament", params.tournament);
+  if (params?.includeCompleted) search.set("includeCompleted", "1");
   const query = search.toString();
   return apiRequest<PersonalScheduleContract>(
     `/api/v1/me/schedule${query ? `?${query}` : ""}`,
-    { signal }
-  );
-}
-
-export function fetchGlobalSchedule(
-  signal?: AbortSignal,
-  params?: { limit?: number }
-): Promise<GlobalScheduleContract> {
-  const search = new URLSearchParams();
-  if (params?.limit != null) {
-    search.set("limit", String(params.limit));
-  }
-  const query = search.toString();
-  return apiRequest<GlobalScheduleContract>(
-    `/api/v1/schedule${query ? `?${query}` : ""}`,
     { signal }
   );
 }

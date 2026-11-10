@@ -224,12 +224,6 @@ export default function ProfileScreen() {
       <Section title="Activity">
         <ListGroup>
           <ListRow
-            title="My schedule"
-            subtitle="Your upcoming matches across tournaments"
-            icon="calendar-outline"
-            onPress={() => router.push("/my-schedule")}
-          />
-          <ListRow
             title="Notifications"
             icon="notifications-outline"
             onPress={() => router.push("/notifications")}
