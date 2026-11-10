@@ -30,11 +30,30 @@ export function mapNotificationHrefForMobile(
     const slug = tournamentMatch[1];
     const query = tournamentMatch[2] ?? "";
     const tab = new URLSearchParams(query).get("tab");
-    if (tab === "chat") return `/tournament/${slug}/chat`;
-    if (tab === "teams") return `/tournament/${slug}?tab=teams`;
-    if (tab === "matches") return `/tournament/${slug}?tab=matches`;
-    return `/tournament/${slug}`;
+    switch (tab) {
+      case "chat":
+      case "packet":
+      case "waiver":
+      case "payment":
+      case "email":
+        return `/tournament/${slug}/${tab}`;
+      case "pool-play":
+        return `/tournament/${slug}/pools`;
+      case "bracket":
+        return `/tournament/${slug}/bracket`;
+      case "teams":
+        return `/tournament/${slug}?tab=teams`;
+      // Older app builds only know `matches`; newer ones open it as Play.
+      case "matches":
+        return `/tournament/${slug}?tab=matches`;
+      case "my-matches":
+        return `/tournament/${slug}?tab=play&view=mine`;
+      default:
+        return `/tournament/${slug}`;
+    }
   }
+
+  if (safe === "/dashboard" || safe.startsWith("/dashboard#")) return "/";
 
   const schoolMatch = /^\/schools\/([^/?]+)/.exec(safe);
   if (schoolMatch) return `/schools/${schoolMatch[1]}`;

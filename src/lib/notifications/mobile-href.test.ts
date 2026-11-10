@@ -39,6 +39,32 @@ describe("mapNotificationHrefForMobile", () => {
     );
   });
 
+  it("maps play and team-task tabs to their app screens", () => {
+    assert.equal(
+      mapNotificationHrefForMobile("/tournaments/spring-open?tab=my-matches"),
+      "/tournament/spring-open?tab=play&view=mine"
+    );
+    assert.equal(
+      mapNotificationHrefForMobile("/tournaments/spring-open?tab=pool-play"),
+      "/tournament/spring-open/pools"
+    );
+    assert.equal(
+      mapNotificationHrefForMobile("/tournaments/spring-open?tab=waiver"),
+      "/tournament/spring-open/waiver"
+    );
+    assert.equal(
+      mapNotificationHrefForMobile("/tournaments/spring-open?tab=setup"),
+      "/tournament/spring-open"
+    );
+  });
+
+  it("maps the dashboard to the home tab", () => {
+    assert.equal(
+      mapNotificationHrefForMobile("/dashboard#your-schedule"),
+      "/"
+    );
+  });
+
   it("maps school links", () => {
     assert.equal(
       mapNotificationHrefForMobile("/schools/state-u"),
