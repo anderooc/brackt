@@ -19,17 +19,28 @@
 import { db } from "@/lib/db";
 import {
   divisions,
+  registrationPayments,
   registrations,
   schoolMembers,
   teamMembers,
   teams,
   tournamentStaff,
+  tournamentWaivers,
   tournaments,
+  waiverCompletions,
 } from "@/lib/db/schema";
 import type { DashboardTournamentRelation } from "@/lib/labels/dashboard-relation";
 import { isTournamentArchived, todayISO } from "@/lib/tournament-status";
-import type { RegistrationStatus, TournamentStatus } from "@/types";
-import { desc, eq, inArray } from "drizzle-orm";
+import {
+  collectAttentionItems,
+  type AttentionItem,
+} from "@/lib/tournaments/dashboard-attention";
+import type {
+  RegistrationPaymentStatus,
+  RegistrationStatus,
+  TournamentStatus,
+} from "@/types";
+import { and, count, desc, eq, inArray, or } from "drizzle-orm";
 
 export type { DashboardTournamentRelation };
 
@@ -295,4 +306,228 @@ export async function getDashboardTournaments(
   });
 
   return limit == null ? items : items.slice(0, limit);
+}
+
+export type DashboardHostingStats = {
+  /** Confirmed + checked-in teams. */
+  teamCount: number;
+  pendingCount: number;
+  capacity: number | null;
+  deadline: Date | null;
+  deadlinePassed: boolean;
+  paymentsToReview: number;
+};
+
+export type DashboardActivity = {
+  attention: AttentionItem[];
+  hosting: Map<string, DashboardHostingStats>;
+};
+
+const ACTIVE_REGISTRATION_STATUSES = [
+  "pending",
+  "confirmed",
+  "checked_in",
+] as const;
+
+/**
+ * Action items and hosting stats for the dashboard, in one parallel wave.
+ * Only upcoming tournaments are considered.
+ */
+export async function getDashboardActivity(
+  userId: string,
+  tournamentsForUser: DashboardTournament[],
+  memberships: Array<{ teamId: string; role: string }>
+): Promise<DashboardActivity> {
+  const upcoming = tournamentsForUser.filter((t) => t.relation !== "past");
+  const hostedIds = upcoming.filter((t) => t.isOrganizer).map((t) => t.id);
+  const registeredIds = upcoming
+    .filter((t) => t.registrationStatus != null)
+    .map((t) => t.id);
+  const teamIds = memberships.map((m) => m.teamId);
+  const captainTeamIds = memberships
+    .filter((m) => m.role === "captain")
+    .map((m) => m.teamId);
+
+  const none = Promise.resolve([] as never[]);
+  const [
+    hostedRows,
+    hostedRegCounts,
+    hostedPaymentCounts,
+    myRegistrations,
+    waiverRows,
+    completionRows,
+    rosterRows,
+  ] = await Promise.all([
+    hostedIds.length === 0
+      ? none
+      : db
+          .select({
+            id: tournaments.id,
+            capacity: tournaments.registrationCapacity,
+            deadline: tournaments.registrationDeadline,
+          })
+          .from(tournaments)
+          .where(inArray(tournaments.id, hostedIds)),
+    hostedIds.length === 0
+      ? none
+      : db
+          .select({
+            tournamentId: registrations.tournamentId,
+            status: registrations.status,
+            value: count(),
+          })
+          .from(registrations)
+          .where(inArray(registrations.tournamentId, hostedIds))
+          .groupBy(registrations.tournamentId, registrations.status),
+    hostedIds.length === 0
+      ? none
+      : db
+          .select({
+            tournamentId: registrationPayments.tournamentId,
+            value: count(),
+          })
+          .from(registrationPayments)
+          .where(
+            and(
+              inArray(registrationPayments.tournamentId, hostedIds),
+              eq(registrationPayments.status, "submitted")
+            )
+          )
+          .groupBy(registrationPayments.tournamentId),
+    registeredIds.length === 0 || teamIds.length === 0
+      ? none
+      : db
+          .select({
+            tournamentId: registrations.tournamentId,
+            teamId: registrations.teamId,
+            teamName: teams.name,
+            waiverEnabled: tournaments.waiverEnabled,
+            waiverAllowDigitalAck: tournaments.waiverAllowDigitalAck,
+            paymentStatus: registrationPayments.status,
+            amountCents: registrationPayments.amountCents,
+          })
+          .from(registrations)
+          .innerJoin(teams, eq(registrations.teamId, teams.id))
+          .innerJoin(
+            tournaments,
+            eq(registrations.tournamentId, tournaments.id)
+          )
+          .leftJoin(
+            registrationPayments,
+            eq(registrationPayments.registrationId, registrations.id)
+          )
+          .where(
+            and(
+              inArray(registrations.tournamentId, registeredIds),
+              inArray(registrations.teamId, teamIds),
+              inArray(registrations.status, [...ACTIVE_REGISTRATION_STATUSES])
+            )
+          ),
+    registeredIds.length === 0
+      ? none
+      : db
+          .select({
+            id: tournamentWaivers.id,
+            tournamentId: tournamentWaivers.tournamentId,
+            version: tournamentWaivers.version,
+          })
+          .from(tournamentWaivers)
+          .where(inArray(tournamentWaivers.tournamentId, registeredIds)),
+    registeredIds.length === 0
+      ? none
+      : db
+          .select({
+            waiverId: waiverCompletions.waiverId,
+            userId: waiverCompletions.userId,
+          })
+          .from(waiverCompletions)
+          .where(
+            and(
+              inArray(waiverCompletions.tournamentId, registeredIds),
+              captainTeamIds.length === 0
+                ? eq(waiverCompletions.userId, userId)
+                : or(
+                    eq(waiverCompletions.userId, userId),
+                    inArray(waiverCompletions.teamId, captainTeamIds)
+                  )
+            )
+          ),
+    registeredIds.length === 0 || captainTeamIds.length === 0
+      ? none
+      : db
+          .select({ teamId: teamMembers.teamId, userId: teamMembers.userId })
+          .from(teamMembers)
+          .where(inArray(teamMembers.teamId, captainTeamIds)),
+  ]);
+
+  const byId = new Map(upcoming.map((t) => [t.id, t]));
+  const ref = (id: string) => {
+    const t = byId.get(id)!;
+    return { id: t.id, slug: t.slug, name: t.name, date: t.date };
+  };
+
+  const now = Date.now();
+  const hosting = new Map<string, DashboardHostingStats>();
+  for (const row of hostedRows) {
+    hosting.set(row.id, {
+      teamCount: 0,
+      pendingCount: 0,
+      capacity: row.capacity,
+      deadline: row.deadline,
+      deadlinePassed: row.deadline != null && row.deadline.getTime() < now,
+      paymentsToReview: 0,
+    });
+  }
+  for (const row of hostedRegCounts) {
+    const stats = hosting.get(row.tournamentId);
+    if (!stats) continue;
+    if (row.status === "pending") stats.pendingCount += row.value;
+    else stats.teamCount += row.value;
+  }
+  for (const row of hostedPaymentCounts) {
+    const stats = hosting.get(row.tournamentId);
+    if (stats) stats.paymentsToReview = row.value;
+  }
+
+  const latestWaiver = new Map<string, { id: string; version: number }>();
+  for (const row of waiverRows) {
+    const current = latestWaiver.get(row.tournamentId);
+    if (!current || row.version > current.version) {
+      latestWaiver.set(row.tournamentId, { id: row.id, version: row.version });
+    }
+  }
+
+  const rosterByTeam = new Map<string, string[]>();
+  for (const row of rosterRows) {
+    const roster = rosterByTeam.get(row.teamId) ?? [];
+    roster.push(row.userId);
+    rosterByTeam.set(row.teamId, roster);
+  }
+
+  const captainSet = new Set(captainTeamIds);
+  const attention = collectAttentionItems({
+    userId,
+    hosted: [...hosting.entries()].map(([id, stats]) => ({
+      tournament: ref(id),
+      pendingCount: stats.pendingCount,
+      paymentsToReview: stats.paymentsToReview,
+    })),
+    registrations: myRegistrations.map((row) => ({
+      tournament: ref(row.tournamentId),
+      teamId: row.teamId,
+      teamName: row.teamName,
+      isCaptain: captainSet.has(row.teamId),
+      paymentStatus: row.paymentStatus as RegistrationPaymentStatus | null,
+      amountCents: row.amountCents,
+      waiverEnabled: row.waiverEnabled,
+      waiverAllowDigitalAck: row.waiverAllowDigitalAck,
+    })),
+    latestWaiverByTournament: new Map(
+      [...latestWaiver.entries()].map(([tid, w]) => [tid, w.id])
+    ),
+    completions: completionRows,
+    rosterByTeam,
+  });
+
+  return { attention, hosting };
 }

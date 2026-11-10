@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { and, asc, eq, inArray, isNotNull, ne, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { AppUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -84,6 +84,8 @@ type ScheduleFilterOptions = {
   includeCompleted?: boolean;
   /** Restrict to one tournament (the tournament page's "Your matches"). */
   tournamentId?: string;
+  /** Skip tournaments dated before this YYYY-MM-DD (leftovers from archived events). */
+  fromDate?: string;
 };
 
 async function loadViewerInvolvement(user: AppUser) {
@@ -133,7 +135,8 @@ function scheduleWhere(
     options?.includeCompleted ? undefined : ne(matches.status, "completed"),
     options?.tournamentId
       ? eq(matches.tournamentId, options.tournamentId)
-      : undefined
+      : undefined,
+    options?.fromDate ? gte(tournaments.date, options.fromDate) : undefined
   );
 }
 
