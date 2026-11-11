@@ -37,6 +37,7 @@ import {
   Badge,
   Banner,
   Button,
+  DangerLink,
   Icon,
   ListGroup,
   ListRow,
@@ -263,25 +264,19 @@ export default function ProfileScreen() {
         </ListGroup>
       </Section>
 
-      <Section title="Danger zone">
-        <ListGroup>
-          <ListRow
-            title="Delete account"
-            subtitle="Permanently remove your account and personal data"
-            icon="trash-outline"
-            destructive
-            onPress={() => router.push("/profile/delete-account")}
-          />
-        </ListGroup>
-      </Section>
-
       <Button
         label="Sign out"
         icon="log-out-outline"
-        variant="destructiveOutline"
+        variant="outline"
         loading={isSigningOut}
         onPress={confirmSignOut}
         fullWidth
+      />
+
+      <DangerLink
+        label="Delete account"
+        accessibilityHint="Opens a screen where you confirm with your password"
+        onPress={() => router.push("/profile/delete-account")}
       />
     </ScreenScroll>
   );

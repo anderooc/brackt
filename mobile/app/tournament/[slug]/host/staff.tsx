@@ -19,7 +19,6 @@
 import type { TournamentHostStaffContract } from "@/lib/api/contracts/tournament-host";
 import { Redirect, useLocalSearchParams, useNavigation } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { Alert } from "react-native";
 import {
   addTournamentHostStaff,
   fetchTournamentHostStaff,
@@ -32,13 +31,15 @@ import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
 import {
   Banner,
-  Button,
   EmptyState,
+  Icon,
   ListGroup,
   ListRow,
   ScreenScroll,
   Section,
   SegmentedControl,
+  chooseAction,
+  confirmDrastic,
   haptics,
 } from "~/ui";
 
@@ -109,14 +110,12 @@ export default function TournamentHostStaffScreen() {
   }
 
   function confirmRemove(userId: string, name: string) {
-    Alert.alert(`Remove ${name}?`, "They lose access to host tools for this tournament.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () => void onRemove(userId),
-      },
-    ]);
+    confirmDrastic({
+      title: `Remove ${name} from staff?`,
+      message: "They lose access to host tools for this tournament right away.",
+      confirmLabel: "Remove",
+      onConfirm: () => void onRemove(userId),
+    });
   }
 
   async function onRemove(userId: string) {
@@ -157,21 +156,37 @@ export default function TournamentHostStaffScreen() {
               <ListRow
                 key={member.userId}
                 title={member.fullName || member.email}
-                subtitle={`${ROLE_LABELS[member.role]} · ${member.email}`}
+                subtitle={
+                  busy === member.userId
+                    ? "Removing…"
+                    : `${ROLE_LABELS[member.role]} · ${member.email}`
+                }
                 icon="person-circle-outline"
+                chevron={false}
                 trailing={
                   staff.canManage ? (
-                    <Button
-                      label="Remove"
-                      size="sm"
-                      variant="destructiveOutline"
-                      loading={busy === member.userId}
-                      disabled={busy !== null}
-                      onPress={() =>
-                        confirmRemove(member.userId, member.fullName || member.email)
-                      }
-                    />
+                    <Icon name="ellipsis-horizontal" size={18} tone="muted" />
                   ) : undefined
+                }
+                accessibilityHint={staff.canManage ? "Shows staff options" : undefined}
+                disabled={busy !== null}
+                onPress={
+                  staff.canManage
+                    ? () => {
+                        const name = member.fullName || member.email;
+                        chooseAction({
+                          title: name,
+                          message: ROLE_LABELS[member.role],
+                          choices: [
+                            {
+                              label: "Remove from staff",
+                              destructive: true,
+                              onPress: () => confirmRemove(member.userId, name),
+                            },
+                          ],
+                        });
+                      }
+                    : undefined
                 }
               />
             ))}

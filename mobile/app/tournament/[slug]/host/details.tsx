@@ -35,8 +35,10 @@ import {
   Banner,
   Button,
   Card,
+  DangerLink,
   ScreenScroll,
   Section,
+  animateNextLayout,
   haptics,
   space,
 } from "~/ui";
@@ -61,6 +63,7 @@ export default function TournamentHostDetailsScreen() {
   const [saved, setSaved] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [deleteText, setDeleteText] = useState("");
+  const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [dangerError, setDangerError] = useState<string | null>(null);
 
@@ -226,7 +229,29 @@ export default function TournamentHostDetailsScreen() {
         />
       </Section>
 
-      <Section title="Delete tournament">
+      {!showDelete ? (
+        <DangerLink
+          label="Delete tournament"
+          accessibilityHint="Asks you to type the tournament name to confirm"
+          onPress={() => {
+            animateNextLayout();
+            setShowDelete(true);
+          }}
+        />
+      ) : null}
+
+      {showDelete ? (
+      <Section
+        title="Delete tournament"
+        action={{
+          label: "Cancel",
+          onPress: () => {
+            animateNextLayout();
+            setShowDelete(false);
+            setDeleteText("");
+          },
+        }}
+      >
         <Card style={styles.danger}>
           <AppText variant="subhead" tone="muted">
             Permanently removes the tournament, its registrations, matches, and
@@ -253,8 +278,10 @@ export default function TournamentHostDetailsScreen() {
             onPress={() => void onDelete()}
           />
         </Card>
-        {dangerError ? <Banner tone="error" message={dangerError} /> : null}
       </Section>
+      ) : null}
+
+      {dangerError ? <Banner tone="error" message={dangerError} /> : null}
     </ScreenScroll>
   );
 }

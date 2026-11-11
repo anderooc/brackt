@@ -22,7 +22,7 @@ import type { TournamentHostOverviewContract } from "@/lib/api/contracts/tournam
 import type { TournamentParticipationContract } from "@/lib/api/contracts/tournament-ops";
 import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import { withdrawTournamentRegistration } from "~/api/endpoints";
 import { openInMaps } from "~/lib/links";
@@ -40,6 +40,8 @@ import { UpNextMatch } from "~/tournament/up-next-match";
 import {
   AppText,
   Banner,
+  chooseAction,
+  confirmDrastic,
   Button,
   Card,
   Icon,
@@ -84,18 +86,24 @@ export function TournamentOverview({
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
   function confirmWithdraw(teamSlug: string, teamName: string) {
-    Alert.alert(
-      `Withdraw ${teamName}?`,
-      "Your spot is released and the next waitlisted team may take it. You'd need to register again to get back in.",
-      [
-        { text: "Cancel", style: "cancel" },
+    chooseAction({
+      title: teamName,
+      message: tournament.name,
+      choices: [
         {
-          text: "Withdraw team",
-          style: "destructive",
-          onPress: () => void withdraw(teamSlug),
+          label: "Withdraw from tournament",
+          destructive: true,
+          onPress: () =>
+            confirmDrastic({
+              title: `Withdraw ${teamName}?`,
+              message:
+                "Your spot is released and the next waitlisted team may take it. You'd need to register again to get back in.",
+              confirmLabel: "Withdraw team",
+              onConfirm: () => void withdraw(teamSlug),
+            }),
         },
-      ]
-    );
+      ],
+    });
   }
 
   async function withdraw(teamSlug: string) {
@@ -231,9 +239,7 @@ export function TournamentOverview({
                 subtitle={
                   withdrawing === team.slug
                     ? "Withdrawing…"
-                    : team.status !== "waitlisted" && tournament.status !== "completed"
-                      ? "Tap to manage"
-                      : undefined
+                    : undefined
                 }
                 icon="people-outline"
                 trailing={<StatusBadge kind="registration" status={team.status} />}

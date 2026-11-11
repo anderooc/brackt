@@ -64,6 +64,7 @@ import {
   Card,
   Chip,
   ChipRow,
+  DangerLink,
   DisclosureRow,
   EmptyState,
   HeaderButton,
@@ -74,10 +75,13 @@ import {
   Section,
   SegmentedControl,
   animateNextLayout,
+  chooseAction,
+  confirmDrastic,
   haptics,
   space,
   statusTone,
   useExpandedRow,
+  type ActionChoice,
 } from "~/ui";
 
 type TabId = "roster" | "teams";
@@ -159,33 +163,53 @@ export default function SchoolDetailScreen() {
   }
 
   function confirmRemove(membershipId: string, name: string) {
-    Alert.alert("Remove member", `Remove ${name} from this school?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () =>
-          void runAction(`remove:${membershipId}`, async () => {
-            await removeSchoolMember(slug!, membershipId);
-          }),
-      },
-    ]);
+    confirmDrastic({
+      title: `Remove ${name}?`,
+      message: `They'll be taken off the ${data!.name} roster.`,
+      confirmLabel: "Remove",
+      onConfirm: () =>
+        void runAction(`remove:${membershipId}`, async () => {
+          await removeSchoolMember(slug!, membershipId);
+        }),
+    });
   }
 
   function confirmTransferPresidency(member: SchoolMemberContract) {
-    Alert.alert(
-      "Transfer presidency",
-      `Make ${member.fullName} the new president? You will become an officer.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Transfer",
-          onPress: () =>
-            void runAction(`president:${member.membershipId}`, async () => {
-              await transferSchoolPresidency(slug!, member.membershipId);
-            }),
-        },
-      ]
+    confirmDrastic({
+      title: `Make ${member.fullName} president?`,
+      message:
+        "They take over the school, and you become an officer. Only the new president can hand it back.",
+      confirmLabel: "Transfer presidency",
+      onConfirm: () =>
+        void runAction(`president:${member.membershipId}`, async () => {
+          await transferSchoolPresidency(slug!, member.membershipId);
+        }),
+    });
+  }
+
+  function confirmRoleChange(member: SchoolMemberContract, role: "officer" | "member") {
+    confirmDrastic(
+      role === "officer"
+        ? {
+            title: `Make ${member.fullName} an officer?`,
+            message:
+              "Officers can manage the roster, approve join requests, and edit this school.",
+            confirmLabel: "Make officer",
+            destructive: false,
+            onConfirm: () =>
+              void runAction(`role:${member.membershipId}`, async () => {
+                await updateSchoolMemberRole(slug!, member.membershipId, "officer");
+              }),
+          }
+        : {
+            title: `Remove ${member.fullName}'s officer role?`,
+            message: "They stay on the roster as a member but lose officer permissions.",
+            confirmLabel: "Make member",
+            onConfirm: () =>
+              void runAction(`role:${member.membershipId}`, async () => {
+                await updateSchoolMemberRole(slug!, member.membershipId, "member");
+              }),
+          }
     );
   }
 
@@ -197,18 +221,17 @@ export default function SchoolDetailScreen() {
   }
 
   function confirmLeave() {
-    Alert.alert("Leave school", "Leave this school roster?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: () =>
-          void runAction("leave", async () => {
-            await leaveSchool(slug!);
-            router.replace("/schools");
-          }),
-      },
-    ]);
+    confirmDrastic({
+      title: `Leave ${data!.name}?`,
+      message:
+        "You'll be taken off the roster. To come back, you'd request to join again.",
+      confirmLabel: "Leave school",
+      onConfirm: () =>
+        void runAction("leave", async () => {
+          await leaveSchool(slug!);
+          router.replace("/schools");
+        }),
+    });
   }
 
   const rosterOfficers = data.members
@@ -550,22 +573,14 @@ export default function SchoolDetailScreen() {
                 members={rosterOfficers}
                 showPresidentLabel
                 {...rosterHandlers}
-                onMakeMember={(member) =>
-                  void runAction(`role:${member.membershipId}`, async () => {
-                    await updateSchoolMemberRole(slug!, member.membershipId, "member");
-                  })
-                }
+                onMakeMember={(member) => confirmRoleChange(member, "member")}
               />
               <RosterSection
                 title={`Members (${rosterMembers.length})`}
                 emptyMessage="No members yet."
                 members={rosterMembers}
                 {...rosterHandlers}
-                onMakeOfficer={(member) =>
-                  void runAction(`role:${member.membershipId}`, async () => {
-                    await updateSchoolMemberRole(slug!, member.membershipId, "officer");
-                  })
-                }
+                onMakeOfficer={(member) => confirmRoleChange(member, "officer")}
               />
             </>
           )}
@@ -610,11 +625,9 @@ export default function SchoolDetailScreen() {
       )}
 
       {data.viewer.canLeave ? (
-        <Button
+        <DangerLink
           label="Leave school"
-          variant="destructiveOutline"
-          fullWidth
-          loading={busyKey === "leave"}
+          icon="exit-outline"
           disabled={busy}
           onPress={confirmLeave}
         />
@@ -682,8 +695,24 @@ function RosterSection({
             const canMakeOfficer = member.canChangeRole && onMakeOfficer;
             const canMakeMember = member.canChangeRole && onMakeMember;
             const canMakePresident = member.canTransferPresidencyTo && onTransferPresidency;
-            const hasActions =
-              canMakeOfficer || canMakeMember || canMakePresident || member.canRemove;
+            const roleChoices: ActionChoice[] = [
+              ...(canMakeOfficer
+                ? [{ label: "Make officer", onPress: () => onMakeOfficer!(member) }]
+                : []),
+              ...(canMakeMember
+                ? [{ label: "Make member", onPress: () => onMakeMember!(member) }]
+                : []),
+              ...(canMakePresident
+                ? [
+                    {
+                      label: "Make president",
+                      destructive: true,
+                      onPress: () => onTransferPresidency!(member),
+                    },
+                  ]
+                : []),
+            ];
+            const hasActions = roleChoices.length > 0 || member.canRemove;
             const manageable =
               member.canEditPosition || member.canEditJersey || hasActions;
             const savedJersey =
@@ -762,50 +791,36 @@ function RosterSection({
                   </View>
                 ) : null}
 
-                {hasActions ? (
-                  <View style={styles.memberActions}>
-                    {canMakeOfficer ? (
-                      <Button
-                        label="Make officer"
-                        variant="outline"
-                        size="sm"
-                        loading={busyKey === `role:${id}`}
-                        disabled={busy}
-                        onPress={() => onMakeOfficer!(member)}
-                      />
-                    ) : canMakeMember ? (
-                      <Button
-                        label="Make member"
-                        variant="outline"
-                        size="sm"
-                        loading={busyKey === `role:${id}`}
-                        disabled={busy}
-                        onPress={() => onMakeMember!(member)}
-                      />
-                    ) : null}
-                    {canMakePresident ? (
-                      <Button
-                        label="Make president"
-                        variant="outline"
-                        size="sm"
-                        loading={busyKey === `president:${id}`}
-                        disabled={busy}
-                        onPress={() => onTransferPresidency!(member)}
-                      />
-                    ) : null}
-                    {member.canRemove ? (
-                      <Button
-                        label="Remove"
-                        variant="ghost"
-                        size="sm"
-                        accessibilityLabel={`Remove ${member.fullName}`}
-                        loading={busyKey === `remove:${id}`}
-                        disabled={busy}
-                        onPress={() => onRemove(id, member.fullName)}
-                        style={styles.removeButton}
-                      />
-                    ) : null}
-                  </View>
+                {roleChoices.length > 0 ? (
+                  <Button
+                    label="Change role…"
+                    icon="swap-horizontal-outline"
+                    variant="outline"
+                    size="sm"
+                    loading={
+                      busyKey === `role:${id}` || busyKey === `president:${id}`
+                    }
+                    disabled={busy}
+                    onPress={() =>
+                      chooseAction({
+                        title: member.fullName,
+                        message: `Currently ${
+                          SCHOOL_ROLE_LABELS[member.role] ?? member.role
+                        }`,
+                        choices: roleChoices,
+                      })
+                    }
+                  />
+                ) : null}
+
+                {member.canRemove ? (
+                  <DangerLink
+                    label="Remove from school"
+                    icon="person-remove-outline"
+                    disabled={busy}
+                    onPress={() => onRemove(id, member.fullName)}
+                    style={styles.panelLink}
+                  />
                 ) : null}
               </DisclosureRow>
             );
@@ -887,7 +902,7 @@ const styles = StyleSheet.create({
   memberText: { flex: 1, minWidth: 0, gap: space.xxs },
   rowActions: { flexDirection: "row", gap: space.sm },
   field: { gap: space.sm },
-  removeButton: { marginLeft: "auto" },
+  panelLink: { alignSelf: "flex-start", marginLeft: -space.md },
   memberHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   jerseyInput: { width: 64, minHeight: 40, textAlign: "center", fontWeight: "600" },

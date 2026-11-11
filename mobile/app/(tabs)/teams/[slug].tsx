@@ -56,9 +56,11 @@ import {
   Badge,
   Banner,
   Button,
+  DangerLink,
   DisclosureRow,
   EmptyState,
   animateNextLayout,
+  confirmDrastic,
   haptics,
   HIT_TARGET,
   Icon,
@@ -69,7 +71,6 @@ import {
   Section,
   space,
   StatusBadge,
-  Tappable,
   type,
   useExpandedRow,
 } from "~/ui";
@@ -156,25 +157,19 @@ export default function TeamDetailScreen() {
   }
 
   function confirmRemove(member: TeamMemberContract) {
-    Alert.alert(
-      member.isViewer ? "Leave team?" : "Remove player?",
-      member.isViewer
-        ? "You’ll be removed from this roster."
-        : `Remove ${member.fullName} from this team?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: member.isViewer ? "Leave" : "Remove",
-          style: "destructive",
-          onPress: () =>
-            void runAction(
-              `remove:${member.membershipId}`,
-              () => removeTeamMember(teamSlug, member.membershipId).then(() => undefined),
-              member.isViewer ? "You left the team." : `Removed ${member.fullName}.`
-            ),
-        },
-      ]
-    );
+    confirmDrastic({
+      title: member.isViewer ? `Leave ${team.name}?` : `Remove ${member.fullName}?`,
+      message: member.isViewer
+        ? "You'll come off this roster. A captain can add you back."
+        : `They'll come off the ${team.name} roster. A captain can add them back.`,
+      confirmLabel: member.isViewer ? "Leave team" : "Remove",
+      onConfirm: () =>
+        void runAction(
+          `remove:${member.membershipId}`,
+          () => removeTeamMember(teamSlug, member.membershipId).then(() => undefined),
+          member.isViewer ? "You left the team." : `Removed ${member.fullName}.`
+        ),
+    });
   }
 
   function confirmDelete() {
@@ -466,21 +461,14 @@ export default function TeamDetailScreen() {
       ) : null}
 
       {team.viewer.canManage && !showDelete ? (
-        <Tappable
-          accessibilityRole="button"
-          accessibilityLabel="Delete team"
-          accessibilityHint="Asks you to confirm by typing the team name"
+        <DangerLink
+          label="Delete team"
+          accessibilityHint="Asks you to type the team name to confirm"
           onPress={() => {
             animateNextLayout();
             setShowDelete(true);
           }}
-          style={styles.deleteEntry}
-        >
-          <Icon name="trash-outline" size={16} tone="destructive" />
-          <AppText variant="subhead" weight="600" tone="destructive">
-            Delete team…
-          </AppText>
-        </Tappable>
+        />
       ) : null}
 
       {team.viewer.canManage && showDelete ? (
@@ -683,15 +671,10 @@ function MemberRow({
       ) : null}
 
       {member.canRemove ? (
-        <Button
+        <DangerLink
           label={member.isViewer ? "Leave team" : "Remove from team"}
-          variant="ghost"
-          size="sm"
           icon={member.isViewer ? "exit-outline" : "person-remove-outline"}
-          accessibilityLabel={
-            member.isViewer ? "Leave team" : `Remove ${member.fullName}`
-          }
-          loading={removeBusy}
+          disabled={removeBusy}
           onPress={onRemove}
           style={styles.removeButton}
         />
@@ -832,15 +815,6 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
   },
   removeButton: { alignSelf: "flex-start", marginLeft: -space.md },
-  deleteEntry: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    gap: space.xs,
-    minHeight: HIT_TARGET,
-    paddingHorizontal: space.md,
-    borderRadius: radius.md,
-  },
   memberTop: { flexDirection: "row", alignItems: "center", gap: space.md },
   memberText: { flex: 1, minWidth: 0, gap: space.xs },
   editBlock: { gap: space.sm },
