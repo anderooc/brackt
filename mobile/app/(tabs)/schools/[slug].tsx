@@ -64,6 +64,7 @@ import {
   Card,
   Chip,
   ChipRow,
+  DisclosureRow,
   EmptyState,
   HeaderButton,
   Icon,
@@ -72,9 +73,11 @@ import {
   ScreenScroll,
   Section,
   SegmentedControl,
+  animateNextLayout,
   haptics,
   space,
   statusTone,
+  useExpandedRow,
 } from "~/ui";
 
 type TabId = "roster" | "teams";
@@ -92,6 +95,8 @@ export default function SchoolDetailScreen() {
   const [addRole, setAddRole] = useState<"member" | "officer">("member");
   const [addTitle, setAddTitle] = useState("");
   const [jerseyDrafts, setJerseyDrafts] = useState<Record<string, string>>({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const { expandedId, toggle: toggleMember } = useExpandedRow();
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchSchool(slug ?? "", signal),
@@ -238,6 +243,8 @@ export default function SchoolDetailScreen() {
 
   const rosterHandlers = {
     busyKey,
+    expandedId,
+    onToggle: toggleMember,
     jerseyValue,
     onJerseyDraftChange: (membershipId: string, value: string) =>
       setJerseyDrafts((prev) => ({ ...prev, [membershipId]: value.replace(/\D/g, "") })),
@@ -432,53 +439,17 @@ export default function SchoolDetailScreen() {
             </Section>
           ) : null}
 
-          {data.members.length === 0 ? (
-            <EmptyState
-              compact
-              icon="people-outline"
-              title="No one on the roster yet"
-              message={
-                data.viewer.canManageRoster
-                  ? "Add members by email below."
-                  : "Members will appear here once officers add them."
-              }
-            />
-          ) : (
-            <>
-              {data.viewer.canManageRoster && plainOfficerCount < 1 ? (
-                <Banner
-                  tone="info"
-                  message="Add at least one officer before submitting for verification."
-                />
-              ) : null}
-              <RosterSection
-                title={`Officers (${rosterOfficers.length})`}
-                emptyMessage="No officers yet."
-                members={rosterOfficers}
-                showPresidentLabel
-                {...rosterHandlers}
-                onMakeMember={(member) =>
-                  void runAction(`role:${member.membershipId}`, async () => {
-                    await updateSchoolMemberRole(slug!, member.membershipId, "member");
-                  })
-                }
-              />
-              <RosterSection
-                title={`Members (${rosterMembers.length})`}
-                emptyMessage="No members yet."
-                members={rosterMembers}
-                {...rosterHandlers}
-                onMakeOfficer={(member) =>
-                  void runAction(`role:${member.membershipId}`, async () => {
-                    await updateSchoolMemberRole(slug!, member.membershipId, "officer");
-                  })
-                }
-              />
-            </>
-          )}
-
-          {data.viewer.canManageRoster ? (
-            <Section title="Add a member">
+          {data.viewer.canManageRoster && showAddForm ? (
+            <Section
+              title="Add a member"
+              action={{
+                label: "Done",
+                onPress: () => {
+                  animateNextLayout();
+                  setShowAddForm(false);
+                },
+              }}
+            >
               <Card>
                 <FormField label="Email" colors={colors}>
                   <FormTextInput
@@ -541,7 +512,64 @@ export default function SchoolDetailScreen() {
                 />
               </Card>
             </Section>
+          ) : data.viewer.canManageRoster ? (
+            <Button
+              label="Add a member"
+              icon="person-add-outline"
+              variant="outline"
+              fullWidth
+              onPress={() => {
+                animateNextLayout();
+                setShowAddForm(true);
+              }}
+            />
           ) : null}
+
+          {data.members.length === 0 ? (
+            <EmptyState
+              compact
+              icon="people-outline"
+              title="No one on the roster yet"
+              message={
+                data.viewer.canManageRoster
+                  ? "Add members by email to start the roster."
+                  : "Members will appear here once officers add them."
+              }
+            />
+          ) : (
+            <>
+              {data.viewer.canManageRoster && plainOfficerCount < 1 ? (
+                <Banner
+                  tone="info"
+                  message="Add at least one officer before submitting for verification."
+                />
+              ) : null}
+              <RosterSection
+                title={`Officers (${rosterOfficers.length})`}
+                emptyMessage="No officers yet."
+                members={rosterOfficers}
+                showPresidentLabel
+                {...rosterHandlers}
+                onMakeMember={(member) =>
+                  void runAction(`role:${member.membershipId}`, async () => {
+                    await updateSchoolMemberRole(slug!, member.membershipId, "member");
+                  })
+                }
+              />
+              <RosterSection
+                title={`Members (${rosterMembers.length})`}
+                emptyMessage="No members yet."
+                members={rosterMembers}
+                {...rosterHandlers}
+                onMakeOfficer={(member) =>
+                  void runAction(`role:${member.membershipId}`, async () => {
+                    await updateSchoolMemberRole(slug!, member.membershipId, "officer");
+                  })
+                }
+              />
+            </>
+          )}
+
         </>
       ) : (
         <Section
@@ -600,6 +628,8 @@ function RosterSection({
   emptyMessage,
   members,
   busyKey,
+  expandedId,
+  onToggle,
   showPresidentLabel = false,
   jerseyValue,
   onJerseyDraftChange,
@@ -614,6 +644,8 @@ function RosterSection({
   emptyMessage: string;
   members: SchoolMemberContract[];
   busyKey: string | null;
+  expandedId: string | null;
+  onToggle: (membershipId: string) => void;
   showPresidentLabel?: boolean;
   jerseyValue: (membershipId: string, current: number | null) => string;
   onJerseyDraftChange: (membershipId: string, value: string) => void;
@@ -639,59 +671,71 @@ function RosterSection({
             const id = member.membershipId;
             const meta = [
               member.title,
-              !member.canEditPosition && member.volleyballPosition
+              member.volleyballPosition
                 ? VOLLEYBALL_POSITION_LABELS[member.volleyballPosition] ??
                   member.volleyballPosition
                 : null,
-              !member.canEditJersey && member.jerseyNumber != null
-                ? `#${member.jerseyNumber}`
-                : null,
+              member.jerseyNumber != null ? `#${member.jerseyNumber}` : null,
             ]
               .filter(Boolean)
               .join(" · ");
             const canMakeOfficer = member.canChangeRole && onMakeOfficer;
             const canMakeMember = member.canChangeRole && onMakeMember;
+            const canMakePresident = member.canTransferPresidencyTo && onTransferPresidency;
             const hasActions =
-              canMakeOfficer ||
-              canMakeMember ||
-              (member.canTransferPresidencyTo && onTransferPresidency) ||
-              member.canRemove;
+              canMakeOfficer || canMakeMember || canMakePresident || member.canRemove;
+            const manageable =
+              member.canEditPosition || member.canEditJersey || hasActions;
+            const savedJersey =
+              member.jerseyNumber == null ? "" : String(member.jerseyNumber);
+            const jerseyDirty = jerseyValue(id, member.jerseyNumber) !== savedJersey;
 
             return (
-              <View key={id} style={styles.memberBlock}>
-                <View style={styles.memberHeader}>
-                  <View style={styles.memberText}>
-                    <AppText variant="callout" weight="600">
-                      {member.fullName}
-                      {member.isViewer ? (
-                        <AppText variant="callout" tone="muted">
-                          {" "}
-                          (you)
+              <DisclosureRow
+                key={id}
+                expanded={expandedId === id}
+                onToggle={manageable ? () => onToggle(id) : undefined}
+                accessibilityLabel={[member.fullName, meta].filter(Boolean).join(", ")}
+                summary={
+                  <View style={styles.memberHeader}>
+                    <View style={styles.memberText}>
+                      <AppText variant="callout" weight="600">
+                        {member.fullName}
+                        {member.isViewer ? (
+                          <AppText variant="callout" tone="muted">
+                            {" "}
+                            (you)
+                          </AppText>
+                        ) : null}
+                      </AppText>
+                      {meta ? (
+                        <AppText variant="footnote" tone="muted">
+                          {meta}
                         </AppText>
                       ) : null}
-                    </AppText>
-                    {meta ? (
-                      <AppText variant="footnote" tone="muted">
-                        {meta}
-                      </AppText>
+                    </View>
+                    {showPresidentLabel && member.role === "president" ? (
+                      <Badge label={SCHOOL_ROLE_LABELS.president ?? "President"} tone="info" />
                     ) : null}
                   </View>
-                  {showPresidentLabel && member.role === "president" ? (
-                    <Badge label={SCHOOL_ROLE_LABELS.president ?? "President"} tone="info" />
-                  ) : null}
-                </View>
-
+                }
+              >
                 {member.canEditPosition ? (
-                  <VolleyballPositionChips
-                    value={member.volleyballPosition}
-                    onChange={(position) => onPositionChange(member, position)}
-                    disabled={busy}
-                  />
+                  <View style={styles.field}>
+                    <AppText variant="footnote" tone="muted" weight="600">
+                      Position
+                    </AppText>
+                    <VolleyballPositionChips
+                      value={member.volleyballPosition}
+                      onChange={(position) => onPositionChange(member, position)}
+                      disabled={busy}
+                    />
+                  </View>
                 ) : null}
 
                 {member.canEditJersey ? (
                   <View style={styles.jerseyRow}>
-                    <AppText variant="subhead" tone="muted">
+                    <AppText variant="footnote" tone="muted" weight="600">
                       Jersey
                     </AppText>
                     <FormTextInput
@@ -706,18 +750,15 @@ function RosterSection({
                       colors={colors}
                       style={styles.jerseyInput}
                     />
-                    <Button
-                      label="Save"
-                      variant="outline"
-                      size="sm"
-                      loading={busyKey === `jersey:${id}`}
-                      disabled={
-                        busy ||
-                        jerseyValue(id, member.jerseyNumber) ===
-                          (member.jerseyNumber == null ? "" : String(member.jerseyNumber))
-                      }
-                      onPress={() => onJerseySave(member)}
-                    />
+                    {jerseyDirty || busyKey === `jersey:${id}` ? (
+                      <Button
+                        label="Save"
+                        size="sm"
+                        loading={busyKey === `jersey:${id}`}
+                        disabled={busy}
+                        onPress={() => onJerseySave(member)}
+                      />
+                    ) : null}
                   </View>
                 ) : null}
 
@@ -742,29 +783,31 @@ function RosterSection({
                         onPress={() => onMakeMember!(member)}
                       />
                     ) : null}
-                    {member.canTransferPresidencyTo && onTransferPresidency ? (
+                    {canMakePresident ? (
                       <Button
                         label="Make president"
                         variant="outline"
                         size="sm"
                         loading={busyKey === `president:${id}`}
                         disabled={busy}
-                        onPress={() => onTransferPresidency(member)}
+                        onPress={() => onTransferPresidency!(member)}
                       />
                     ) : null}
                     {member.canRemove ? (
                       <Button
                         label="Remove"
-                        variant="destructiveOutline"
+                        variant="ghost"
                         size="sm"
+                        accessibilityLabel={`Remove ${member.fullName}`}
                         loading={busyKey === `remove:${id}`}
                         disabled={busy}
                         onPress={() => onRemove(id, member.fullName)}
+                        style={styles.removeButton}
                       />
                     ) : null}
                   </View>
                 ) : null}
-              </View>
+              </DisclosureRow>
             );
           })}
         </ListGroup>
@@ -843,11 +886,8 @@ const styles = StyleSheet.create({
   },
   memberText: { flex: 1, minWidth: 0, gap: space.xxs },
   rowActions: { flexDirection: "row", gap: space.sm },
-  memberBlock: {
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    gap: space.md,
-  },
+  field: { gap: space.sm },
+  removeButton: { marginLeft: "auto" },
   memberHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   jerseyInput: { width: 64, minHeight: 40, textAlign: "center", fontWeight: "600" },

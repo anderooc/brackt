@@ -65,6 +65,7 @@ import {
   SegmentedControl,
   StatusBadge,
   Tappable,
+  useExpandedRow,
   haptics,
   radius,
   space,
@@ -477,6 +478,8 @@ function TeamsTab({
 }) {
   const canAssign = divisions.length > 0 && !locked;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const { expandedId, toggle: togglePoolPicker, collapse: closePoolPicker } =
+    useExpandedRow();
 
   const liveSelectedIds = useMemo(
     () => rows.map((row) => row.id).filter((id) => selectedIds.has(id)),
@@ -577,26 +580,52 @@ function TeamsTab({
             footer={
               canAssign ? (
                 <View style={styles.assign}>
-                  <AppText variant="footnote" weight="600">
-                    Pool{rowBusy ? "  ·  Saving…" : ""}
-                  </AppText>
-                  <ChipRow>
-                    <Chip
-                      label="Unassigned"
-                      selected={!row.divisionId}
-                      disabled={rowBusy}
-                      onPress={() => onAssignDivision(row.id, null)}
+                  <Tappable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: expandedId === row.id }}
+                    accessibilityLabel={`Pool for ${row.teamName}: ${row.divisionName ?? "unassigned"}. Change pool`}
+                    onPress={() => togglePoolPicker(row.id)}
+                    style={styles.poolToggle}
+                  >
+                    <AppText variant="footnote" weight="600" style={styles.flex}>
+                      {rowBusy ? "Saving…" : `Pool: ${row.divisionName ?? "Unassigned"}`}
+                    </AppText>
+                    <AppText variant="footnote" weight="600" tone="primary">
+                      {expandedId === row.id ? "Done" : "Change"}
+                    </AppText>
+                    <Icon
+                      name={expandedId === row.id ? "chevron-up" : "chevron-down"}
+                      size={16}
+                      tone="primary"
                     />
-                    {divisions.map((division) => (
+                  </Tappable>
+                  {expandedId === row.id ? (
+                    <ChipRow>
                       <Chip
-                        key={division.id}
-                        label={division.name}
-                        selected={row.divisionId === division.id}
+                        label="Unassigned"
+                        selected={!row.divisionId}
                         disabled={rowBusy}
-                        onPress={() => onAssignDivision(row.id, division.id)}
+                        onPress={() => {
+                          if (row.divisionId) onAssignDivision(row.id, null);
+                          closePoolPicker();
+                        }}
                       />
-                    ))}
-                  </ChipRow>
+                      {divisions.map((division) => (
+                        <Chip
+                          key={division.id}
+                          label={division.name}
+                          selected={row.divisionId === division.id}
+                          disabled={rowBusy}
+                          onPress={() => {
+                            if (row.divisionId !== division.id) {
+                              onAssignDivision(row.id, division.id);
+                            }
+                            closePoolPicker();
+                          }}
+                        />
+                      ))}
+                    </ChipRow>
+                  ) : null}
                 </View>
               ) : null
             }
@@ -965,6 +994,15 @@ const styles = StyleSheet.create({
   list: { gap: space.md },
   actions: { flexDirection: "row", gap: space.sm, marginTop: space.xs },
   assign: { gap: space.sm, marginTop: space.xs },
+  poolToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    minHeight: 36,
+    marginHorizontal: -space.xs,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.sm,
+  },
   bulkHeader: { flexDirection: "row", alignItems: "center", gap: space.sm },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: space.md },
   selectHit: {

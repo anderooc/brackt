@@ -56,7 +56,9 @@ import {
   Badge,
   Banner,
   Button,
+  DisclosureRow,
   EmptyState,
+  animateNextLayout,
   haptics,
   HIT_TARGET,
   Icon,
@@ -67,7 +69,9 @@ import {
   Section,
   space,
   StatusBadge,
+  Tappable,
   type,
+  useExpandedRow,
 } from "~/ui";
 
 type Notice = { tone: "success" | "error"; message: string };
@@ -82,11 +86,11 @@ export default function TeamDetailScreen() {
   const [addEmail, setAddEmail] = useState("");
   const [addJersey, setAddJersey] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
-  const [candidateJerseys, setCandidateJerseys] = useState<
-    Record<string, string>
-  >({});
   const [jerseyDrafts, setJerseyDrafts] = useState<Record<string, string>>({});
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const { expandedId, toggle: toggleMember } = useExpandedRow();
 
   const load = useCallback(
     (signal?: AbortSignal) => fetchTeam(slug ?? "", signal),
@@ -284,6 +288,8 @@ export default function TeamDetailScreen() {
               <MemberRow
                 key={member.membershipId}
                 member={member}
+                expanded={expandedId === member.membershipId}
+                onToggle={() => toggleMember(member.membershipId)}
                 jersey={jerseyValue(member.membershipId, member.jerseyNumber)}
                 busyKey={busyKey}
                 onJerseyChange={(value) =>
@@ -320,9 +326,29 @@ export default function TeamDetailScreen() {
         )}
       </Section>
 
-      {team.viewer.canManage ? (
+      {team.viewer.canManage && !showAdd ? (
+        <Button
+          label="Add players"
+          icon="person-add-outline"
+          variant="outline"
+          fullWidth
+          onPress={() => {
+            animateNextLayout();
+            setShowAdd(true);
+          }}
+        />
+      ) : null}
+
+      {team.viewer.canManage && showAdd ? (
         <Section
-          title="Add player"
+          title="Add players"
+          action={{
+            label: "Done",
+            onPress: () => {
+              animateNextLayout();
+              setShowAdd(false);
+            },
+          }}
           description={
             team.school
               ? `From the ${team.school.name} roster`
@@ -362,28 +388,22 @@ export default function TeamDetailScreen() {
                       <CandidateRow
                         key={candidate.userId}
                         candidate={candidate}
-                        jersey={candidateJerseys[candidate.userId] ?? ""}
                         busy={busyKey === `add:${candidate.userId}`}
-                        onJerseyChange={(value) =>
-                          setCandidateJerseys((prev) => ({
-                            ...prev,
-                            [candidate.userId]: value,
-                          }))
-                        }
-                        onAdd={() => {
-                          const raw = candidateJerseys[candidate.userId]?.trim() ?? "";
+                        onAdd={() =>
                           void runAction(
                             `add:${candidate.userId}`,
                             async () => {
                               await addTeamMember(teamSlug, {
                                 userId: candidate.userId,
-                                jerseyNumber: raw === "" ? null : raw,
+                                jerseyNumber:
+                                  candidate.jerseyNumber != null
+                                    ? String(candidate.jerseyNumber)
+                                    : null,
                               });
-                              clearDraft(setCandidateJerseys, candidate.userId);
                             },
                             `Added ${candidate.fullName} to the roster.`
-                          );
-                        }}
+                          )
+                        }
                       />
                     ))}
                   </ListGroup>
@@ -445,10 +465,36 @@ export default function TeamDetailScreen() {
         </Section>
       ) : null}
 
-      {team.viewer.canManage ? (
+      {team.viewer.canManage && !showDelete ? (
+        <Tappable
+          accessibilityRole="button"
+          accessibilityLabel="Delete team"
+          accessibilityHint="Asks you to confirm by typing the team name"
+          onPress={() => {
+            animateNextLayout();
+            setShowDelete(true);
+          }}
+          style={styles.deleteEntry}
+        >
+          <Icon name="trash-outline" size={16} tone="destructive" />
+          <AppText variant="subhead" weight="600" tone="destructive">
+            Delete team…
+          </AppText>
+        </Tappable>
+      ) : null}
+
+      {team.viewer.canManage && showDelete ? (
         <Section
           title="Delete team"
           description="Type the team name exactly to confirm. This can’t be undone."
+          action={{
+            label: "Cancel",
+            onPress: () => {
+              animateNextLayout();
+              setShowDelete(false);
+              setDeleteConfirmName("");
+            },
+          }}
         >
           <InlineInput
             value={deleteConfirmName}
@@ -536,6 +582,8 @@ function Hero({
 
 function MemberRow({
   member,
+  expanded,
+  onToggle,
   jersey,
   busyKey,
   onJerseyChange,
@@ -544,6 +592,8 @@ function MemberRow({
   onRemove,
 }: {
   member: TeamMemberContract;
+  expanded: boolean;
+  onToggle: () => void;
   jersey: string;
   busyKey: string | null;
   onJerseyChange: (value: string) => void;
@@ -559,41 +609,40 @@ function MemberRow({
   const jerseyBusy = busyKey === `jersey:${member.membershipId}`;
   const positionBusy = busyKey === `position:${member.membershipId}`;
   const removeBusy = busyKey === `remove:${member.membershipId}`;
+  const role = TEAM_ROLE_LABELS[member.role] ?? member.role;
+  const manageable = member.canEditPosition || member.canEditJersey || member.canRemove;
 
   return (
-    <View style={styles.memberRow}>
-      <View style={styles.memberTop}>
-        <JerseyBadge number={member.jerseyNumber} />
-        <View style={styles.memberText}>
-          <AppText variant="callout" weight="600" numberOfLines={2}>
-            {member.fullName}
-            {member.isViewer ? (
-              <AppText variant="callout" tone="muted">
-                {" "}(you)
-              </AppText>
-            ) : null}
-          </AppText>
-          <View style={styles.badges}>
-            <Badge label={TEAM_ROLE_LABELS[member.role] ?? member.role} />
-            {!member.canEditPosition && positionLabel ? (
-              <Badge label={positionLabel} tone="info" />
-            ) : null}
+    <DisclosureRow
+      expanded={expanded}
+      onToggle={manageable ? onToggle : undefined}
+      accessibilityLabel={[
+        member.fullName,
+        member.jerseyNumber != null ? `number ${member.jerseyNumber}` : null,
+        role,
+        positionLabel,
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      summary={
+        <View style={styles.memberTop}>
+          <JerseyBadge number={member.jerseyNumber} />
+          <View style={styles.memberText}>
+            <AppText variant="callout" weight="600" numberOfLines={2}>
+              {member.fullName}
+              {member.isViewer ? (
+                <AppText variant="callout" tone="muted">
+                  {" "}(you)
+                </AppText>
+              ) : null}
+            </AppText>
+            <AppText variant="footnote" tone="muted" numberOfLines={1}>
+              {[role, positionLabel].filter(Boolean).join(" · ")}
+            </AppText>
           </View>
         </View>
-        {member.canRemove ? (
-          <Button
-            label={member.isViewer ? "Leave" : "Remove"}
-            variant="destructiveOutline"
-            size="sm"
-            accessibilityLabel={
-              member.isViewer ? "Leave team" : `Remove ${member.fullName}`
-            }
-            loading={removeBusy}
-            onPress={onRemove}
-          />
-        ) : null}
-      </View>
-
+      }
+    >
       {member.canEditPosition ? (
         <View style={styles.editBlock}>
           <AppText variant="footnote" tone="muted" weight="600">
@@ -624,7 +673,6 @@ function MemberRow({
           {jerseyDirty || jerseyBusy ? (
             <Button
               label="Save"
-              variant="outline"
               size="sm"
               accessibilityLabel={`Save jersey number for ${member.fullName}`}
               loading={jerseyBusy}
@@ -633,71 +681,66 @@ function MemberRow({
           ) : null}
         </View>
       ) : null}
-    </View>
+
+      {member.canRemove ? (
+        <Button
+          label={member.isViewer ? "Leave team" : "Remove from team"}
+          variant="ghost"
+          size="sm"
+          icon={member.isViewer ? "exit-outline" : "person-remove-outline"}
+          accessibilityLabel={
+            member.isViewer ? "Leave team" : `Remove ${member.fullName}`
+          }
+          loading={removeBusy}
+          onPress={onRemove}
+          style={styles.removeButton}
+        />
+      ) : null}
+    </DisclosureRow>
   );
 }
 
 function CandidateRow({
   candidate,
-  jersey,
   busy,
-  onJerseyChange,
   onAdd,
 }: {
   candidate: TeamRosterCandidateContract;
-  jersey: string;
   busy: boolean;
-  onJerseyChange: (value: string) => void;
   onAdd: () => void;
 }) {
-  const role = candidate.schoolRole
-    ? SCHOOL_ROLE_LABELS[candidate.schoolRole] ?? candidate.schoolRole
-    : null;
-  const position = candidate.volleyballPosition
-    ? VOLLEYBALL_POSITION_LABELS[candidate.volleyballPosition] ??
-      candidate.volleyballPosition
-    : null;
+  const meta = [
+    candidate.schoolRole
+      ? SCHOOL_ROLE_LABELS[candidate.schoolRole] ?? candidate.schoolRole
+      : null,
+    candidate.volleyballPosition
+      ? VOLLEYBALL_POSITION_LABELS[candidate.volleyballPosition] ??
+        candidate.volleyballPosition
+      : null,
+    candidate.jerseyNumber != null ? `#${candidate.jerseyNumber}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <View style={styles.memberRow}>
-      <View style={styles.memberTop}>
-        <View style={styles.memberText}>
-          <AppText variant="callout" weight="600" numberOfLines={1}>
-            {candidate.fullName}
-          </AppText>
-          <AppText variant="footnote" tone="muted" numberOfLines={1}>
-            {candidate.email}
-          </AppText>
-          {role || position ? (
-            <View style={styles.badges}>
-              {role ? <Badge label={role} /> : null}
-              {position ? <Badge label={position} tone="info" /> : null}
-            </View>
-          ) : null}
-        </View>
+    <View style={styles.candidateRow}>
+      <View style={styles.memberText}>
+        <AppText variant="callout" weight="600" numberOfLines={1}>
+          {candidate.fullName}
+        </AppText>
+        <AppText variant="footnote" tone="muted" numberOfLines={1}>
+          {meta || candidate.email}
+        </AppText>
       </View>
-      <View style={styles.jerseyRow}>
-        <InlineInput
-          value={jersey}
-          onChangeText={onJerseyChange}
-          placeholder={
-            candidate.jerseyNumber != null ? `#${candidate.jerseyNumber}` : "Jersey #"
-          }
-          keyboardType="number-pad"
-          maxLength={2}
-          accessibilityLabel={`Jersey number for ${candidate.fullName}`}
-          style={styles.candidateJersey}
-        />
-        <Button
-          label="Add"
-          icon="add"
-          variant="outline"
-          size="sm"
-          accessibilityLabel={`Add ${candidate.fullName}`}
-          loading={busy}
-          onPress={onAdd}
-        />
-      </View>
+      <Button
+        label="Add"
+        icon="add"
+        variant="outline"
+        size="sm"
+        accessibilityLabel={`Add ${candidate.fullName}`}
+        loading={busy}
+        onPress={onAdd}
+      />
     </View>
   );
 }
@@ -781,10 +824,22 @@ const styles = StyleSheet.create({
   heroText: { gap: space.xs },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
   form: { gap: space.lg },
-  memberRow: {
+  candidateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    gap: space.md,
+  },
+  removeButton: { alignSelf: "flex-start", marginLeft: -space.md },
+  deleteEntry: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: space.xs,
+    minHeight: HIT_TARGET,
+    paddingHorizontal: space.md,
+    borderRadius: radius.md,
   },
   memberTop: { flexDirection: "row", alignItems: "center", gap: space.md },
   memberText: { flex: 1, minWidth: 0, gap: space.xs },
@@ -807,7 +862,6 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
   },
   jerseyField: { width: 72, textAlign: "center" },
-  candidateJersey: { flex: 1 },
   search: {
     flexDirection: "row",
     alignItems: "center",

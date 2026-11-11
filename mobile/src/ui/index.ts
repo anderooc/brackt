@@ -23,3 +23,4 @@ export * from "~/ui/status";
 export * from "~/ui/feedback";
 export * from "~/ui/screen";
 export * from "~/ui/bars";
+export * from "~/ui/disclosure";
