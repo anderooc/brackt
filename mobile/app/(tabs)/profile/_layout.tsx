@@ -27,7 +27,7 @@ export default function ProfileStackLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
+        headerTitleStyle: { color: colors.foreground, fontFamily: "Archivo_700Bold" },
         headerTintColor: colors.primary,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },

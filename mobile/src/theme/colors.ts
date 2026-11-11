@@ -40,6 +40,11 @@ export interface ThemeColors {
   warning: string;
   info: string;
   live: string;
+  /** Court-blue band behind Home's header: the app's one committed color moment. */
+  hero: string;
+  heroForeground: string;
+  /** Secondary text on `hero` (≥5:1 in both themes). */
+  heroMuted: string;
 }
 
 /*
@@ -62,6 +67,9 @@ const light: ThemeColors = {
   warning: "#905d00",
   info: "#315ca8",
   live: "#c92f45",
+  hero: "#315ca8",
+  heroForeground: "#ffffff",
+  heroMuted: "#dfe6f2",
 };
 
 const dark: ThemeColors = {
@@ -79,6 +87,9 @@ const dark: ThemeColors = {
   warning: "#f3bd5c",
   info: "#88b3f0",
   live: "#f66b74",
+  hero: "#1a315e",
+  heroForeground: "#f0f4f9",
+  heroMuted: "#c8d3e6",
 };
 
 export function useThemeColors(): ThemeColors {

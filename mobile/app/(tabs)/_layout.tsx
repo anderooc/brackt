@@ -18,9 +18,11 @@
 
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs } from "expo-router";
-import type { ColorValue } from "react-native";
+import { Image, type ColorValue } from "react-native";
 import { useThemeColors } from "~/theme/colors";
 import { haptics, type IconName } from "~/ui";
+
+const LOGO_ON_COURT = require("../../assets/brand/logo-dark.png");
 
 function tabIcon(active: IconName, inactive: IconName) {
   return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
@@ -35,7 +37,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
+        headerTitleStyle: { color: colors.foreground, fontFamily: "Archivo_700Bold" },
         headerTintColor: colors.primary,
         headerShadowVisible: false,
         sceneStyle: { backgroundColor: colors.background },
@@ -45,7 +47,11 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: { fontSize: 10, fontWeight: "600", letterSpacing: -0.1 },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontFamily: "PlusJakartaSans_600SemiBold",
+          letterSpacing: -0.1,
+        },
         tabBarItemStyle: { paddingHorizontal: 0 },
       }}
       screenListeners={{ tabPress: () => haptics.selection() }}
@@ -54,6 +60,16 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Home",
+          headerStyle: { backgroundColor: colors.hero },
+          headerTitle: () => (
+            <Image
+              source={LOGO_ON_COURT}
+              style={{ width: 96, height: 23 }}
+              resizeMode="contain"
+              accessibilityRole="header"
+              accessibilityLabel="brackt home"
+            />
+          ),
           tabBarIcon: tabIcon("home", "home-outline"),
         }}
       />

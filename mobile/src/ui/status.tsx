@@ -17,7 +17,13 @@
  */
 
 import { useEffect, useRef } from "react";
-import { AccessibilityInfo, Animated, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  StyleSheet,
+  View,
+} from "react-native";
+import { BrandText as Text } from "~/ui/primitives";
 import {
   DASHBOARD_RELATION_LABELS,
   isTournamentArchived,

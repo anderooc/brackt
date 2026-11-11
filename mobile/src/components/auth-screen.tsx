@@ -178,6 +178,7 @@ const styles = StyleSheet.create({
     gap: space.lg,
   },
   input: {
+    fontFamily: "PlusJakartaSans_400Regular",
     borderWidth: 1,
     borderRadius: radius.md,
     paddingHorizontal: space.md + 2,

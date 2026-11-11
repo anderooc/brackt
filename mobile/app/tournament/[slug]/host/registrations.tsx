@@ -993,7 +993,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     minHeight: HIT_TARGET,
   },
-  searchInput: { flex: 1, fontSize: 16, paddingVertical: space.md },
+  searchInput: {
+    fontFamily: "PlusJakartaSans_400Regular", flex: 1, fontSize: 16, paddingVertical: space.md },
   checkInRow: { flexDirection: "row", alignItems: "center", gap: space.md },
   checkedIn: { alignItems: "flex-end", gap: space.xxs },
   checkedLabel: { flexDirection: "row", alignItems: "center", gap: space.xs },

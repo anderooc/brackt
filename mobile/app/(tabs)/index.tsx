@@ -24,8 +24,9 @@ import type {
 } from "@/lib/api/contracts/dashboard";
 import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
+import { setStatusBarStyle } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { Alert, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import {
   downloadMyScheduleIcs,
@@ -34,6 +35,7 @@ import {
   fetchPersonalSchedule,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
+import { CourtScene } from "~/brand/court-scene";
 import { SignedOutScreen } from "~/components/signed-out";
 import {
   attentionRoute,
@@ -79,6 +81,7 @@ const ATTENTION_ICON: Record<DashboardAttentionContract["kind"], IconName> = {
 };
 
 export default function DashboardScreen() {
+  const colors = useThemeColors();
   const navigation = useNavigation();
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
@@ -144,6 +147,7 @@ export default function DashboardScreen() {
         ? () => (
             <IconButton
               icon="notifications-outline"
+              color={colors.heroForeground}
               badge={unreadNotifications}
               accessibilityLabel={
                 unreadNotifications > 0
@@ -155,7 +159,15 @@ export default function DashboardScreen() {
           )
         : undefined,
     });
-  }, [navigation, router, session, unreadNotifications]);
+  }, [colors.heroForeground, navigation, router, session, unreadNotifications]);
+
+  // The court-blue header needs light status-bar content in both themes.
+  useFocusEffect(
+    useCallback(() => {
+      setStatusBarStyle("light");
+      return () => setStatusBarStyle("auto");
+    }, [])
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -190,6 +202,7 @@ export default function DashboardScreen() {
         title="Welcome to brackt"
         message="Sign in to see your teams, registrations, and match schedule. You can browse public tournaments without an account."
         showBrowse
+        art
       />
     );
   }
@@ -229,16 +242,21 @@ export default function DashboardScreen() {
         setIsRefreshing(false);
       }}
     >
-      <View style={styles.welcome}>
-        <AppText variant="largeTitle" accessibilityRole="header">
-          Hi, {data.firstName}
-        </AppText>
-        <AppText variant="callout" tone="muted">
-          {isNewUser
+      <HomeHero
+        firstName={data.firstName}
+        summary={
+          isNewUser
             ? "Let’s get you on the court."
-            : headlineSummary(attention.length, upcomingAll[0] ?? null, today)}
-        </AppText>
-      </View>
+            : headlineSummary(attention.length, upcomingAll[0] ?? null, today)
+        }
+        nextMatch={nextMatch ?? null}
+        nextEvent={nextMatch ? null : (upcomingAll[0] ?? null)}
+        today={today}
+        exporting={exporting}
+        onExport={() => {
+          if (!exporting) void exportCalendar();
+        }}
+      />
 
       {error ? (
         <Banner tone="error" title="Couldn’t refresh" message={error} />
@@ -293,40 +311,23 @@ export default function DashboardScreen() {
         </Section>
       ) : null}
 
-      {showSchedule ? (
-        <Section
-          title="Your schedule"
-          action={
-            nextMatch
-              ? {
-                  label: exporting ? "Exporting…" : "Add to calendar",
-                  onPress: () => {
-                    if (!exporting) void exportCalendar();
-                  },
-                }
-              : undefined
-          }
-        >
-          {nextMatch ? (
-            <>
-              <UpNextMatch match={nextMatch} />
-              {shownLater.length > 0 ? (
-                <PersonalSchedulePanel matches={shownLater} />
-              ) : null}
-              {hiddenCount > 0 || showAllMatches ? (
-                <ToggleRow
-                  label={showAllMatches ? "Show fewer" : `Show ${hiddenCount} more`}
-                  open={showAllMatches}
-                  onPress={() => setShowAllMatches((v) => !v)}
-                />
-              ) : null}
-            </>
-          ) : (
-            <AppText variant="subhead" tone="muted">
-              No matches yet. Your games and ref duties land here once a host
-              releases the schedule.
-            </AppText>
-          )}
+      {laterMatches.length > 0 ? (
+        <Section title="Coming up">
+          <PersonalSchedulePanel matches={shownLater} />
+          {hiddenCount > 0 || showAllMatches ? (
+            <ToggleRow
+              label={showAllMatches ? "Show fewer" : `Show ${hiddenCount} more`}
+              open={showAllMatches}
+              onPress={() => setShowAllMatches((v) => !v)}
+            />
+          ) : null}
+        </Section>
+      ) : showSchedule && !nextMatch ? (
+        <Section title="Your schedule">
+          <AppText variant="subhead" tone="muted">
+            No matches yet. Your games and ref duties land here once a host
+            releases the schedule.
+          </AppText>
         </Section>
       ) : null}
 
@@ -430,6 +431,115 @@ export default function DashboardScreen() {
         </Section>
       ) : null}
     </ScreenScroll>
+  );
+}
+
+function HomeHero({
+  firstName,
+  summary,
+  nextMatch,
+  nextEvent,
+  today,
+  exporting,
+  onExport,
+}: {
+  firstName: string;
+  summary: string;
+  nextMatch: PersonalScheduleMatchContract | null;
+  nextEvent: DashboardTournamentContract | null;
+  today: string;
+  exporting: boolean;
+  onExport: () => void;
+}) {
+  const colors = useThemeColors();
+  const router = useRouter();
+  const dateLabel = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  const hasCard = Boolean(nextMatch || nextEvent);
+
+  return (
+    <View style={styles.heroWrap}>
+      {/* Paints the pull-to-refresh overscroll in court blue too. */}
+      <View style={[styles.heroBleed, { backgroundColor: colors.hero }]} />
+      <View
+        style={[
+          styles.hero,
+          { backgroundColor: colors.hero },
+          hasCard && styles.heroWithCard,
+        ]}
+      >
+        <View style={styles.heroArt} pointerEvents="none">
+          <CourtScene variant="hero" width={270} style={styles.heroScene} />
+        </View>
+        <AppText variant="footnote" weight="600" style={{ color: colors.heroMuted }}>
+          {dateLabel}
+        </AppText>
+        <AppText
+          variant="largeTitle"
+          accessibilityRole="header"
+          numberOfLines={2}
+          style={[styles.greeting, { color: colors.heroForeground }]}
+        >
+          Hi, {firstName}
+        </AppText>
+        <AppText variant="callout" weight="500" style={[styles.summary, { color: colors.heroMuted }]}>
+          {summary}
+        </AppText>
+      </View>
+
+      {nextMatch ? (
+        <View style={styles.heroCard}>
+          <UpNextMatch match={nextMatch} variant="raised" />
+          <Tappable
+            accessibilityRole="button"
+            accessibilityLabel="Add your schedule to your calendar"
+            onPress={onExport}
+            style={styles.calendarLink}
+          >
+            <Icon name="calendar-outline" size={16} tone="primary" />
+            <AppText variant="subhead" tone="primary" weight="600">
+              {exporting ? "Exporting…" : "Add to calendar"}
+            </AppText>
+          </Tappable>
+        </View>
+      ) : nextEvent ? (
+        <View style={styles.heroCard}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Next event: ${nextEvent.name}, ${
+              relativeDay(nextEvent.date, today) ?? shortDate(nextEvent.date)
+            }`}
+            onPress={() => router.push(`/tournament/${nextEvent.slug}`)}
+            style={({ pressed }) => [
+              styles.eventCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                shadowColor: "#0b1a33",
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <DateTile date={nextEvent.date} />
+            <View style={styles.rowText}>
+              <AppText variant="footnote" weight="600" tone="primary">
+                {relativeDay(nextEvent.date, today) ?? "Next event"}
+              </AppText>
+              <AppText variant="headline" numberOfLines={1}>
+                {nextEvent.name}
+              </AppText>
+              <AppText variant="footnote" tone="muted" numberOfLines={1}>
+                {[nextEvent.location, nextEvent.teamName].filter(Boolean).join(" · ")}
+              </AppText>
+            </View>
+            <Icon name="arrow-forward" size={18} tone="muted" />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -554,7 +664,64 @@ function HostingRow({
 }
 
 const styles = StyleSheet.create({
-  welcome: { gap: space.xs },
+  heroWrap: { marginHorizontal: -space.lg, marginTop: -space.lg },
+  heroBleed: { position: "absolute", left: 0, right: 0, top: -800, height: 800 },
+  hero: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.sm,
+    paddingBottom: space.xxl,
+    gap: space.xs,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  heroWithCard: { paddingBottom: 72 },
+  heroArt: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    overflow: "hidden",
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+  },
+  heroScene: { position: "absolute", right: -96, bottom: -60 },
+  greeting: {
+    fontSize: 40,
+    lineHeight: 46,
+    fontStyle: "italic",
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    marginTop: space.xxs,
+  },
+  summary: { maxWidth: 255 },
+  heroCard: {
+    marginTop: -56,
+    paddingHorizontal: space.lg,
+    gap: space.sm,
+  },
+  calendarLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: space.xs,
+    minHeight: 36,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.sm,
+  },
+  eventCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: radius.lg + 4,
+    borderWidth: StyleSheet.hairlineWidth * 2,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  pressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
   row: {
     flexDirection: "row",
     alignItems: "center",

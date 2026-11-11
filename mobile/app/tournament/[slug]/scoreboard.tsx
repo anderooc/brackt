@@ -27,10 +27,10 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { BrandText as Text } from "~/ui/primitives";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WEB_BASE_URL } from "~/api/config";
 import { fetchTournament, fetchTournamentMatches } from "~/api/endpoints";

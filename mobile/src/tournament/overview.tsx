@@ -35,6 +35,7 @@ import {
 } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
 import { HostChecklistCard } from "~/tournament/host-checklist-card";
+import { TournamentCover } from "~/tournament/tournament-cover";
 import { UpNextMatch } from "~/tournament/up-next-match";
 import {
   AppText,
@@ -165,16 +166,7 @@ export function TournamentOverview({
 
   return (
     <View style={styles.stack}>
-      <View style={styles.header}>
-        <StatusBadge
-          kind="tournament"
-          status={tournament.status}
-          date={tournament.date}
-        />
-        <AppText variant="title" accessibilityRole="header">
-          {tournament.name}
-        </AppText>
-      </View>
+      <TournamentCover tournament={tournament} />
 
       {isOrganizer ? (
         <>
@@ -426,7 +418,6 @@ function Availability({ tournament }: { tournament: TournamentDetailContract }) 
 
 const styles = StyleSheet.create({
   stack: { gap: space.xxl },
-  header: { gap: space.sm },
   fact: {
     flexDirection: "row",
     alignItems: "center",

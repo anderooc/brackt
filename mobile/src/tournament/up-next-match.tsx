@@ -21,18 +21,32 @@ import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 import { formatMatchTime, PERSONAL_SCHEDULE_ROLE_LABELS } from "~/lib/format";
 import { useThemeColors, withAlpha } from "~/theme/colors";
-import { AppText, Badge, Icon, radius, space, StatusBadge } from "~/ui";
+import { AppText, Icon, radius, space } from "~/ui";
 
-/** The viewer's next match, with enough detail to know where to be. */
+/**
+ * The viewer's next match, with enough detail to know where to be.
+ * `accent` is a solid court-blue card for plain screens; `raised` is a light
+ * card for sitting on the court-blue Home header.
+ */
 export function UpNextMatch({
   match,
   showTournament = true,
+  variant = "accent",
 }: {
   match: PersonalScheduleMatchContract;
   showTournament?: boolean;
+  variant?: "accent" | "raised";
 }) {
   const router = useRouter();
   const colors = useThemeColors();
+  const accent = variant === "accent";
+  const ink = accent
+    ? { fg: colors.heroForeground, muted: colors.heroMuted, time: colors.heroForeground }
+    : { fg: colors.foreground, muted: colors.mutedForeground, time: colors.primary };
+  const pill = accent
+    ? { bg: withAlpha("#ffffff", 0.16), fg: colors.heroForeground }
+    : { bg: withAlpha(colors.primary, 0.1), fg: colors.primary };
+
   const day = new Date(match.scheduledTime).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
@@ -41,82 +55,116 @@ export function UpNextMatch({
   const time = formatMatchTime(match.scheduledTime);
   const where = [match.courtName, match.contextLabel].filter(Boolean).join(" · ");
   const role = PERSONAL_SCHEDULE_ROLE_LABELS[match.role] ?? match.role;
+  const live = match.status === "in_progress";
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Up next: ${day} at ${time}. ${match.teamAName} versus ${match.teamBName}. ${where}. ${role}`}
+      accessibilityLabel={`${live ? "Live now" : "Up next"}: ${day} at ${time}. ${match.teamAName} versus ${match.teamBName}. ${where}. ${role}`}
       onPress={() =>
         router.push(`/tournament/${match.tournamentSlug}/matches/${match.matchSlug}`)
       }
       style={({ pressed }) => [
         styles.card,
-        {
-          borderColor: colors.border,
-          backgroundColor: withAlpha(colors.primary, pressed ? 0.14 : 0.07),
-        },
+        accent
+          ? { backgroundColor: colors.hero }
+          : {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: StyleSheet.hairlineWidth * 2,
+              shadowColor: "#0b1a33",
+            },
+        !accent && styles.raised,
+        pressed && styles.pressed,
       ]}
     >
-      <View style={styles.when}>
-        <AppText variant="footnote" tone="muted">
-          {day}
-        </AppText>
-        <AppText variant="title" numberOfLines={1} style={styles.tabular}>
-          {time}
-        </AppText>
-        {match.warmupStart ? (
-          <AppText variant="caption" tone="muted" numberOfLines={1} style={styles.tabular}>
-            Warmup {formatMatchTime(match.warmupStart)}
+      <View style={styles.top}>
+        <View style={styles.when}>
+          <AppText variant="footnote" weight="600" style={{ color: ink.muted }}>
+            {day}
           </AppText>
+          <AppText variant="largeTitle" numberOfLines={1} style={[styles.time, { color: ink.time }]}>
+            {time}
+          </AppText>
+        </View>
+        {live ? (
+          <View style={[styles.pill, { backgroundColor: colors.live }]}>
+            <View style={styles.liveDot} />
+            <AppText variant="caption" weight="700" style={{ color: "#ffffff" }}>
+              Live
+            </AppText>
+          </View>
+        ) : match.warmupStart ? (
+          <View style={[styles.pill, { backgroundColor: pill.bg }]}>
+            <Icon name="timer-outline" size={13} color={pill.fg} />
+            <AppText variant="caption" weight="600" style={[styles.tabular, { color: pill.fg }]}>
+              Warmup {formatMatchTime(match.warmupStart)}
+            </AppText>
+          </View>
         ) : null}
       </View>
+
       <View style={styles.body}>
         {showTournament ? (
-          <AppText variant="footnote" tone="muted" weight="500" numberOfLines={1}>
+          <AppText variant="footnote" weight="500" numberOfLines={1} style={{ color: ink.muted }}>
             {match.tournamentName}
           </AppText>
         ) : null}
-        <AppText variant="callout" weight="600" numberOfLines={2}>
+        <AppText variant="headline" numberOfLines={2} style={{ color: ink.fg }}>
           {match.teamAName}
-          <AppText variant="callout" tone="muted">
-            {" vs "}
+          <AppText variant="headline" weight="600" style={{ color: ink.muted }}>
+            {"  vs  "}
           </AppText>
           {match.teamBName}
         </AppText>
-        {where ? (
-          <AppText variant="footnote" tone="muted" numberOfLines={1}>
-            {where}
-          </AppText>
-        ) : null}
-        <View style={styles.tags}>
-          <Badge label={role} tone={match.role === "playing" ? "info" : "warning"} />
-          {match.status !== "upcoming" ? (
-            <StatusBadge kind="match" status={match.status} />
-          ) : null}
-          {match.myTeamName ? (
-            <AppText variant="caption" tone="muted" numberOfLines={1} style={styles.team}>
-              {match.myTeamName}
+        <View style={styles.meta}>
+          <View style={[styles.pill, { backgroundColor: pill.bg }]}>
+            <AppText variant="caption" weight="700" style={{ color: pill.fg }}>
+              {role}
             </AppText>
-          ) : null}
+          </View>
+          <AppText variant="footnote" numberOfLines={1} style={[styles.where, { color: ink.muted }]}>
+            {[where, match.myTeamName].filter(Boolean).join(" · ")}
+          </AppText>
+          <Icon name="arrow-forward" size={18} color={ink.muted} />
         </View>
       </View>
-      <Icon name="chevron-forward" size={18} color={colors.mutedForeground} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
+    padding: space.lg,
+    gap: space.md,
+    borderRadius: radius.lg + 4,
+  },
+  raised: {
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  pressed: { opacity: 0.92, transform: [{ scale: 0.985 }] },
+  top: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: space.md,
+  },
+  when: { gap: space.xxs, flexShrink: 1 },
+  time: { fontSize: 34, lineHeight: 38, fontVariant: ["tabular-nums"] },
+  body: { gap: space.sm },
+  meta: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  where: { flex: 1, minWidth: 0 },
+  pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: space.md,
-    padding: space.lg,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth * 2,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
   },
-  when: { width: 112, gap: space.xxs },
-  body: { flex: 1, minWidth: 0, gap: space.xs },
-  tags: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.sm },
-  team: { flexShrink: 1 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#ffffff" },
   tabular: { fontVariant: ["tabular-nums"] },
 });

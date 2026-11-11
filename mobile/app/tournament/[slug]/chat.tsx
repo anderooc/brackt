@@ -558,6 +558,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     ...type.body,
+    fontFamily: "PlusJakartaSans_400Regular",
     minHeight: HIT_TARGET,
     maxHeight: 120,
     borderWidth: 1,

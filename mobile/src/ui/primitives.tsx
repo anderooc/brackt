@@ -22,7 +22,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
-  Text,
+  Text as RNText,
   View,
   type PressableProps,
   type StyleProp,
@@ -31,6 +31,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
+import { FONT_FAMILY, resolveFont } from "~/ui/fonts";
 import { haptics } from "~/ui/haptics";
 import { HIT_TARGET, radius, space, type, type TypeVariant } from "~/ui/tokens";
 
@@ -67,6 +68,11 @@ function toneColor(colors: ThemeColors, tone: TextTone): string {
   }
 }
 
+/** `Text` with the brand font resolved from its family token and weight. */
+export function BrandText({ style, ...rest }: TextProps) {
+  return <RNText {...rest} style={resolveFont(style)} />;
+}
+
 export function AppText({
   variant = "body",
   tone = "default",
@@ -80,7 +86,7 @@ export function AppText({
 }) {
   const colors = useThemeColors();
   return (
-    <Text
+    <BrandText
       {...rest}
       style={[
         type[variant],
@@ -224,15 +230,21 @@ export function Button({
       ) : (
         <>
           {icon ? <Icon name={icon} size={size === "md" ? 18 : 16} color={tone.fg} /> : null}
-          <Text
+          <BrandText
             style={[
               size === "md" ? type.headline : type.subhead,
-              { color: tone.fg, fontWeight: "600" },
+              {
+                color: tone.fg,
+                fontWeight: "600",
+                fontFamily: FONT_FAMILY.body,
+                fontSize: size === "md" ? 16 : 14,
+                letterSpacing: 0,
+              },
             ]}
             numberOfLines={1}
           >
             {label}
-          </Text>
+          </BrandText>
         </>
       )}
     </Pressable>
@@ -245,12 +257,15 @@ export function IconButton({
   onPress,
   accessibilityLabel,
   tone = "primary",
+  color,
   badge,
 }: {
   icon: IconName;
   onPress: () => void;
   accessibilityLabel: string;
   tone?: TextTone;
+  /** Literal tint for colored surfaces (e.g. the court-blue Home header). */
+  color?: string;
   badge?: number;
 }) {
   const colors = useThemeColors();
@@ -262,15 +277,26 @@ export function IconButton({
       hitSlop={6}
       style={({ pressed }) => [
         styles.iconButton,
-        { backgroundColor: pressed ? colors.muted : "transparent" },
+        {
+          backgroundColor: pressed
+            ? color
+              ? withAlpha(color, 0.16)
+              : colors.muted
+            : "transparent",
+        },
       ]}
     >
-      <Icon name={icon} size={22} tone={tone} />
+      <Icon name={icon} size={22} tone={tone} color={color} />
       {badge != null && badge > 0 ? (
-        <View style={[styles.iconBadge, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.iconBadgeLabel, { color: colors.primaryForeground }]}>
+        <View style={[styles.iconBadge, { backgroundColor: color ?? colors.primary }]}>
+          <BrandText
+            style={[
+              styles.iconBadgeLabel,
+              { color: color ? colors.hero : colors.primaryForeground },
+            ]}
+          >
             {badge > 9 ? "9+" : badge}
-          </Text>
+          </BrandText>
         </View>
       ) : null}
     </Pressable>
@@ -526,7 +552,7 @@ export function Chip({
       {icon ? (
         <Icon name={icon} size={14} tone={selected ? "primary" : "muted"} />
       ) : null}
-      <Text
+      <BrandText
         style={[
           type.subhead,
           {
@@ -536,16 +562,16 @@ export function Chip({
         ]}
       >
         {label}
-      </Text>
+      </BrandText>
       {count != null ? (
-        <Text
+        <BrandText
           style={[
             type.caption,
             { color: selected ? colors.primary : colors.mutedForeground },
           ]}
         >
           {count}
-        </Text>
+        </BrandText>
       ) : null}
     </Pressable>
   );
@@ -598,7 +624,7 @@ export function SegmentedControl<T extends string>({
               ],
             ]}
           >
-            <Text
+            <BrandText
               numberOfLines={1}
               style={[
                 type.subhead,
@@ -610,11 +636,11 @@ export function SegmentedControl<T extends string>({
             >
               {option.label}
               {option.count != null && option.count > 0 ? (
-                <Text style={{ color: colors.mutedForeground, fontWeight: "500" }}>
+                <BrandText style={{ color: colors.mutedForeground, fontWeight: "500" }}>
                   {` ${option.count}`}
-                </Text>
+                </BrandText>
               ) : null}
-            </Text>
+            </BrandText>
           </Pressable>
         );
       })}

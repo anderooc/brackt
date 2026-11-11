@@ -17,6 +17,7 @@
  */
 
 import type { TextStyle } from "react-native";
+import { FONT_FAMILY } from "~/ui/fonts";
 
 export const space = {
   xxs: 2,
@@ -51,16 +52,34 @@ export type TypeVariant =
 
 export const type: Record<TypeVariant, TextStyle> = {
   largeTitle: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontFamily: FONT_FAMILY.heading,
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: "800",
+    letterSpacing: -0.6,
+  },
+  title: {
+    fontFamily: FONT_FAMILY.heading,
+    fontSize: 23,
+    lineHeight: 29,
     fontWeight: "700",
     letterSpacing: -0.4,
   },
-  title: { fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.3 },
-  headline: { fontSize: 17, lineHeight: 22, fontWeight: "600" },
-  body: { fontSize: 16, lineHeight: 22 },
-  callout: { fontSize: 15, lineHeight: 20 },
-  subhead: { fontSize: 14, lineHeight: 19 },
-  footnote: { fontSize: 13, lineHeight: 18 },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: "500" },
+  headline: {
+    fontFamily: FONT_FAMILY.heading,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  body: { fontFamily: FONT_FAMILY.body, fontSize: 16, lineHeight: 22 },
+  callout: { fontFamily: FONT_FAMILY.body, fontSize: 15, lineHeight: 20 },
+  subhead: { fontFamily: FONT_FAMILY.body, fontSize: 14, lineHeight: 19 },
+  footnote: { fontFamily: FONT_FAMILY.body, fontSize: 13, lineHeight: 18 },
+  caption: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "500",
+  },
 };

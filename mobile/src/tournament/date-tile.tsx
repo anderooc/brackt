@@ -19,9 +19,9 @@
 import { StyleSheet, View } from "react-native";
 import { parseISODate } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
-import { AppText, radius, space } from "~/ui";
+import { AppText, radius } from "~/ui";
 
-/** Month over day-of-month, for scanning a list of events by date. */
+/** A torn-off calendar page: court-blue month strip over the day number. */
 export function DateTile({ date, muted }: { date: string; muted?: boolean }) {
   const colors = useThemeColors();
   const d = parseISODate(date);
@@ -31,17 +31,28 @@ export function DateTile({ date, muted }: { date: string; muted?: boolean }) {
       importantForAccessibility="no-hide-descendants"
       style={[
         styles.tile,
-        {
-          borderColor: colors.border,
-          backgroundColor: muted ? "transparent" : colors.background,
-        },
+        { borderColor: colors.border, backgroundColor: colors.card },
       ]}
     >
-      <AppText variant="caption" tone="muted">
-        {d.toLocaleDateString("en-US", { month: "short" })}
-      </AppText>
+      <View
+        style={[
+          styles.strip,
+          { backgroundColor: muted ? colors.muted : colors.hero },
+        ]}
+      >
+        <AppText
+          variant="caption"
+          weight="700"
+          style={[
+            styles.month,
+            { color: muted ? colors.mutedForeground : colors.heroForeground },
+          ]}
+        >
+          {d.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}
+        </AppText>
+      </View>
       <AppText
-        variant="headline"
+        variant="title"
         tone={muted ? "muted" : "default"}
         style={styles.day}
       >
@@ -53,11 +64,13 @@ export function DateTile({ date, muted }: { date: string; muted?: boolean }) {
 
 const styles = StyleSheet.create({
   tile: {
-    width: 46,
-    alignItems: "center",
-    paddingVertical: space.xs,
-    borderRadius: radius.sm,
+    width: 48,
+    borderRadius: radius.sm + 2,
     borderWidth: StyleSheet.hairlineWidth * 2,
+    overflow: "hidden",
+    alignItems: "center",
   },
-  day: { fontVariant: ["tabular-nums"], lineHeight: 20 },
+  strip: { alignSelf: "stretch", alignItems: "center", paddingVertical: 2 },
+  month: { fontSize: 10, lineHeight: 13 },
+  day: { fontSize: 21, lineHeight: 26, fontVariant: ["tabular-nums"], paddingBottom: 2 },
 });

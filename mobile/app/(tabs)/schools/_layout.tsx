@@ -26,7 +26,7 @@ export default function SchoolsStackLayout() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
+        headerTitleStyle: { color: colors.foreground, fontFamily: "Archivo_700Bold" },
         headerTintColor: colors.primary,
         contentStyle: { backgroundColor: colors.background },
         headerShadowVisible: false,

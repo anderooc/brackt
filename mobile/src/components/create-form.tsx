@@ -19,13 +19,13 @@
 import { useState, type ReactNode, type Ref } from "react";
 import {
   StyleSheet,
-  Text,
   TextInput,
   View,
   type StyleProp,
   type TextInputProps,
   type TextStyle,
 } from "react-native";
+import { BrandText as Text } from "~/ui/primitives";
 import type { ThemeColors } from "~/theme/colors";
 import { Button, Chip, ChipRow, radius, space, type } from "~/ui";
 
@@ -166,6 +166,7 @@ const styles = StyleSheet.create({
   label: { ...type.subhead, fontWeight: "600" },
   hint: { ...type.footnote },
   input: {
+    fontFamily: "PlusJakartaSans_400Regular",
     borderWidth: 1,
     borderRadius: radius.md,
     paddingHorizontal: space.md + 2,

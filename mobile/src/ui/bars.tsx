@@ -24,10 +24,10 @@ import {
   Pressable,
   StyleSheet,
   Switch,
-  Text,
   View,
   type KeyboardEvent,
 } from "react-native";
+import { BrandText as Text } from "~/ui/primitives";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColors } from "~/theme/colors";
 import { AppText } from "~/ui/primitives";

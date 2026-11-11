@@ -281,6 +281,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     paddingHorizontal: space.md,
   },
-  searchInput: { flex: 1, fontSize: 16, paddingVertical: space.sm },
+  searchInput: {
+    fontFamily: "PlusJakartaSans_400Regular", flex: 1, fontSize: 16, paddingVertical: space.sm },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: space.xs, marginTop: space.xs },
 });

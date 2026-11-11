@@ -799,6 +799,7 @@ const styles = StyleSheet.create({
   },
   input: {
     ...type.body,
+    fontFamily: "PlusJakartaSans_400Regular",
     minHeight: HIT_TARGET,
     borderWidth: 1,
     borderRadius: radius.md,
@@ -818,6 +819,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     ...type.body,
+    fontFamily: "PlusJakartaSans_400Regular",
     flex: 1,
     minHeight: HIT_TARGET,
     paddingVertical: 0,

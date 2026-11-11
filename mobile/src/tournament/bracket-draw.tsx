@@ -17,7 +17,12 @@
  */
 
 import type { BracketMatchContract } from "@/lib/api/contracts/tournament";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
+import { BrandText as Text } from "~/ui/primitives";
 import { bracketRoundLabel } from "~/lib/format";
 import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
 import { radius, space, type } from "~/ui/tokens";

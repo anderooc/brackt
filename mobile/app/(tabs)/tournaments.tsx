@@ -476,6 +476,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     ...type.body,
+    fontFamily: "PlusJakartaSans_400Regular",
     flex: 1,
     minHeight: HIT_TARGET,
     paddingVertical: 0,

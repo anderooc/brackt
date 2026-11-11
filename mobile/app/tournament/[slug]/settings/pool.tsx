@@ -431,13 +431,13 @@ const styles = StyleSheet.create({
   },
   stepperText: { flex: 1, gap: space.xxs, marginRight: space.sm },
   stepperInput: {
+    fontFamily: "PlusJakartaSans_600SemiBold",
     width: 52,
     minHeight: 40,
     borderWidth: 1,
     borderRadius: radius.sm,
     textAlign: "center",
     fontSize: 17,
-    fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
 });

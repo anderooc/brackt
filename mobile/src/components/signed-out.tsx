@@ -18,6 +18,7 @@
 
 import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
+import { CourtScene } from "~/brand/court-scene";
 import { useThemeColors } from "~/theme/colors";
 import { AppText, Button, Icon, space, type IconName } from "~/ui";
 
@@ -30,8 +31,11 @@ export function SignedOutScreen({
   title,
   message,
   showBrowse = false,
+  art = false,
 }: {
   icon: IconName;
+  /** Show the court scene instead of the icon (the app's front door). */
+  art?: boolean;
   title: string;
   message: string;
   showBrowse?: boolean;
@@ -41,9 +45,13 @@ export function SignedOutScreen({
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View style={[styles.icon, { backgroundColor: colors.muted }]}>
-        <Icon name={icon} size={28} tone="muted" />
-      </View>
+      {art ? (
+        <CourtScene width={220} style={styles.art} />
+      ) : (
+        <View style={[styles.icon, { backgroundColor: colors.muted }]}>
+          <Icon name={icon} size={28} tone="muted" />
+        </View>
+      )}
       <AppText variant="title" style={styles.center}>
         {title}
       </AppText>
@@ -88,6 +96,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: space.sm,
   },
+  art: { marginBottom: space.sm },
   center: { textAlign: "center" },
   actions: {
     alignSelf: "stretch",

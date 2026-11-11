@@ -16,8 +16,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { Platform, useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SessionProvider } from "~/auth/session";
@@ -25,12 +28,17 @@ import { AuthRecoveryHandler } from "~/auth/AuthRecoveryHandler";
 import { NotificationsRealtimeProvider } from "~/notifications/NotificationsRealtimeProvider";
 import { PushNotificationProvider } from "~/notifications/PushNotificationProvider";
 import { useThemeColors } from "~/theme/colors";
+import { FONT_SOURCES } from "~/ui/fonts";
 
 // Deep links (push notifications, shared URLs) land on stack screens; keep the
 // tabs underneath so there is always a back button.
 export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
+
+// Keep the splash up until the brand fonts load, so text never flashes in the
+// system font first.
+void SplashScreen.preventAutoHideAsync();
 
 function RootStack() {
   const colors = useThemeColors();
@@ -39,7 +47,8 @@ function RootStack() {
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
-        headerTitleStyle: { color: colors.foreground, fontWeight: "600" },
+        headerTitleStyle: { color: colors.foreground, fontFamily: "Archivo_700Bold" },
+        headerBackTitleStyle: { fontFamily: "PlusJakartaSans_500Medium" },
         headerTintColor: colors.primary,
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
@@ -187,6 +196,14 @@ function RootStack() {
 
 export default function RootLayout() {
   const scheme = useColorScheme();
+  const [fontsLoaded, fontError] = useFonts(FONT_SOURCES);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) void SplashScreen.hideAsync();
+  }, [fontsLoaded, fontError]);
+
+  // On a load error the app still runs, in the system font.
+  if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>
