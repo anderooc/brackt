@@ -47,7 +47,7 @@ import {
   TEAM_ROLE_LABELS,
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
-import { VolleyballPositionChips } from "~/roster/volleyball-position-chips";
+import { VolleyballPositionSelect } from "~/roster/volleyball-position-select";
 import { useThemeColors } from "~/theme/colors";
 import { LoadingScreen, ErrorScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
@@ -632,16 +632,12 @@ function MemberRow({
       }
     >
       {member.canEditPosition ? (
-        <View style={styles.editBlock}>
-          <AppText variant="footnote" tone="muted" weight="600">
-            Position
-          </AppText>
-          <VolleyballPositionChips
-            value={member.volleyballPosition}
-            onChange={onPositionChange}
-            disabled={positionBusy}
-          />
-        </View>
+        <VolleyballPositionSelect
+          inlineLabel
+          value={member.volleyballPosition}
+          onChange={onPositionChange}
+          busy={positionBusy}
+        />
       ) : null}
 
       {member.canEditJersey ? (
@@ -817,7 +813,6 @@ const styles = StyleSheet.create({
   removeButton: { alignSelf: "flex-start", marginLeft: -space.md },
   memberTop: { flexDirection: "row", alignItems: "center", gap: space.md },
   memberText: { flex: 1, minWidth: 0, gap: space.xs },
-  editBlock: { gap: space.sm },
   jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.md },
   jerseyBadge: {
     width: 36,

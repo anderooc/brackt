@@ -52,7 +52,7 @@ import {
   SCHOOL_VERIFICATION_LABELS,
   VOLLEYBALL_POSITION_LABELS,
 } from "~/lib/format";
-import { VolleyballPositionChips } from "~/roster/volleyball-position-chips";
+import { VolleyballPositionSelect } from "~/roster/volleyball-position-select";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor, usePublicLoader } from "~/tournament/use-public-loader";
@@ -750,16 +750,13 @@ function RosterSection({
                 }
               >
                 {member.canEditPosition ? (
-                  <View style={styles.field}>
-                    <AppText variant="footnote" tone="muted" weight="600">
-                      Position
-                    </AppText>
-                    <VolleyballPositionChips
-                      value={member.volleyballPosition}
-                      onChange={(position) => onPositionChange(member, position)}
-                      disabled={busy}
-                    />
-                  </View>
+                  <VolleyballPositionSelect
+                    inlineLabel
+                    value={member.volleyballPosition}
+                    onChange={(position) => onPositionChange(member, position)}
+                    busy={busyKey === `position:${id}`}
+                    disabled={busy}
+                  />
                 ) : null}
 
                 {member.canEditJersey ? (
@@ -901,7 +898,6 @@ const styles = StyleSheet.create({
   },
   memberText: { flex: 1, minWidth: 0, gap: space.xxs },
   rowActions: { flexDirection: "row", gap: space.sm },
-  field: { gap: space.sm },
   panelLink: { alignSelf: "flex-start", marginLeft: -space.md },
   memberHeader: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   jerseyRow: { flexDirection: "row", alignItems: "center", gap: space.sm },

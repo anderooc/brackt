@@ -43,6 +43,10 @@ AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
   reduceMotion = enabled;
 });
 
+export function prefersReducedMotion() {
+  return reduceMotion;
+}
+
 /** Eases the next layout change (200 ms), or snaps when Reduce Motion is on. */
 export function animateNextLayout() {
   if (reduceMotion) return;

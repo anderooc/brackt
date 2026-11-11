@@ -29,14 +29,10 @@ import {
   uploadProfileAvatar,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
-import {
-  USER_PLAYER_GENDERS,
-  USER_PLAYER_GENDER_LABELS,
-  VOLLEYBALL_POSITIONS,
-  VOLLEYBALL_POSITION_LABELS,
-} from "~/lib/format";
+import { USER_PLAYER_GENDERS, USER_PLAYER_GENDER_LABELS } from "~/lib/format";
 import { goBackOrReplace } from "~/lib/navigation";
 import { FormField, FormSubmitButton, FormTextInput } from "~/components/create-form";
+import { VolleyballPositionSelect } from "~/roster/volleyball-position-select";
 import { useThemeColors } from "~/theme/colors";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
@@ -266,21 +262,10 @@ export default function EditProfileScreen() {
         </FormField>
 
         <FormField label="Position" colors={colors}>
-          <ChipRow>
-            <Chip
-              label="Not set"
-              selected={volleyballPosition === null}
-              onPress={() => setVolleyballPosition(null)}
-            />
-            {VOLLEYBALL_POSITIONS.map((value) => (
-              <Chip
-                key={value}
-                label={VOLLEYBALL_POSITION_LABELS[value]}
-                selected={volleyballPosition === value}
-                onPress={() => setVolleyballPosition(value)}
-              />
-            ))}
-          </ChipRow>
+          <VolleyballPositionSelect
+            value={volleyballPosition}
+            onChange={setVolleyballPosition}
+          />
         </FormField>
 
         <FormField
