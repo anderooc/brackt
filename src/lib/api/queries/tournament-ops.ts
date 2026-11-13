@@ -17,7 +17,7 @@
  */
 
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
-import type { AppUser } from "@/lib/auth";
+import { isAdmin, type AppUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   registrations,
@@ -25,6 +25,7 @@ import {
   teamMembers,
   teams,
   tournamentEmailSends,
+  tournamentWaitlistEntries,
   tournaments,
 } from "@/lib/db/schema";
 import { formatTeamGender } from "@/lib/labels/team";
@@ -32,6 +33,7 @@ import { loadBlockedUserIds } from "@/lib/tournaments/chat-moderation";
 import {
   canPostInChatChannel,
   canPostInTournamentChat,
+  CHAT_REGISTRATION_STATUSES,
   ensureTournamentChatChannels,
   getUserEligibleSpeakingTeams,
   TOURNAMENT_CHAT_CHANNEL_DESCRIPTIONS,
@@ -53,7 +55,9 @@ import { userCanAccessTournamentPayment } from "@/lib/tournaments/payment-access
 import {
   canEditTournamentPreparation,
   canRegisterTeams,
+  resolveHostSchoolOfficer,
   resolveIsTournamentOrganizer,
+  resolveIsTournamentStaff,
   tournamentPreparationLockedReason,
 } from "@/lib/tournaments/permissions";
 import { loadApplicantWaitlistState } from "@/lib/tournaments/applicant-waitlist";
@@ -251,36 +255,83 @@ async function loadEligibleCaptainTeamsForRegistration(
   return candidates.filter((team) => !unavailableTeamIds.has(team.id));
 }
 
+// Packet, waiver, and payment open to any active entry; chat needs a confirmed one.
+const ENTERED_STATUSES = new Set<string>(ACTIVE_REGISTRATION_STATUSES);
+const CHAT_STATUSES = new Set<string>(CHAT_REGISTRATION_STATUSES);
+
+/**
+ * Everything the tournament screen needs about the viewer, in two parallel
+ * waves. The access checks all reduce to "which of my teams are entered here,
+ * and how", so one registrations query answers them instead of each check
+ * re-resolving organizer status and querying on its own.
+ */
 export async function loadTournamentParticipation(
   tournament: PostedTournamentRow,
   user: AppUser
 ): Promise<TournamentParticipationContract> {
-  const { teamIds, teamById } = await loadViewerTeamMembership(user.id);
-  const teamIdSet = new Set(teamIds);
-  const isOrganizer = await resolveIsTournamentOrganizer(tournament, user);
-
-  const [canPacket, canWaiver, canPayment, canChat, eligible, myTeams, waitingIds] =
-    await Promise.all([
-      userCanDownloadTournamentPacket(tournament, user, teamIdSet),
-      userCanAccessTournamentWaiver(tournament, user, teamIdSet),
-      userCanAccessTournamentPayment(tournament, user, teamIdSet),
-      userCanViewTournamentChat(tournament, user, teamIds),
-      isOrganizer
-        ? Promise.resolve([] as EligibleSpeakingTeam[])
-        : getUserEligibleSpeakingTeams(tournament.id, user.id),
-      loadViewerTournamentTeams(tournament.id, user.id, teamIds),
-      waitingTeamIdsForTournament(tournament.id),
-    ]);
-
-  const unavailable = new Set<string>([
-    ...waitingIds,
-    ...(
-      await db
-        .select({ teamId: registrations.teamId })
-        .from(registrations)
-        .where(eq(registrations.tournamentId, tournament.id))
-    ).map((row) => row.teamId),
+  const owner = tournament.organizerId === user.id || isAdmin(user);
+  const [
+    membership,
+    isStaff,
+    isHostOfficer,
+    viewerEntries,
+    viewerWaitlisted,
+    registeredRows,
+    waitingIds,
+  ] = await Promise.all([
+    loadViewerTeamMembership(user.id),
+    owner ? false : resolveIsTournamentStaff(tournament.id, user.id),
+    owner ? false : resolveHostSchoolOfficer(tournament.hostSchoolId, user.id),
+    db
+      .select({
+        teamId: registrations.teamId,
+        status: registrations.status,
+        slug: teams.slug,
+        name: teams.name,
+      })
+      .from(registrations)
+      .innerJoin(teams, eq(teams.id, registrations.teamId))
+      .innerJoin(
+        teamMembers,
+        and(
+          eq(teamMembers.teamId, registrations.teamId),
+          eq(teamMembers.userId, user.id)
+        )
+      )
+      .where(eq(registrations.tournamentId, tournament.id)),
+    db
+      .select({
+        teamId: tournamentWaitlistEntries.teamId,
+        slug: teams.slug,
+        name: teams.name,
+      })
+      .from(tournamentWaitlistEntries)
+      .innerJoin(teams, eq(teams.id, tournamentWaitlistEntries.teamId))
+      .innerJoin(
+        teamMembers,
+        and(
+          eq(teamMembers.teamId, tournamentWaitlistEntries.teamId),
+          eq(teamMembers.userId, user.id),
+          eq(teamMembers.role, "captain")
+        )
+      )
+      .where(
+        and(
+          eq(tournamentWaitlistEntries.tournamentId, tournament.id),
+          eq(tournamentWaitlistEntries.status, "waiting")
+        )
+      ),
+    db
+      .select({ teamId: registrations.teamId })
+      .from(registrations)
+      .where(eq(registrations.tournamentId, tournament.id)),
+    waitingTeamIdsForTournament(tournament.id),
   ]);
+
+  const isOrganizer = owner || isStaff || isHostOfficer;
+  const entered = viewerEntries.filter((row) => ENTERED_STATUSES.has(row.status));
+  const hasEntry = entered.length > 0;
+  const hasConfirmedEntry = entered.some((row) => CHAT_STATUSES.has(row.status));
 
   const registrationOpen =
     canRegisterTeams(tournament) &&
@@ -291,25 +342,46 @@ export async function loadTournamentParticipation(
       },
       new Date().toISOString()
     );
+  const unavailable = new Set<string>([
+    ...waitingIds,
+    ...registeredRows.map((row) => row.teamId),
+  ]);
 
-  const eligibleTeams = registrationOpen
-    ? await loadEligibleCaptainTeamsForRegistration(
-        tournament,
-        user.id,
-        unavailable
-      )
-    : [];
+  const [eligibleSpeaking, eligibleTeams] = await Promise.all([
+    isOrganizer
+      ? Promise.resolve([] as EligibleSpeakingTeam[])
+      : getUserEligibleSpeakingTeams(tournament.id, user.id),
+    registrationOpen
+      ? loadEligibleCaptainTeamsForRegistration(tournament, user.id, unavailable)
+      : Promise.resolve([]),
+  ]);
+
+  const enteredIds = new Set(entered.map((row) => row.teamId));
+  const myTeams: TournamentMyTeamContract[] = [
+    ...entered.map((row) => ({
+      slug: row.slug,
+      name: row.name,
+      status: row.status as TournamentMyTeamContract["status"],
+    })),
+    ...viewerWaitlisted
+      .filter((row) => !enteredIds.has(row.teamId))
+      .map((row) => ({
+        slug: row.slug,
+        name: row.name,
+        status: "waitlisted" as const,
+      })),
+  ].sort((a, b) => a.name.localeCompare(b.name));
 
   return {
     isOrganizer,
     access: {
-      packet: isOrganizer || canPacket,
-      waiver: isOrganizer || (tournament.waiverEnabled && canWaiver),
-      payment: isOrganizer || (tournament.paymentEnabled && canPayment),
+      packet: isOrganizer || hasEntry,
+      waiver: isOrganizer || (tournament.waiverEnabled && hasEntry),
+      payment: isOrganizer || (tournament.paymentEnabled && hasEntry),
       email: isOrganizer,
-      chat: canChat,
+      chat: isOrganizer || hasConfirmedEntry,
     },
-    speakingTeams: await speakingTeamsContract(eligible, teamById),
+    speakingTeams: await speakingTeamsContract(eligibleSpeaking, membership.teamById),
     myTeams,
     canRegister: registrationOpen && eligibleTeams.length > 0,
   };

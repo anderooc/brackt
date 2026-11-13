@@ -84,6 +84,8 @@ type ScheduleFilterOptions = {
   includeCompleted?: boolean;
   /** Restrict to one tournament (the tournament page's "Your matches"). */
   tournamentId?: string;
+  /** Same, by slug, so callers holding only a slug skip a lookup. */
+  tournamentSlug?: string;
   /** Skip tournaments dated before this YYYY-MM-DD (leftovers from archived events). */
   fromDate?: string;
 };
@@ -135,6 +137,9 @@ function scheduleWhere(
     options?.includeCompleted ? undefined : ne(matches.status, "completed"),
     options?.tournamentId
       ? eq(matches.tournamentId, options.tournamentId)
+      : undefined,
+    options?.tournamentSlug
+      ? eq(tournaments.slug, options.tournamentSlug)
       : undefined,
     options?.fromDate ? gte(tournaments.date, options.fromDate) : undefined
   );
