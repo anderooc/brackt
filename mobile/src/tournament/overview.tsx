@@ -48,6 +48,7 @@ import {
   ListGroup,
   ListRow,
   Section,
+  SkeletonList,
   StatusBadge,
   Tappable,
   HIT_TARGET,
@@ -68,6 +69,7 @@ export function TournamentOverview({
   participation,
   hostOverview,
   myMatches,
+  viewerLoading = false,
   onParticipationChanged,
   onOpenMyMatches,
 }: {
@@ -77,6 +79,8 @@ export function TournamentOverview({
   hostOverview: TournamentHostOverviewContract | null;
   /** The viewer's matches here (played, reffing, or crew), oldest first. */
   myMatches: PersonalScheduleMatchContract[];
+  /** Your matches, teams, or the host checklist are still on the way. */
+  viewerLoading?: boolean;
   onParticipationChanged?: () => void | Promise<void>;
   onOpenMyMatches: () => void;
 }) {
@@ -175,6 +179,8 @@ export function TournamentOverview({
   return (
     <View style={styles.stack}>
       <TournamentCover tournament={tournament} />
+
+      {viewerLoading ? <SkeletonList rows={2} header={false} /> : null}
 
       {isOrganizer ? (
         <>

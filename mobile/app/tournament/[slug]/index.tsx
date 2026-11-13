@@ -41,6 +41,10 @@ import { usePolling } from "~/lib/use-polling";
 import { TournamentOverview } from "~/tournament/overview";
 import { TournamentPlayPanel } from "~/tournament/play-panel";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
+import {
+  readTournamentScreen,
+  writeTournamentScreen,
+} from "~/tournament/tournament-cache";
 import { TournamentTeamsPanel } from "~/tournament/teams-panel";
 import {
   defaultTournamentTab,
@@ -90,14 +94,21 @@ export default function TournamentDetailScreen() {
     if (link.view) setChosenView(link.view);
   }, [params.tab, params.view]);
 
+  const viewerId = session?.user.id ?? null;
+  // Paint from the last visit at once; the load below refreshes it.
+  const [cached] = useState(() => (slug ? readTournamentScreen(slug, viewerId) : null));
   const [tournament, setTournament] = useState<TournamentDetailContract | null>(
-    null
+    cached?.tournament ?? null
   );
   const [participation, setParticipation] =
-    useState<TournamentParticipationContract | null>(null);
+    useState<TournamentParticipationContract | null>(cached?.viewer?.participation ?? null);
   const [hostOverview, setHostOverview] =
-    useState<TournamentHostOverviewContract | null>(null);
-  const [myMatches, setMyMatches] = useState<PersonalScheduleMatchContract[]>([]);
+    useState<TournamentHostOverviewContract | null>(cached?.viewer?.hostOverview ?? null);
+  const [myMatches, setMyMatches] = useState<PersonalScheduleMatchContract[]>(
+    cached?.viewer?.myMatches ?? []
+  );
+  // Viewer-specific sections show placeholders until their requests land.
+  const [viewerReady, setViewerReady] = useState(Boolean(cached?.viewer));
   const [teams, setTeams] = useState<TournamentTeamContract[] | null>(null);
   const [matches, setMatches] = useState<TournamentMatchContract[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,44 +119,69 @@ export default function TournamentDetailScreen() {
   const loadOverview = useCallback(
     async (signal?: AbortSignal) => {
       if (!slug) return;
-      // Wait for auth so viewer-specific sections load with the rest.
+      // Wait for auth so the request set matches the viewer.
       if (sessionLoading) return;
-      try {
-        setError(null);
-        if (!session) {
-          const detail = await fetchTournament(slug, signal);
+      setError(null);
+      const detailRequest = fetchTournament(slug, signal);
+
+      if (!session) {
+        try {
+          const detail = await detailRequest;
           if (signal?.aborted) return;
           setTournament(detail);
           setParticipation(null);
           setHostOverview(null);
           setMyMatches([]);
-          return;
+          setViewerReady(true);
+          writeTournamentScreen(slug, null, { tournament: detail, viewer: null });
+        } catch (cause) {
+          if (signal?.aborted) return;
+          setError(messageFor(cause, "Could not load this tournament."));
         }
-        const [detail, part, mine] = await Promise.all([
-          fetchTournament(slug, signal),
-          fetchTournamentParticipation(slug, signal).catch(() => null),
-          fetchPersonalSchedule(signal, {
-            tournament: slug,
-            includeCompleted: true,
-          })
-            // Servers that ignore `tournament` return every event's matches.
-            .then((result) => result.matches.filter((m) => m.tournamentSlug === slug))
-            .catch(() => [] as PersonalScheduleMatchContract[]),
-        ]);
-        const host = part?.isOrganizer
-          ? await fetchTournamentHostOverview(slug, signal)
-              .then((result) => result.overview)
-              .catch(() => null)
-          : null;
-        if (signal?.aborted) return;
-        setTournament(detail);
-        setParticipation(part);
-        setMyMatches(mine);
-        setHostOverview(host);
+        return;
+      }
+
+      const hostRequest = () =>
+        fetchTournamentHostOverview(slug, signal)
+          .then((result) => result.overview)
+          .catch(() => null);
+      // Known hosts fetch the checklist alongside everything else.
+      const earlyHost = readTournamentScreen(slug, session.user.id)?.viewer
+        ?.participation?.isOrganizer
+        ? hostRequest()
+        : null;
+      const viewerRequest = Promise.all([
+        fetchTournamentParticipation(slug, signal).catch(() => null),
+        fetchPersonalSchedule(signal, { tournament: slug, includeCompleted: true })
+          // Servers that ignore `tournament` return every event's matches.
+          .then((result) => result.matches.filter((m) => m.tournamentSlug === slug))
+          .catch(() => [] as PersonalScheduleMatchContract[]),
+      ]);
+
+      let detail: TournamentDetailContract;
+      try {
+        detail = await detailRequest;
       } catch (cause) {
         if (signal?.aborted) return;
         setError(messageFor(cause, "Could not load this tournament."));
+        return;
       }
+      if (signal?.aborted) return;
+      setTournament(detail);
+
+      const [part, mine] = await viewerRequest;
+      if (signal?.aborted) return;
+      setParticipation(part);
+      setMyMatches(mine);
+      setViewerReady(true);
+
+      const host = part?.isOrganizer ? await (earlyHost ?? hostRequest()) : null;
+      if (signal?.aborted) return;
+      setHostOverview(host);
+      writeTournamentScreen(slug, session.user.id, {
+        tournament: detail,
+        viewer: { participation: part, myMatches: mine, hostOverview: host },
+      });
     },
     [session, sessionLoading, slug]
   );
@@ -363,6 +399,7 @@ export default function TournamentDetailScreen() {
             participation={participation}
             hostOverview={hostOverview}
             myMatches={myMatches}
+            viewerLoading={!viewerReady}
             onParticipationChanged={() => loadOverview()}
             onOpenMyMatches={openMyMatches}
           />
@@ -387,7 +424,11 @@ export default function TournamentDetailScreen() {
           )
         ) : null}
 
-        {tab === "play" ? (
+        {tab === "play" && !viewerReady ? (
+          <SkeletonList rows={4} header={false} />
+        ) : null}
+
+        {tab === "play" && viewerReady ? (
           <TournamentPlayPanel
             tournament={tournament}
             isOrganizer={participation?.isOrganizer ?? false}
