@@ -25,6 +25,7 @@ import { Platform, useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SessionProvider } from "~/auth/session";
 import { AuthRecoveryHandler } from "~/auth/AuthRecoveryHandler";
+import { initMonitoring, wrapRoot } from "~/monitoring/sentry";
 import { NotificationsRealtimeProvider } from "~/notifications/NotificationsRealtimeProvider";
 import { PushNotificationProvider } from "~/notifications/PushNotificationProvider";
 import { useThemeColors } from "~/theme/colors";
@@ -35,6 +36,8 @@ import { FONT_SOURCES } from "~/ui/fonts";
 export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
+
+initMonitoring();
 
 // Keep the splash up until the brand fonts load, so text never flashes in the
 // system font first.
@@ -194,7 +197,7 @@ function RootStack() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const scheme = useColorScheme();
   const [fontsLoaded, fontError] = useFonts(FONT_SOURCES);
 
@@ -220,3 +223,5 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+export default wrapRoot(RootLayout);

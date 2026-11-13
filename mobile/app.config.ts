@@ -18,6 +18,7 @@
 
 /// <reference types="node" />
 import { existsSync } from "node:fs";
+import { withSentry } from "@sentry/react-native/expo";
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const LOCAL_GOOGLE_SERVICES = "./google-services.json";
@@ -28,6 +29,9 @@ const LOCAL_GOOGLE_SERVICES = "./google-services.json";
  * - GOOGLE_SERVICES_JSON: path to google-services.json (an EAS file
  *   environment variable on EAS builds; falls back to a local, gitignored
  *   ./google-services.json). Android push (FCM) can't issue tokens without it.
+ * - SENTRY_ORG + SENTRY_PROJECT (+ SENTRY_AUTH_TOKEN): turn on Sentry's build
+ *   step, which uploads source maps so crash stack traces are readable. Left
+ *   unset, builds skip it rather than failing on missing credentials.
  */
 export default ({ config }: ConfigContext): ExpoConfig => {
   const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim() || undefined;
@@ -35,7 +39,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.GOOGLE_SERVICES_JSON?.trim() ||
     (existsSync(LOCAL_GOOGLE_SERVICES) ? LOCAL_GOOGLE_SERVICES : undefined);
 
-  return {
+  const expoConfig: ExpoConfig = {
     ...config,
     name: config.name ?? "brackt",
     slug: config.slug ?? "brackt",
@@ -48,4 +52,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...(googleServicesFile ? { googleServicesFile } : {}),
     },
   };
+
+  const sentryOrg = process.env.SENTRY_ORG?.trim();
+  const sentryProject = process.env.SENTRY_PROJECT?.trim();
+  return sentryOrg && sentryProject
+    ? withSentry(expoConfig, {
+        url: "https://sentry.io/",
+        organization: sentryOrg,
+        project: sentryProject,
+      })
+    : expoConfig;
 };
