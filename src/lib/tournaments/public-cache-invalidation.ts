@@ -9,7 +9,7 @@
  */
 
 import { asc, eq, inArray, or } from "drizzle-orm";
-import { updateTag } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
 import {
   divisions,
@@ -29,14 +29,26 @@ interface PublicCacheInvalidationOptions {
   listing?: boolean;
 }
 
+/**
+ * Expire a public cache tag immediately.
+ *
+ * Prefer this over `updateTag`: the mobile/API Route Handlers call the same
+ * invalidation helpers as Server Actions, and `updateTag` throws outside
+ * actions. `{ expire: 0 }` matches updateTag's immediate expiry, and in
+ * Server Actions it also triggers the client cache refresh.
+ */
+function expirePublicCacheTag(tag: string): void {
+  revalidateTag(tag, { expire: 0 });
+}
+
 export function invalidatePublicTournamentCaches(
   slugs: Iterable<string>,
   { listing = false }: PublicCacheInvalidationOptions = {}
 ): void {
   const uniqueSlugs = [...new Set(slugs)].filter(Boolean);
-  if (listing) updateTag(PUBLIC_TOURNAMENTS_CACHE_TAG);
+  if (listing) expirePublicCacheTag(PUBLIC_TOURNAMENTS_CACHE_TAG);
   for (const slug of uniqueSlugs) {
-    updateTag(publicTournamentCacheTag(slug));
+    expirePublicCacheTag(publicTournamentCacheTag(slug));
   }
 }
 
