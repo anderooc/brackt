@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type Ref,
 } from "react";
 import {
   Keyboard,
@@ -42,6 +43,12 @@ import { space } from "~/ui/tokens";
 
 type ScrollReveal = { reveal: (node: View) => void };
 
+export type ScreenScrollHandle = {
+  scrollTo: (options: { y: number; animated?: boolean }) => void;
+  /** Latest content offset Y — used to repair stuck overscroll after tab blur. */
+  getOffsetY: () => number;
+};
+
 const ScrollRevealContext = createContext<ScrollReveal | null>(null);
 
 /**
@@ -50,6 +57,12 @@ const ScrollRevealContext = createContext<ScrollReveal | null>(null);
  */
 export function useScrollReveal(): ScrollReveal | null {
   return useContext(ScrollRevealContext);
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (!ref) return;
+  if (typeof ref === "function") ref(value);
+  else ref.current = value;
 }
 
 /**
@@ -62,16 +75,39 @@ export function ScreenScroll({
   onRefresh,
   contentStyle,
   gap = space.xxl,
+  contentInsetAdjustmentBehavior = "never",
+  scrollRef: scrollRefProp,
 }: {
   children: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   contentStyle?: StyleProp<ViewStyle>;
   gap?: number;
+  /**
+   * React Navigation already lays screens out below the header / safe area.
+   * Default `never` avoids iOS double-inset bugs after tab switches (home hero
+   * shoved down with nowhere to scroll). Opt into `automatic` only when the
+   * screen truly owns the status-bar edge.
+   */
+  contentInsetAdjustmentBehavior?:
+    | "automatic"
+    | "scrollableAxes"
+    | "never"
+    | "always";
+  scrollRef?: Ref<ScreenScrollHandle | null>;
 }) {
   const colors = useThemeColors();
   const scrollRef = useRef<ScrollView>(null);
   const offsetY = useRef(0);
+
+  useEffect(() => {
+    const handle: ScreenScrollHandle = {
+      scrollTo: (options) => scrollRef.current?.scrollTo(options),
+      getOffsetY: () => offsetY.current,
+    };
+    assignRef(scrollRefProp, handle);
+    return () => assignRef(scrollRefProp, null);
+  }, [scrollRefProp]);
 
   const reveal = useCallback((node: View) => {
     const scroll = scrollRef.current;
@@ -136,7 +172,10 @@ export function ScreenScroll({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior={contentInsetAdjustmentBehavior}
+        automaticallyAdjustsScrollIndicatorInsets={
+          contentInsetAdjustmentBehavior !== "never"
+        }
         refreshControl={
           onRefresh ? (
             <RefreshControl

@@ -25,7 +25,7 @@ import type {
 import type { PersonalScheduleMatchContract } from "@/lib/api/contracts/personal-schedule";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import { setStatusBarStyle } from "expo-status-bar";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { ApiClientError } from "~/api/client";
 import {
@@ -55,8 +55,11 @@ import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { UpNextMatch } from "~/tournament/up-next-match";
 import { messageFor } from "~/tournament/use-public-loader";
 import {
+  AnimatedChevron,
   AppText,
   Banner,
+  Enter,
+  Float,
   Icon,
   IconButton,
   ListGroup,
@@ -66,8 +69,10 @@ import {
   Section,
   space,
   StatusBadge,
+  StaggerItem,
   Tappable,
   type IconName,
+  type ScreenScrollHandle,
 } from "~/ui";
 
 const SCHEDULE_PREVIEW_COUNT = 3;
@@ -95,6 +100,7 @@ export default function DashboardScreen() {
   const [showAllMatches, setShowAllMatches] = useState(false);
   const [showPast, setShowPast] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const scrollRef = useRef<ScreenScrollHandle | null>(null);
   const notificationsRevision = useNotificationsRealtimeRevision();
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -162,10 +168,27 @@ export default function DashboardScreen() {
   }, [colors.heroForeground, navigation, router, session, unreadNotifications]);
 
   // The court-blue header needs light status-bar content in both themes.
+  // Also repair iOS ScrollView / RefreshControl glitches after another tab was
+  // focused: a stuck negative offset or open refresh inset shoves the hero down
+  // so the court clips and you cannot scroll back to the top.
   useFocusEffect(
     useCallback(() => {
       setStatusBarStyle("light");
-      return () => setStatusBarStyle("auto");
+      setIsRefreshing(false);
+      requestAnimationFrame(() => {
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        // Collapse pull-to-refresh overscroll; keep intentional scroll position.
+        scroll.scrollTo({ y: Math.max(0, scroll.getOffsetY()), animated: false });
+      });
+      return () => {
+        setStatusBarStyle("auto");
+        setIsRefreshing(false);
+        const scroll = scrollRef.current;
+        if (scroll && scroll.getOffsetY() < 0) {
+          scroll.scrollTo({ y: 0, animated: false });
+        }
+      };
     }, [])
   );
 
@@ -235,11 +258,15 @@ export default function DashboardScreen() {
 
   return (
     <ScreenScroll
+      scrollRef={scrollRef}
       refreshing={isRefreshing}
       onRefresh={async () => {
         setIsRefreshing(true);
-        await load();
-        setIsRefreshing(false);
+        try {
+          await load();
+        } finally {
+          setIsRefreshing(false);
+        }
       }}
     >
       <HomeHero
@@ -290,22 +317,23 @@ export default function DashboardScreen() {
       {attention.length > 0 ? (
         <Section title="Needs you">
           <ListGroup>
-            {attention.map((item) => (
-              <ListRow
-                key={item.key}
-                icon={ATTENTION_ICON[item.kind]}
-                title={item.title}
-                subtitle={[
-                  item.tournament.name,
-                  item.detail,
-                  relativeDay(item.tournament.date, today) ??
-                    shortDate(item.tournament.date),
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-                accessibilityHint={`Opens ${item.cta.toLowerCase()}`}
-                onPress={() => router.push(attentionRoute(item))}
-              />
+            {attention.map((item, index) => (
+              <StaggerItem key={item.key} index={index}>
+                <ListRow
+                  icon={ATTENTION_ICON[item.kind]}
+                  title={item.title}
+                  subtitle={[
+                    item.tournament.name,
+                    item.detail,
+                    relativeDay(item.tournament.date, today) ??
+                      shortDate(item.tournament.date),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  accessibilityHint={`Opens ${item.cta.toLowerCase()}`}
+                  onPress={() => router.push(attentionRoute(item))}
+                />
+              </StaggerItem>
             ))}
           </ListGroup>
         </Section>
@@ -472,26 +500,34 @@ function HomeHero({
         ]}
       >
         <View style={styles.heroArt} pointerEvents="none">
-          <CourtScene variant="hero" width={270} style={styles.heroScene} />
+          <Float amplitude={6} duration={3600}>
+            <CourtScene variant="hero" width={270} style={styles.heroScene} />
+          </Float>
         </View>
-        <AppText variant="footnote" weight="600" style={{ color: colors.heroMuted }}>
-          {dateLabel}
-        </AppText>
-        <AppText
-          variant="largeTitle"
-          accessibilityRole="header"
-          numberOfLines={2}
-          style={[styles.greeting, { color: colors.heroForeground }]}
-        >
-          Hi, {firstName}
-        </AppText>
-        <AppText variant="callout" weight="500" style={[styles.summary, { color: colors.heroMuted }]}>
-          {summary}
-        </AppText>
+        <Enter from="up" delay={40} duration={380}>
+          <AppText variant="footnote" weight="600" style={{ color: colors.heroMuted }}>
+            {dateLabel}
+          </AppText>
+          <AppText
+            variant="largeTitle"
+            accessibilityRole="header"
+            numberOfLines={2}
+            style={[styles.greeting, { color: colors.heroForeground }]}
+          >
+            Hi, {firstName}
+          </AppText>
+          <AppText
+            variant="callout"
+            weight="500"
+            style={[styles.summary, { color: colors.heroMuted }]}
+          >
+            {summary}
+          </AppText>
+        </Enter>
       </View>
 
       {nextMatch ? (
-        <View style={styles.heroCard}>
+        <Enter from="up" delay={120} duration={400} style={styles.heroCard}>
           <UpNextMatch match={nextMatch} variant="raised" />
           <Tappable
             accessibilityRole="button"
@@ -504,9 +540,9 @@ function HomeHero({
               {exporting ? "Exporting…" : "Add to calendar"}
             </AppText>
           </Tappable>
-        </View>
+        </Enter>
       ) : nextEvent ? (
-        <View style={styles.heroCard}>
+        <Enter from="up" delay={120} duration={400} style={styles.heroCard}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Next event: ${nextEvent.name}, ${
@@ -537,7 +573,7 @@ function HomeHero({
             </View>
             <Icon name="arrow-forward" size={18} tone="muted" />
           </Pressable>
-        </View>
+        </Enter>
       ) : null}
     </View>
   );
@@ -559,7 +595,9 @@ function ToggleRow({
       onPress={onPress}
       style={styles.toggle}
     >
-      <Icon name={open ? "chevron-up" : "chevron-down"} size={16} tone="muted" />
+      <AnimatedChevron open={open}>
+        <Icon name="chevron-down" size={16} tone="muted" />
+      </AnimatedChevron>
       <AppText variant="subhead" tone="muted" weight="500">
         {label}
       </AppText>
