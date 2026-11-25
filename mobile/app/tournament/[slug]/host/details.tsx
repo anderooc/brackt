@@ -17,17 +17,20 @@
  */
 
 import { Redirect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet } from "react-native";
 import {
   deleteTournament,
   duplicateTournament,
   fetchTournament,
+  updateTournamentHostDate,
   updateTournamentHostListing,
 } from "~/api/endpoints";
 import { useSession } from "~/auth/session";
 import { FormField, FormSubmitButton, FormTextInput } from "~/components/create-form";
+import { formatCalendarDate, todayISO } from "~/lib/format";
 import { useThemeColors } from "~/theme/colors";
+import { MonthCalendar } from "~/tournament/month-calendar";
 import { ErrorScreen, LoadingScreen } from "~/tournament/screen-state";
 import { messageFor } from "~/tournament/use-public-loader";
 import {
@@ -36,12 +39,21 @@ import {
   Button,
   Card,
   DangerLink,
+  ListGroup,
+  ListRow,
   ScreenScroll,
   Section,
   animateNextLayout,
   haptics,
   space,
 } from "~/ui";
+
+const NO_MARKS: ReadonlySet<string> = new Set();
+
+function monthOf(iso: string) {
+  const [year, month] = iso.split("-").map(Number);
+  return { year: year!, monthIndex: month! - 1 };
+}
 
 export default function TournamentHostDetailsScreen() {
   const colors = useThemeColors();
@@ -53,10 +65,15 @@ export default function TournamentHostDetailsScreen() {
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [originalName, setOriginalName] = useState("");
+  const [originalDate, setOriginalDate] = useState("");
   const [name, setName] = useState("");
+  const [date, setDate] = useState("");
   const [location, setLocation] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => monthOf(todayISO()));
+  const today = useMemo(() => todayISO(), []);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -75,7 +92,10 @@ export default function TournamentHostDetailsScreen() {
     async (signal?: AbortSignal) => {
       const tournament = await fetchTournament(slug ?? "", signal);
       setOriginalName(tournament.name);
+      setOriginalDate(tournament.date);
       setName(tournament.name);
+      setDate(tournament.date);
+      setCalendarMonth(monthOf(tournament.date));
       setLocation(tournament.location);
       setAddress(tournament.address ?? "");
       setDescription(tournament.description ?? "");
@@ -117,6 +137,11 @@ export default function TournamentHostDetailsScreen() {
     setSaveError(null);
     setSaved(false);
     try {
+      const nextDate = date.trim();
+      if (nextDate !== originalDate) {
+        await updateTournamentHostDate(slug!, nextDate);
+        setOriginalDate(nextDate);
+      }
       const result = await updateTournamentHostListing(slug!, {
         name: name.trim(),
         description,
@@ -181,7 +206,8 @@ export default function TournamentHostDetailsScreen() {
     }
   }
 
-  const valid = name.trim().length > 0 && location.trim().length > 0;
+  const valid =
+    name.trim().length > 0 && location.trim().length > 0 && date.trim().length > 0;
   const deleteMatches = deleteText.trim() === originalName.trim();
 
   return (
@@ -189,6 +215,35 @@ export default function TournamentHostDetailsScreen() {
       <Section title="Listing" description="What teams see when they browse tournaments.">
         <FormField label="Tournament name" colors={colors}>
           <FormTextInput value={name} onChangeText={setName} colors={colors} />
+        </FormField>
+        <FormField
+          label="Date"
+          hint="Past dates archive the event until you move it forward again."
+          colors={colors}
+        >
+          <ListGroup>
+            <ListRow
+              icon="calendar-outline"
+              title={date ? formatCalendarDate(date) : "Choose a date"}
+              chevron={false}
+              accessibilityHint={calendarOpen ? "Hides the calendar" : "Shows a calendar"}
+              onPress={() => setCalendarOpen((open) => !open)}
+            />
+          </ListGroup>
+          {calendarOpen ? (
+            <MonthCalendar
+              selectedDate={date}
+              today={today}
+              markedDates={NO_MARKS}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
+              onSelectDate={(iso) => {
+                setDate(iso);
+                setCalendarOpen(false);
+                setSaved(false);
+              }}
+            />
+          ) : null}
         </FormField>
         <FormField label="Venue" hint="e.g. Recreation Center" colors={colors}>
           <FormTextInput value={location} onChangeText={setLocation} colors={colors} />

@@ -314,7 +314,7 @@ export default function TournamentHostScreen() {
         <ListGroup>
           <ListRow
             title="Name and listing"
-            subtitle="Rename, location, description, duplicate, or delete"
+            subtitle="Date, rename, location, description, duplicate, or delete"
             icon="create-outline"
             onPress={() => router.push(`${base}/host/details`)}
           />
