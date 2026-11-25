@@ -59,6 +59,7 @@ import { useThemeColors } from "~/theme/colors";
 import {
   AppText,
   Banner,
+  Crossfade,
   EmptyState,
   HIT_TARGET,
   Icon,
@@ -393,53 +394,55 @@ export default function TournamentDetailScreen() {
           />
         ) : null}
 
-        {tab === "overview" ? (
-          <TournamentOverview
-            tournament={tournament}
-            participation={participation}
-            hostOverview={hostOverview}
-            myMatches={myMatches}
-            viewerLoading={!viewerReady}
-            onParticipationChanged={() => loadOverview()}
-            onOpenMyMatches={openMyMatches}
-          />
-        ) : null}
-
-        {tab === "teams" && teams !== null && teamsError ? (
-          <Banner tone="error" message={teamsError} onDismiss={() => setTeamsError(null)} />
-        ) : null}
-
-        {tab === "teams" ? (
-          teams !== null ? (
-            <TournamentTeamsPanel teams={teams} />
-          ) : teamsError ? (
-            <Banner
-              tone="error"
-              title="Teams unavailable"
-              message={teamsError}
-              action={{ label: "Try again", onPress: () => setTeamsError(null) }}
+        <Crossfade id={tab}>
+          {tab === "overview" ? (
+            <TournamentOverview
+              tournament={tournament}
+              participation={participation}
+              hostOverview={hostOverview}
+              myMatches={myMatches}
+              viewerLoading={!viewerReady}
+              onParticipationChanged={() => loadOverview()}
+              onOpenMyMatches={openMyMatches}
             />
-          ) : (
-            <SkeletonList rows={6} header={false} />
-          )
-        ) : null}
+          ) : null}
 
-        {tab === "play" && !viewerReady ? (
-          <SkeletonList rows={4} header={false} />
-        ) : null}
+          {tab === "teams" && teams !== null && teamsError ? (
+            <Banner tone="error" message={teamsError} onDismiss={() => setTeamsError(null)} />
+          ) : null}
 
-        {tab === "play" && viewerReady ? (
-          <TournamentPlayPanel
-            tournament={tournament}
-            isOrganizer={participation?.isOrganizer ?? false}
-            myMatches={myMatches}
-            view={view}
-            onViewChange={selectView}
-            matches={matches}
-            matchesError={matchesError}
-            onRetryMatches={() => setMatchesError(null)}
-          />
-        ) : null}
+          {tab === "teams" ? (
+            teams !== null ? (
+              <TournamentTeamsPanel teams={teams} />
+            ) : teamsError ? (
+              <Banner
+                tone="error"
+                title="Teams unavailable"
+                message={teamsError}
+                action={{ label: "Try again", onPress: () => setTeamsError(null) }}
+              />
+            ) : (
+              <SkeletonList rows={6} header={false} />
+            )
+          ) : null}
+
+          {tab === "play" && !viewerReady ? (
+            <SkeletonList rows={4} header={false} />
+          ) : null}
+
+          {tab === "play" && viewerReady ? (
+            <TournamentPlayPanel
+              tournament={tournament}
+              isOrganizer={participation?.isOrganizer ?? false}
+              myMatches={myMatches}
+              view={view}
+              onViewChange={selectView}
+              matches={matches}
+              matchesError={matchesError}
+              onRetryMatches={() => setMatchesError(null)}
+            />
+          ) : null}
+        </Crossfade>
       </ScreenScroll>
     </View>
   );

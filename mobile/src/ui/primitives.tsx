@@ -18,21 +18,34 @@
 
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text as RNText,
   View,
+  type LayoutChangeEvent,
   type PressableProps,
   type StyleProp,
   type TextProps,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useThemeColors, withAlpha, type ThemeColors } from "~/theme/colors";
 import { FONT_FAMILY, resolveFont } from "~/ui/fonts";
 import { haptics } from "~/ui/haptics";
+import {
+  motion,
+  timingConfig,
+  usePressScale,
+  useReducedMotion,
+} from "~/ui/motion";
 import { HIT_TARGET, radius, space, type, type TypeVariant } from "~/ui/tokens";
 
 export type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -200,31 +213,40 @@ export function Button({
   };
   const tone = palette[variant];
   const height = size === "md" ? 48 : 36;
+  const press = usePressScale(inactive);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: inactive, busy: loading }}
-      disabled={inactive}
-      hitSlop={size === "sm" ? 4 : 0}
-      onPress={() => {
-        if (haptic) haptics.tap();
-        onPress();
-      }}
-      style={({ pressed }) => [
-        styles.button,
-        {
-          minHeight: height,
-          paddingHorizontal: size === "md" ? space.xl : space.md,
-          backgroundColor: pressed ? tone.pressed : tone.bg,
-          borderColor: tone.border,
-          opacity: disabled && !loading ? 0.45 : 1,
-          alignSelf: fullWidth ? "stretch" : "flex-start",
-        },
+    <Animated.View
+      style={[
+        press.style,
+        { alignSelf: fullWidth ? "stretch" : "flex-start" },
         style,
       ]}
     >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        accessibilityState={{ disabled: inactive, busy: loading }}
+        disabled={inactive}
+        hitSlop={size === "sm" ? 4 : 0}
+        onPressIn={press.handlers.onPressIn}
+        onPressOut={press.handlers.onPressOut}
+        onPress={() => {
+          if (haptic) haptics.tap();
+          onPress();
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          {
+            minHeight: height,
+            paddingHorizontal: size === "md" ? space.xl : space.md,
+            backgroundColor: pressed ? tone.pressed : tone.bg,
+            borderColor: tone.border,
+            opacity: disabled && !loading ? 0.45 : 1,
+            alignSelf: fullWidth ? "stretch" : "flex-start",
+          },
+        ]}
+      >
       {loading ? (
         <ActivityIndicator color={tone.fg} size="small" />
       ) : (
@@ -247,7 +269,8 @@ export function Button({
           </BrandText>
         </>
       )}
-    </Pressable>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -269,37 +292,42 @@ export function IconButton({
   badge?: number;
 }) {
   const colors = useThemeColors();
+  const press = usePressScale(false, 0.9);
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.iconButton,
-        {
-          backgroundColor: pressed
-            ? color
-              ? withAlpha(color, 0.16)
-              : colors.muted
-            : "transparent",
-        },
-      ]}
-    >
-      <Icon name={icon} size={22} tone={tone} color={color} />
-      {badge != null && badge > 0 ? (
-        <View style={[styles.iconBadge, { backgroundColor: color ?? colors.primary }]}>
-          <BrandText
-            style={[
-              styles.iconBadgeLabel,
-              { color: color ? colors.hero : colors.primaryForeground },
-            ]}
-          >
-            {badge > 9 ? "9+" : badge}
-          </BrandText>
-        </View>
-      ) : null}
-    </Pressable>
+    <Animated.View style={press.style}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        onPress={onPress}
+        onPressIn={press.handlers.onPressIn}
+        onPressOut={press.handlers.onPressOut}
+        hitSlop={6}
+        style={({ pressed }) => [
+          styles.iconButton,
+          {
+            backgroundColor: pressed
+              ? color
+                ? withAlpha(color, 0.16)
+                : colors.muted
+              : "transparent",
+          },
+        ]}
+      >
+        <Icon name={icon} size={22} tone={tone} color={color} />
+        {badge != null && badge > 0 ? (
+          <View style={[styles.iconBadge, { backgroundColor: color ?? colors.primary }]}>
+            <BrandText
+              style={[
+                styles.iconBadgeLabel,
+                { color: color ? colors.hero : colors.primaryForeground },
+              ]}
+            >
+              {badge > 9 ? "9+" : badge}
+            </BrandText>
+          </View>
+        ) : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -594,12 +622,62 @@ export function SegmentedControl<T extends string>({
   accessibilityLabel?: string;
 }) {
   const colors = useThemeColors();
+  const reduce = useReducedMotion();
+  const layouts = useRef<Partial<Record<T, { x: number; width: number }>>>({});
+  const [ready, setReady] = useState(false);
+  const pillX = useSharedValue(0);
+  const pillW = useSharedValue(0);
+
+  function movePill(id: T, animate: boolean) {
+    const layout = layouts.current[id];
+    if (!layout) return;
+    if (!animate || reduce) {
+      pillX.value = layout.x;
+      pillW.value = layout.width;
+      return;
+    }
+    pillX.value = withTiming(layout.x, timingConfig(motion.state));
+    pillW.value = withTiming(layout.width, timingConfig(motion.state));
+  }
+
+  useEffect(() => {
+    movePill(value, ready);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when selection changes
+  }, [value]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+    width: pillW.value,
+  }));
+
+  function onOptionLayout(id: T, event: LayoutChangeEvent) {
+    const { x, width } = event.nativeEvent.layout;
+    layouts.current[id] = { x, width };
+    if (id === value) {
+      movePill(id, false);
+      setReady(true);
+    }
+  }
+
   return (
     <View
       accessibilityRole="tablist"
       accessibilityLabel={accessibilityLabel}
       style={[styles.segmented, { backgroundColor: colors.muted }]}
     >
+      {ready ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.segmentPill,
+            {
+              backgroundColor: colors.card,
+              shadowColor: colors.foreground,
+            },
+            pillStyle,
+          ]}
+        />
+      ) : null}
       {options.map((option) => {
         const selected = option.id === value;
         return (
@@ -616,13 +694,8 @@ export function SegmentedControl<T extends string>({
               if (!selected) haptics.selection();
               onChange(option.id);
             }}
-            style={[
-              styles.segment,
-              selected && [
-                styles.segmentSelected,
-                { backgroundColor: colors.card, shadowColor: colors.foreground },
-              ],
-            ]}
+            onLayout={(event) => onOptionLayout(option.id, event)}
+            style={styles.segment}
           >
             <BrandText
               numberOfLines={1}
@@ -746,9 +819,21 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   segmented: {
     flexDirection: "row",
+    position: "relative",
     borderRadius: radius.md,
     padding: 3,
     gap: 2,
+  },
+  segmentPill: {
+    position: "absolute",
+    top: 3,
+    bottom: 3,
+    left: 0,
+    borderRadius: radius.sm + 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   segment: {
     flex: 1,
@@ -757,11 +842,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.sm + 1,
     paddingHorizontal: space.sm,
-  },
-  segmentSelected: {
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    zIndex: 1,
   },
 });

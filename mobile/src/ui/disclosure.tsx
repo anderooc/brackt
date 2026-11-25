@@ -18,7 +18,6 @@
 
 import { useCallback, useState, type ReactNode } from "react";
 import {
-  AccessibilityInfo,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -28,6 +27,7 @@ import {
 } from "react-native";
 import { useThemeColors } from "~/theme/colors";
 import { haptics } from "~/ui/haptics";
+import { AnimatedChevron, prefersReducedMotion } from "~/ui/motion";
 import { Icon } from "~/ui/primitives";
 import { space } from "~/ui/tokens";
 
@@ -35,21 +35,9 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-let reduceMotion = false;
-void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-  reduceMotion = enabled;
-});
-AccessibilityInfo.addEventListener("reduceMotionChanged", (enabled) => {
-  reduceMotion = enabled;
-});
-
-export function prefersReducedMotion() {
-  return reduceMotion;
-}
-
 /** Eases the next layout change (200 ms), or snaps when Reduce Motion is on. */
 export function animateNextLayout() {
-  if (reduceMotion) return;
+  if (prefersReducedMotion()) return;
   LayoutAnimation.configureNext(
     LayoutAnimation.create(200, LayoutAnimation.Types.easeInEaseOut, "opacity")
   );
@@ -108,11 +96,9 @@ export function DisclosureRow({
         ]}
       >
         <View style={styles.summaryContent}>{summary}</View>
-        <Icon
-          name={expanded ? "chevron-up" : "chevron-down"}
-          size={18}
-          color={colors.mutedForeground}
-        />
+        <AnimatedChevron open={expanded}>
+          <Icon name="chevron-down" size={18} color={colors.mutedForeground} />
+        </AnimatedChevron>
       </Pressable>
       {expanded ? <View style={styles.body}>{children}</View> : null}
     </View>

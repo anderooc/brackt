@@ -20,7 +20,7 @@ import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import { CourtScene } from "~/brand/court-scene";
 import { useThemeColors } from "~/theme/colors";
-import { AppText, Button, Icon, space, type IconName } from "~/ui";
+import { AppText, Button, Enter, Float, Icon, space, type IconName } from "~/ui";
 
 /**
  * Tab roots stay reachable while signed out so guests can still browse public
@@ -46,19 +46,25 @@ export function SignedOutScreen({
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       {art ? (
-        <CourtScene width={220} style={styles.art} />
+        <Float amplitude={6} duration={3400}>
+          <CourtScene width={220} style={styles.art} />
+        </Float>
       ) : (
-        <View style={[styles.icon, { backgroundColor: colors.muted }]}>
-          <Icon name={icon} size={28} tone="muted" />
-        </View>
+        <Float amplitude={4} duration={2800}>
+          <View style={[styles.icon, { backgroundColor: colors.muted }]}>
+            <Icon name={icon} size={28} tone="muted" />
+          </View>
+        </Float>
       )}
-      <AppText variant="title" style={styles.center}>
-        {title}
-      </AppText>
-      <AppText variant="callout" tone="muted" style={styles.center}>
-        {message}
-      </AppText>
-      <View style={styles.actions}>
+      <Enter from="up" delay={60} duration={360}>
+        <AppText variant="title" style={styles.center}>
+          {title}
+        </AppText>
+        <AppText variant="callout" tone="muted" style={styles.center}>
+          {message}
+        </AppText>
+      </Enter>
+      <Enter from="up" delay={140} duration={380} style={styles.actions}>
         <Button label="Sign in" fullWidth onPress={() => router.push("/sign-in")} />
         <Button
           label="Create account"
@@ -75,7 +81,7 @@ export function SignedOutScreen({
             onPress={() => router.navigate("/tournaments")}
           />
         ) : null}
-      </View>
+      </Enter>
     </View>
   );
 }

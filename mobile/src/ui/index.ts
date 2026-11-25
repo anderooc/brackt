@@ -18,6 +18,7 @@
 
 export * from "~/ui/tokens";
 export * from "~/ui/haptics";
+export * from "~/ui/motion";
 export * from "~/ui/primitives";
 export * from "~/ui/status";
 export * from "~/ui/feedback";

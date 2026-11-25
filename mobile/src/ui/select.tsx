@@ -16,12 +16,22 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColors, withAlpha } from "~/theme/colors";
-import { prefersReducedMotion } from "~/ui/disclosure";
 import { haptics } from "~/ui/haptics";
+import {
+  motion,
+  timingConfig,
+  useReducedMotion,
+} from "~/ui/motion";
 import { AppText, Icon } from "~/ui/primitives";
 import { HIT_TARGET, radius, space } from "~/ui/tokens";
 
@@ -54,18 +64,57 @@ export function SelectField<T extends string | null>({
 }) {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
+  const sheetY = useSharedValue(40);
+  const dim = useSharedValue(0);
   const current = options.find((o) => o.value === value);
   const shown = busy ? "Saving…" : (current?.label ?? placeholder);
   const empty = !current || value === null;
 
-  function choose(next: T) {
+  useEffect(() => {
+    if (!open) return;
+    if (reduce) {
+      sheetY.value = 0;
+      dim.value = 1;
+      return;
+    }
+    sheetY.value = 36;
+    dim.value = 0;
+    sheetY.value = withTiming(0, timingConfig(motion.layout));
+    dim.value = withTiming(1, timingConfig(motion.state));
+  }, [dim, open, reduce, sheetY]);
+
+  function finishClose() {
     setOpen(false);
+  }
+
+  function dismiss() {
+    if (!open) return;
+    if (reduce) {
+      finishClose();
+      return;
+    }
+    sheetY.value = withTiming(28, timingConfig(motion.instant));
+    dim.value = withTiming(0, timingConfig(motion.instant), (finished) => {
+      if (finished) runOnJS(finishClose)();
+    });
+  }
+
+  function choose(next: T) {
+    dismiss();
     if (next !== value) {
       haptics.selection();
       onChange(next);
     }
   }
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: dim.value,
+  }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetY.value }],
+  }));
 
   return (
     <>
@@ -108,65 +157,73 @@ export function SelectField<T extends string | null>({
       <Modal
         visible={open}
         transparent
-        animationType={prefersReducedMotion() ? "none" : "fade"}
-        onRequestClose={() => setOpen(false)}
+        animationType="none"
+        onRequestClose={dismiss}
         statusBarTranslucent
       >
-        <Pressable
-          accessibilityLabel="Close"
-          onPress={() => setOpen(false)}
-          style={[styles.backdrop, { backgroundColor: withAlpha("#000000", 0.4) }]}
-        />
-        <View
-          accessibilityViewIsModal
-          style={[
-            styles.sheet,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              paddingBottom: insets.bottom + space.md,
-            },
-          ]}
-        >
-          <View style={styles.sheetHeader}>
-            <AppText variant="headline" accessibilityRole="header">
-              {label}
-            </AppText>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setOpen(false)}
-              hitSlop={12}
-            >
-              <AppText variant="subhead" tone="primary" weight="600">
-                Cancel
+        <View style={styles.modalRoot}>
+          <Pressable
+            accessibilityLabel="Close"
+            onPress={dismiss}
+            style={StyleSheet.absoluteFill}
+          >
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: withAlpha("#000000", 0.4) },
+                backdropStyle,
+              ]}
+            />
+          </Pressable>
+          <Animated.View
+            accessibilityViewIsModal
+            style={[
+              styles.sheet,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                paddingBottom: insets.bottom + space.md,
+              },
+              sheetStyle,
+            ]}
+          >
+            <View style={styles.sheetHeader}>
+              <AppText variant="headline" accessibilityRole="header">
+                {label}
               </AppText>
-            </Pressable>
-          </View>
-          {options.map((option) => {
-            const selected = option.value === value;
-            return (
-              <Pressable
-                key={String(option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => choose(option.value)}
-                style={({ pressed }) => [
-                  styles.option,
-                  pressed && { backgroundColor: colors.muted },
-                ]}
-              >
-                <AppText
-                  variant="body"
-                  weight={selected ? "600" : "400"}
-                  tone={selected ? "primary" : "default"}
-                  style={styles.value}
-                >
-                  {option.label}
+              <Pressable accessibilityRole="button" onPress={dismiss} hitSlop={12}>
+                <AppText variant="subhead" tone="primary" weight="600">
+                  Cancel
                 </AppText>
-                {selected ? <Icon name="checkmark" size={20} tone="primary" /> : null}
               </Pressable>
-            );
-          })}
+            </View>
+            {options.map((option) => {
+              const selected = option.value === value;
+              return (
+                <Pressable
+                  key={String(option.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => choose(option.value)}
+                  style={({ pressed }) => [
+                    styles.option,
+                    pressed && { backgroundColor: colors.muted },
+                  ]}
+                >
+                  <AppText
+                    variant="body"
+                    weight={selected ? "600" : "400"}
+                    tone={selected ? "primary" : "default"}
+                    style={styles.value}
+                  >
+                    {option.label}
+                  </AppText>
+                  {selected ? <Icon name="checkmark" size={20} tone="primary" /> : null}
+                </Pressable>
+              );
+            })}
+          </Animated.View>
         </View>
       </Modal>
     </>
@@ -185,7 +242,10 @@ const styles = StyleSheet.create({
   },
   value: { flex: 1 },
   valueRight: { textAlign: "right" },
-  backdrop: { flex: 1 },
+  modalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
   sheet: {
     borderTopLeftRadius: radius.lg + 4,
     borderTopRightRadius: radius.lg + 4,

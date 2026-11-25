@@ -28,6 +28,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useThemeColors, withAlpha } from "~/theme/colors";
+import { Enter, Float } from "~/ui/motion";
 import { AppText, Button, Icon, type IconName } from "~/ui/primitives";
 import { useScrollReveal } from "~/ui/screen";
 import { radius, space } from "~/ui/tokens";
@@ -78,47 +79,49 @@ export function Banner({
           : "information-circle";
 
   return (
-    <View
-      ref={bannerRef}
-      accessibilityRole={tone === "error" ? "alert" : "summary"}
-      accessibilityLiveRegion="polite"
-      style={[
-        styles.banner,
-        { backgroundColor: withAlpha(fg, 0.08), borderColor: withAlpha(fg, 0.3) },
-      ]}
-    >
-      <Icon name={icon} size={18} color={fg} />
-      <View style={styles.bannerText}>
-        {title ? (
-          <AppText variant="subhead" weight="600" style={{ color: fg }}>
-            {title}
-          </AppText>
-        ) : null}
-        <AppText variant="subhead">{message}</AppText>
-        {action ? (
+    <Enter from="down" duration={220}>
+      <View
+        ref={bannerRef}
+        accessibilityRole={tone === "error" ? "alert" : "summary"}
+        accessibilityLiveRegion="polite"
+        style={[
+          styles.banner,
+          { backgroundColor: withAlpha(fg, 0.08), borderColor: withAlpha(fg, 0.3) },
+        ]}
+      >
+        <Icon name={icon} size={18} color={fg} />
+        <View style={styles.bannerText}>
+          {title ? (
+            <AppText variant="subhead" weight="600" style={{ color: fg }}>
+              {title}
+            </AppText>
+          ) : null}
+          <AppText variant="subhead">{message}</AppText>
+          {action ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={action.onPress}
+              hitSlop={8}
+              style={({ pressed }) => [styles.bannerAction, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <AppText variant="subhead" weight="600" style={{ color: fg }}>
+                {action.label}
+              </AppText>
+            </Pressable>
+          ) : null}
+        </View>
+        {onDismiss ? (
           <Pressable
             accessibilityRole="button"
-            onPress={action.onPress}
-            hitSlop={8}
-            style={({ pressed }) => [styles.bannerAction, { opacity: pressed ? 0.6 : 1 }]}
+            accessibilityLabel="Dismiss"
+            onPress={onDismiss}
+            hitSlop={10}
           >
-            <AppText variant="subhead" weight="600" style={{ color: fg }}>
-              {action.label}
-            </AppText>
+            <Icon name="close" size={18} tone="muted" />
           </Pressable>
         ) : null}
       </View>
-      {onDismiss ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss"
-          onPress={onDismiss}
-          hitSlop={10}
-        >
-          <Icon name="close" size={18} tone="muted" />
-        </Pressable>
-      ) : null}
-    </View>
+    </Enter>
   );
 }
 
@@ -139,15 +142,17 @@ export function EmptyState({
   return (
     <View style={[styles.empty, compact && styles.emptyCompact]}>
       {icon ? (
-        <View
-          style={[
-            styles.emptyIcon,
-            compact && styles.emptyIconCompact,
-            { backgroundColor: colors.muted },
-          ]}
-        >
-          <Icon name={icon} size={compact ? 20 : 26} tone="muted" />
-        </View>
+        <Float amplitude={compact ? 3 : 5} duration={2800}>
+          <View
+            style={[
+              styles.emptyIcon,
+              compact && styles.emptyIconCompact,
+              { backgroundColor: colors.muted },
+            ]}
+          >
+            <Icon name={icon} size={compact ? 20 : 26} tone="muted" />
+          </View>
+        </Float>
       ) : null}
       <AppText
         variant={compact ? "callout" : "headline"}
