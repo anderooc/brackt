@@ -20,8 +20,19 @@ import type {
   MatchConsoleContract,
   MatchConsoleRefCrewRole,
 } from "@/lib/api/contracts/match-console";
-import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   formatMatchTime,
   MATCH_FORMAT_LABELS,
@@ -38,10 +49,18 @@ import {
   ListGroup,
   Section,
   haptics,
+  motion,
   radius,
   space,
+  timingConfig,
+  useReducedMotion,
   type BadgeTone,
 } from "~/ui";
+
+/** Court-side score pads: swipe up / tap = +1, swipe down = −1. */
+const SWIPE_DISTANCE = 36;
+const SWIPE_VELOCITY = 0.65;
+const TAP_SLOP = 14;
 
 const SAVE_DEBOUNCE_MS = 1000;
 
@@ -293,9 +312,17 @@ export function MatchConsolePanel({
                   </AppText>
                   {entry.current ? <Badge label="Live" tone="live" /> : null}
                 </View>
-                <AppText variant="headline" style={styles.tabular}>
-                  {leftScore} – {rightScore}
-                </AppText>
+                <View style={styles.setScores}>
+                  <AppText variant="headline" style={[styles.tabular, { color: colors.primary }]}>
+                    {leftScore}
+                  </AppText>
+                  <AppText variant="headline" tone="muted" style={styles.tabular}>
+                    –
+                  </AppText>
+                  <AppText variant="headline" style={[styles.tabular, { color: colors.live }]}>
+                    {rightScore}
+                  </AppText>
+                </View>
                 <AppText variant="caption" tone="muted" style={styles.target}>
                   to {entry.target}
                 </AppText>
@@ -411,6 +438,7 @@ function Scorekeeper({
   disabled: boolean;
   onSave: (setNumber: number, teamAScore: number, teamBScore: number) => Promise<void>;
 }) {
+  const colors = useThemeColors();
   const [a, setA] = useState(initialA);
   const [b, setB] = useState(initialB);
   const [saving, setSaving] = useState(false);
@@ -465,7 +493,7 @@ function Scorekeeper({
     : { name: teamBName, value: b, team: "b" as const };
 
   return (
-    <Card>
+    <View style={styles.scorekeeper}>
       <View style={styles.headerRow}>
         <AppText variant="headline" style={styles.flex}>
           Set {setNumber}
@@ -486,21 +514,28 @@ function Scorekeeper({
         <Banner tone="warning" message={`Editing set ${setNumber}, a set that already finished.`} />
       ) : null}
       <View style={styles.scoreRow}>
-        <TeamScoreColumn
+        <TeamScorePad
           name={left.name}
           value={left.value}
+          side="left"
+          accent={colors.primary}
           onMinus={() => bump(left.team, -1)}
           onPlus={() => bump(left.team, 1)}
           disabled={disabled}
         />
-        <TeamScoreColumn
+        <TeamScorePad
           name={right.name}
           value={right.value}
+          side="right"
+          accent={colors.live}
           onMinus={() => bump(right.team, -1)}
           onPlus={() => bump(right.team, 1)}
           disabled={disabled}
         />
       </View>
+      <AppText variant="caption" tone="muted" style={styles.scoreHint}>
+        Swipe up or tap for a point · swipe down to undo
+      </AppText>
       <Button
         label="Switch sides"
         icon="swap-horizontal"
@@ -509,64 +544,158 @@ function Scorekeeper({
         onPress={onFlipSides}
         style={styles.centerButton}
       />
-    </Card>
+    </View>
   );
 }
 
-function TeamScoreColumn({
+function TeamScorePad({
   name,
   value,
+  side,
+  accent,
   onMinus,
   onPlus,
   disabled,
 }: {
   name: string;
   value: number;
+  side: "left" | "right";
+  accent: string;
   onMinus: () => void;
   onPlus: () => void;
   disabled: boolean;
 }) {
   const colors = useThemeColors();
+  const reduceMotion = useReducedMotion();
+  const [pressed, setPressed] = useState(false);
+  const flashLabel = useSharedValue(0);
+  const [flashText, setFlashText] = useState<"+1" | "−1" | null>(null);
+  const scale = useSharedValue(1);
+  const actions = useRef({
+    onPlus,
+    onMinus,
+    disabled,
+    value,
+    reduceMotion,
+  });
+  actions.current = { onPlus, onMinus, disabled, value, reduceMotion };
+
+  function applyDelta(delta: 1 | -1) {
+    const current = actions.current;
+    if (current.disabled) return;
+    if (delta < 0 && current.value <= 0) return;
+    if (delta > 0) current.onPlus();
+    else current.onMinus();
+    setFlashText(delta > 0 ? "+1" : "−1");
+    flashLabel.value = 1;
+    flashLabel.value = withTiming(0, timingConfig(motion.layout));
+    if (current.reduceMotion) return;
+    scale.value = 1.06;
+    scale.value = withTiming(1, timingConfig(motion.state));
+  }
+
+  const applyDeltaRef = useRef(applyDelta);
+  applyDeltaRef.current = applyDelta;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        // Claim the touch so the parent ScreenScroll does not steal vertical
+        // swipes while the scorekeeper is adjusting a pad.
+        onStartShouldSetPanResponder: () => !actions.current.disabled,
+        onMoveShouldSetPanResponder: () => !actions.current.disabled,
+        onPanResponderGrant: () => setPressed(true),
+        onPanResponderTerminate: () => setPressed(false),
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderRelease: (_, gesture) => {
+          setPressed(false);
+          if (actions.current.disabled) return;
+          const isTap =
+            Math.abs(gesture.dx) < TAP_SLOP && Math.abs(gesture.dy) < TAP_SLOP;
+          if (isTap || gesture.dy < -SWIPE_DISTANCE || gesture.vy < -SWIPE_VELOCITY) {
+            applyDeltaRef.current(1);
+            return;
+          }
+          if (gesture.dy > SWIPE_DISTANCE || gesture.vy > SWIPE_VELOCITY) {
+            applyDeltaRef.current(-1);
+          }
+        },
+      }),
+    []
+  );
+
+  const scoreStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+  const flashStyle = useAnimatedStyle(() => ({
+    opacity: flashLabel.value,
+    transform: [{ translateY: (1 - flashLabel.value) * -10 }],
+  }));
+
+  const wash = pressed ? 0.22 : 0.14;
+  const border = withAlpha(accent, pressed ? 0.55 : 0.35);
+
   return (
-    <View style={styles.teamCol}>
-      <AppText variant="subhead" weight="600" numberOfLines={2} style={styles.centerText}>
+    <View
+      {...panResponder.panHandlers}
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel={`${name}, ${side} side`}
+      accessibilityValue={{ text: String(value) }}
+      accessibilityHint="Adjustable. Increment to add a point, decrement to undo."
+      accessibilityActions={[
+        { name: "increment", label: "Add a point" },
+        { name: "decrement", label: "Remove a point" },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "increment") applyDelta(1);
+        if (event.nativeEvent.actionName === "decrement") applyDelta(-1);
+      }}
+      style={[
+        styles.scorePad,
+        {
+          backgroundColor: withAlpha(accent, wash),
+          borderColor: border,
+          opacity: disabled ? 0.5 : 1,
+        },
+      ]}
+    >
+      <View
+        style={[styles.sideChip, { backgroundColor: withAlpha(accent, 0.22) }]}
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+      >
+        <AppText variant="caption" weight="700" style={{ color: accent }}>
+          {side === "left" ? "L" : "R"}
+        </AppText>
+      </View>
+      <AppText
+        variant="subhead"
+        weight="700"
+        numberOfLines={2}
+        style={[styles.centerText, { color: colors.foreground }]}
+      >
         {name}
       </AppText>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${name}: ${value}. Add a point`}
-        disabled={disabled}
-        onPress={onPlus}
-        style={({ pressed }) => [
-          styles.scoreTile,
-          {
-            backgroundColor: pressed
-              ? withAlpha(colors.primary, 0.16)
-              : withAlpha(colors.primary, 0.07),
-            borderColor: withAlpha(colors.primary, 0.25),
-            opacity: disabled ? 0.5 : 1,
-          },
-        ]}
-      >
-        <AppText style={[styles.bigScore, { color: colors.foreground }]}>{value}</AppText>
-        <View style={styles.plusHint}>
-          <Icon name="add" size={16} tone="primary" />
-          <AppText variant="caption" tone="primary">
-            Point
-          </AppText>
-        </View>
-      </Pressable>
-      <Button
-        label="Undo point"
-        icon="remove"
-        variant="outline"
-        size="sm"
-        fullWidth
-        accessibilityLabel={`Remove a point from ${name}`}
-        disabled={disabled || value === 0}
-        haptic={false}
-        onPress={onMinus}
-      />
+      <View style={styles.scoreStage}>
+        <Animated.View style={scoreStyle}>
+          <AppText style={[styles.bigScore, { color: accent }]}>{value}</AppText>
+        </Animated.View>
+        {flashText ? (
+          <Animated.View style={[styles.flashBadge, flashStyle]} pointerEvents="none">
+            <AppText variant="headline" weight="700" style={{ color: accent }}>
+              {flashText}
+            </AppText>
+          </Animated.View>
+        ) : null}
+      </View>
+      <View style={styles.padHints} accessibilityElementsHidden importantForAccessibility="no">
+        <Icon name="chevron-up" size={16} color={accent} />
+        <AppText variant="caption" style={{ color: accent }}>
+          Point
+        </AppText>
+        <Icon name="chevron-down" size={16} color={accent} />
+      </View>
     </View>
   );
 }
@@ -588,26 +717,57 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   setLabel: { flex: 1, flexDirection: "row", alignItems: "center", gap: space.sm },
+  setScores: { flexDirection: "row", alignItems: "center", gap: space.xs },
   tabular: { fontVariant: ["tabular-nums"] },
   target: { width: 44, textAlign: "right" },
   saving: { flexDirection: "row", alignItems: "center", gap: space.xs },
-  scoreRow: { flexDirection: "row", gap: space.md },
-  teamCol: { flex: 1, gap: space.sm },
-  scoreTile: {
-    borderWidth: 1,
+  scorekeeper: { gap: space.md },
+  scoreRow: { flexDirection: "row", gap: space.sm },
+  scorePad: {
+    flex: 1,
+    borderWidth: 1.5,
     borderRadius: radius.lg,
-    minHeight: 132,
+    minHeight: 220,
+    paddingHorizontal: space.md,
+    paddingTop: space.md,
+    paddingBottom: space.sm,
+    alignItems: "center",
+    gap: space.sm,
+  },
+  sideChip: {
+    alignSelf: "flex-start",
+    minWidth: 28,
+    height: 22,
+    paddingHorizontal: space.xs,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    gap: space.xs,
+  },
+  scoreStage: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 96,
+    width: "100%",
   },
   bigScore: {
-    fontSize: 56,
-    lineHeight: 64,
+    fontSize: 64,
+    lineHeight: 72,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
+    textAlign: "center",
   },
-  plusHint: { flexDirection: "row", alignItems: "center", gap: space.xxs },
+  flashBadge: {
+    position: "absolute",
+    top: 4,
+    right: 8,
+  },
+  padHints: {
+    alignItems: "center",
+    gap: 2,
+    paddingBottom: space.xxs,
+  },
+  scoreHint: { textAlign: "center" },
   crewRow: {
     flexDirection: "row",
     alignItems: "center",
