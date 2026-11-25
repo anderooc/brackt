@@ -222,6 +222,35 @@ export function buildMatchScoreState(
   };
 }
 
+/** Sets that have reached their target with win-by-two, in set order. */
+export function completedSetsForFormat(
+  settings: Pick<
+    MatchFormatSettings,
+    "format" | "targetScore" | "tiebreakTargetScore"
+  >,
+  allSets: CompletedSet[]
+): CompletedSet[] {
+  return allSets.filter((set, index) =>
+    isSetComplete(
+      set.teamAScore,
+      set.teamBScore,
+      targetForSet(settings, index + 1)
+    )
+  );
+}
+
+/**
+ * Auto-finalize only when this save newly makes the match decidable.
+ * After reopen, stored sets often already look finished — without this gate the
+ * first +1 would immediately re-award the previous winner.
+ */
+export function shouldAutoFinalizeAfterScoreSave(
+  beforeShouldFinalize: boolean,
+  afterShouldFinalize: boolean
+): boolean {
+  return afterShouldFinalize && !beforeShouldFinalize;
+}
+
 /**
  * Resolve the current outcome of a match given the completed set scores. Used
  * after an incremental score save so the server can auto-finalize the match.

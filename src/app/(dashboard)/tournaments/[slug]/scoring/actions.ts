@@ -30,7 +30,11 @@ import {
   upsertSetScore,
   completeMatchAndRunSideEffects,
 } from "@/lib/tournaments/match-finalize";
-import { evaluateMatchOutcome } from "@/lib/tournaments/match-format";
+import {
+  completedSetsForFormat,
+  evaluateMatchOutcome,
+  shouldAutoFinalizeAfterScoreSave,
+} from "@/lib/tournaments/match-format";
 
 async function assertCanScoreMatch(matchId: string) {
   const user = await requireUser();
@@ -74,15 +78,45 @@ export async function updateScore(formData: FormData) {
   const gate = await assertCanScoreMatch(matchId);
   if (gate.error) return { error: gate.error };
 
-  await upsertSetScore(matchId, setNumber, teamAScore, teamBScore);
-
   const [match] = await db
     .select()
     .from(matches)
     .where(eq(matches.id, matchId))
     .limit(1);
 
-  if (match && match.status === "upcoming") {
+  if (!match) return { error: "Match not found" };
+
+  const tournament = gate.tournament;
+  const formatSettings = {
+    format: tournament.matchFormat,
+    targetScore: tournament.setTargetScore,
+    tiebreakTargetScore: tournament.tiebreakTargetScore,
+  };
+
+  const setsBefore =
+    match.teamAId && match.teamBId && match.status !== "completed"
+      ? await db
+          .select({
+            teamAScore: sets.teamAScore,
+            teamBScore: sets.teamBScore,
+          })
+          .from(sets)
+          .where(eq(sets.matchId, matchId))
+          .orderBy(asc(sets.setNumber))
+      : [];
+  const beforeOutcome =
+    match.teamAId && match.teamBId && match.status !== "completed"
+      ? evaluateMatchOutcome(
+          { format: tournament.matchFormat },
+          match.teamAId,
+          match.teamBId,
+          completedSetsForFormat(formatSettings, setsBefore)
+        )
+      : null;
+
+  await upsertSetScore(matchId, setNumber, teamAScore, teamBScore);
+
+  if (match.status === "upcoming") {
     await db
       .update(matches)
       .set({ status: "in_progress", updatedAt: new Date() })
@@ -91,11 +125,10 @@ export async function updateScore(formData: FormData) {
       );
   }
 
-  // After saving this set, auto-finalize when the tournament's match format
-  // says enough sets have been played (e.g. 2-with-tiebreak, both sets split).
-  if (match && match.teamAId && match.teamBId && match.status !== "completed") {
-    const tournament = gate.tournament;
-    const allSets = await db
+  // Auto-finalize only when this save newly makes the match decidable
+  // (reopen corrections must not re-complete on the first +1).
+  if (match.teamAId && match.teamBId && beforeOutcome) {
+    const setsAfter = await db
       .select({
         teamAScore: sets.teamAScore,
         teamBScore: sets.teamBScore,
@@ -104,14 +137,19 @@ export async function updateScore(formData: FormData) {
       .where(eq(sets.matchId, matchId))
       .orderBy(asc(sets.setNumber));
 
-    const outcome = evaluateMatchOutcome(
+    const afterOutcome = evaluateMatchOutcome(
       { format: tournament.matchFormat },
       match.teamAId,
       match.teamBId,
-      allSets
+      completedSetsForFormat(formatSettings, setsAfter)
     );
 
-    if (outcome.shouldFinalize) {
+    if (
+      shouldAutoFinalizeAfterScoreSave(
+        beforeOutcome.shouldFinalize,
+        afterOutcome.shouldFinalize
+      )
+    ) {
       const [poolRow] = match.poolId
         ? await db
             .select({ divisionId: pools.divisionId })
@@ -122,7 +160,7 @@ export async function updateScore(formData: FormData) {
 
       const { newlyCompleted } = await completeMatchAndRunSideEffects({
         matchId,
-        winnerId: outcome.winnerId,
+        winnerId: afterOutcome.winnerId,
         tournamentId: tournament.id,
         divisionId: poolRow?.divisionId,
       });

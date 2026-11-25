@@ -38,9 +38,9 @@ import {
   completeMatchAndRunSideEffects,
 } from "@/lib/tournaments/match-finalize";
 import {
+  completedSetsForFormat,
   evaluateMatchOutcome,
-  isSetComplete,
-  targetForSet,
+  shouldAutoFinalizeAfterScoreSave,
 } from "@/lib/tournaments/match-format";
 import { badRequest, forbidden, notFound } from "../errors";
 
@@ -167,6 +167,30 @@ export async function saveSetScoreForViewer(
 
   const { match, tournament } = await assertCanEditScores(matchId, user);
 
+  const formatSettings = {
+    format: tournament.matchFormat,
+    targetScore: tournament.setTargetScore,
+    tiebreakTargetScore: tournament.tiebreakTargetScore,
+  };
+
+  const setsBefore =
+    match.teamAId && match.teamBId
+      ? await db
+          .select({ teamAScore: sets.teamAScore, teamBScore: sets.teamBScore })
+          .from(sets)
+          .where(eq(sets.matchId, matchId))
+          .orderBy(asc(sets.setNumber))
+      : [];
+  const beforeOutcome =
+    match.teamAId && match.teamBId
+      ? evaluateMatchOutcome(
+          { format: tournament.matchFormat },
+          match.teamAId,
+          match.teamBId,
+          completedSetsForFormat(formatSettings, setsBefore)
+        )
+      : null;
+
   await upsertSetScore(matchId, setNumber, teamAScore, teamBScore);
 
   if (match.status !== "in_progress" && match.status !== "completed") {
@@ -182,34 +206,26 @@ export async function saveSetScoreForViewer(
       .where(and(eq(matches.id, matchId), ne(matches.status, "completed")));
   }
 
-  if (match.teamAId && match.teamBId) {
-    const allSets = await db
+  if (match.teamAId && match.teamBId && beforeOutcome) {
+    const setsAfter = await db
       .select({ teamAScore: sets.teamAScore, teamBScore: sets.teamBScore })
       .from(sets)
       .where(eq(sets.matchId, matchId))
       .orderBy(asc(sets.setNumber));
 
-    const formatSettings = {
-      format: tournament.matchFormat,
-      targetScore: tournament.setTargetScore,
-      tiebreakTargetScore: tournament.tiebreakTargetScore,
-    };
-    const completedSets = allSets.filter((set, index) =>
-      isSetComplete(
-        set.teamAScore,
-        set.teamBScore,
-        targetForSet(formatSettings, index + 1)
-      )
-    );
-
-    const outcome = evaluateMatchOutcome(
+    const afterOutcome = evaluateMatchOutcome(
       { format: tournament.matchFormat },
       match.teamAId,
       match.teamBId,
-      completedSets
+      completedSetsForFormat(formatSettings, setsAfter)
     );
 
-    if (outcome.shouldFinalize) {
+    if (
+      shouldAutoFinalizeAfterScoreSave(
+        beforeOutcome.shouldFinalize,
+        afterOutcome.shouldFinalize
+      )
+    ) {
       const [poolRow] = match.poolId
         ? await db
             .select({ divisionId: pools.divisionId })
@@ -220,7 +236,7 @@ export async function saveSetScoreForViewer(
 
       await completeMatchAndRunSideEffects({
         matchId,
-        winnerId: outcome.winnerId,
+        winnerId: afterOutcome.winnerId,
         tournamentId: tournament.id,
         divisionId: poolRow?.divisionId,
       });

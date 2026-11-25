@@ -38,9 +38,9 @@ import {
   completeMatchAndRunSideEffects,
 } from "@/lib/tournaments/match-finalize";
 import {
+  completedSetsForFormat,
   evaluateMatchOutcome,
-  isSetComplete,
-  targetForSet,
+  shouldAutoFinalizeAfterScoreSave,
 } from "@/lib/tournaments/match-format";
 import { isTournamentArchived } from "@/lib/tournament-status";
 import { toApiError } from "@/lib/api/errors";
@@ -198,8 +198,9 @@ export async function pauseMatch(matchId: string) {
 
 /**
  * Save absolute scores for a single set. The client scorekeeper debounces +1/-1
- * taps and sends the resulting totals here. Auto-finalizes the match when the
- * format says enough sets have been played.
+ * taps and sends the resulting totals here. Auto-finalizes only when this save
+ * newly makes the match decidable (reopen corrections stay editable until then
+ * or until an explicit finalize).
  */
 export async function saveSetScore(formData: FormData) {
   const parsed = updateScoreSchema.safeParse({
@@ -219,6 +220,32 @@ export async function saveSetScore(formData: FormData) {
     return { error: gate.error };
   }
 
+  const formatSettings = {
+    format: gate.tournament.matchFormat,
+    targetScore: gate.tournament.setTargetScore,
+    tiebreakTargetScore: gate.tournament.tiebreakTargetScore,
+  };
+
+  // Snapshot before the write so reopen corrections (already-complete sets)
+  // do not auto-finalize again on the first +1.
+  const setsBefore =
+    gate.match.teamAId && gate.match.teamBId
+      ? await db
+          .select({ teamAScore: sets.teamAScore, teamBScore: sets.teamBScore })
+          .from(sets)
+          .where(eq(sets.matchId, matchId))
+          .orderBy(asc(sets.setNumber))
+      : [];
+  const beforeOutcome =
+    gate.match.teamAId && gate.match.teamBId
+      ? evaluateMatchOutcome(
+          { format: gate.tournament.matchFormat },
+          gate.match.teamAId,
+          gate.match.teamBId,
+          completedSetsForFormat(formatSettings, setsBefore)
+        )
+      : null;
+
   await upsertSetScore(matchId, setNumber, teamAScore, teamBScore);
 
   // First score entry promotes an upcoming/warmup match to in progress.
@@ -237,8 +264,8 @@ export async function saveSetScore(formData: FormData) {
       );
   }
 
-  if (gate.match.teamAId && gate.match.teamBId) {
-    const allSets = await db
+  if (gate.match.teamAId && gate.match.teamBId && beforeOutcome) {
+    const setsAfter = await db
       .select({ teamAScore: sets.teamAScore, teamBScore: sets.teamBScore })
       .from(sets)
       .where(eq(sets.matchId, matchId))
@@ -247,23 +274,19 @@ export async function saveSetScore(formData: FormData) {
     // Only fully-finished sets (target reached, win by two) count toward
     // finalizing — running scores from the live scorekeeper must not trip an
     // early finish.
-    const formatSettings = {
-      format: gate.tournament.matchFormat,
-      targetScore: gate.tournament.setTargetScore,
-      tiebreakTargetScore: gate.tournament.tiebreakTargetScore,
-    };
-    const completedSets = allSets.filter((s, i) =>
-      isSetComplete(s.teamAScore, s.teamBScore, targetForSet(formatSettings, i + 1))
-    );
-
-    const outcome = evaluateMatchOutcome(
+    const afterOutcome = evaluateMatchOutcome(
       { format: gate.tournament.matchFormat },
       gate.match.teamAId,
       gate.match.teamBId,
-      completedSets
+      completedSetsForFormat(formatSettings, setsAfter)
     );
 
-    if (outcome.shouldFinalize) {
+    if (
+      shouldAutoFinalizeAfterScoreSave(
+        beforeOutcome.shouldFinalize,
+        afterOutcome.shouldFinalize
+      )
+    ) {
       const [poolRow] = gate.match.poolId
         ? await db
             .select({ divisionId: pools.divisionId })
@@ -274,7 +297,7 @@ export async function saveSetScore(formData: FormData) {
 
       await completeMatchAndRunSideEffects({
         matchId,
-        winnerId: outcome.winnerId,
+        winnerId: afterOutcome.winnerId,
         tournamentId: gate.tournament.id,
         divisionId: poolRow?.divisionId,
       });
