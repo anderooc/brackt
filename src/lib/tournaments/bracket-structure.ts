@@ -56,6 +56,7 @@ import {
 import { rankTeamsForCombinedBrackets } from "@/lib/tournaments/combined-bracket-standings";
 
 type DbClient = typeof db;
+type BracketSection = NonNullable<typeof matches.$inferInsert.bracketSection>;
 
 async function divisionBracketsHaveTeams(
   divisionId: string,
@@ -115,12 +116,15 @@ async function insertBracketTree(
   slots: number,
   taken: Set<string>
 ) {
-  async function insertBracketMatch(m: {
-    teamAId: string | null;
-    teamBId: string | null;
-    round: number;
-    position: number;
-  }) {
+  async function insertBracketMatch(
+    m: {
+      teamAId: string | null;
+      teamBId: string | null;
+      round: number;
+      position: number;
+    },
+    section: BracketSection
+  ) {
     const slug = reserveMatchSlug(
       bracketPlaceholderSlug(m.round, m.position),
       taken
@@ -131,6 +135,8 @@ async function insertBracketTree(
       bracketId,
       teamAId: m.teamAId,
       teamBId: m.teamBId,
+      bracketSection: section,
+      bracketActivation: "required",
       bracketRound: m.round,
       bracketPosition: m.position,
       status: "upcoming",
@@ -140,14 +146,14 @@ async function insertBracketTree(
   if (format === "double_elimination") {
     const { winners, losers, grandFinal } =
       createEmptyDoubleEliminationBracket(slots);
-    for (const m of winners) await insertBracketMatch(m);
-    for (const m of losers) await insertBracketMatch(m);
-    await insertBracketMatch(grandFinal);
+    for (const m of winners) await insertBracketMatch(m, "winners");
+    for (const m of losers) await insertBracketMatch(m, "losers");
+    await insertBracketMatch(grandFinal, "grand_final");
     return;
   }
 
   const skeleton = createEmptySingleEliminationBracket(slots);
-  for (const m of skeleton) await insertBracketMatch(m);
+  for (const m of skeleton) await insertBracketMatch(m, "main");
 }
 
 /**

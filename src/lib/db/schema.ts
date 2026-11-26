@@ -122,6 +122,19 @@ export const bracketTypeEnum = pgEnum("bracket_type", [
   "double_elimination",
 ]);
 
+export const bracketSectionEnum = pgEnum("bracket_section", [
+  "main",
+  "winners",
+  "losers",
+  "grand_final",
+]);
+
+export const bracketActivationEnum = pgEnum("bracket_activation", [
+  "required",
+  "conditional",
+  "not_required",
+]);
+
 export const matchStatusEnum = pgEnum("match_status", [
   "upcoming",
   "in_progress",
@@ -1124,6 +1137,9 @@ export const matches = pgTable(
     refTeamId: uuid("ref_team_id").references(() => teams.id, {
       onDelete: "set null",
     }),
+    /** Required on bracket matches and null otherwise (`matches_bracket_metadata_check`). */
+    bracketSection: bracketSectionEnum("bracket_section"),
+    bracketActivation: bracketActivationEnum("bracket_activation"),
     bracketRound: integer("bracket_round"),
     bracketPosition: integer("bracket_position"),
     scheduledTime: timestamp("scheduled_time"),
