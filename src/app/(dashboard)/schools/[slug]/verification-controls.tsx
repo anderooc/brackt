@@ -42,6 +42,16 @@ export function VerificationControls({
 
   if (status === "verified") return null;
 
+  // Rejected schools need an admin to reopen review — do not offer a dead CTA.
+  if (status === "rejected") {
+    return (
+      <p className="max-w-xs text-right text-xs leading-snug text-muted-foreground">
+        {blockedReason ??
+          "Verification was rejected. Contact an admin to re-open this school for review."}
+      </p>
+    );
+  }
+
   async function handleSubmit() {
     setLoading(true);
     const result = await submitForVerification(schoolId);
@@ -72,9 +82,7 @@ export function VerificationControls({
         ) : (
           <ShieldCheck className="mr-1 h-3 w-3" />
         )}
-        {status === "rejected"
-          ? "Resubmit for verification"
-          : "Submit for verification"}
+        Submit for verification
       </Button>
       {showBlockedHint && (
         <div

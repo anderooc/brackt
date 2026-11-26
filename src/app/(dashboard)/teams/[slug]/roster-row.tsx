@@ -22,7 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { removeTeamMember, updateTeamMemberVolleyballPosition } from "../actions";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { JerseyNumberField } from "./jersey-number-field";
 import { VolleyballPositionField } from "@/components/roster/volleyball-position-field";
 import type { VolleyballPosition } from "@/types";
@@ -46,12 +48,22 @@ export function RosterRow({
   isCaptain: boolean;
   teamId: string;
 }) {
+  const router = useRouter();
   const [removing, setRemoving] = useState(false);
 
   async function handleRemove() {
     setRemoving(true);
-    await removeTeamMember(teamId, member.id);
-    setRemoving(false);
+    try {
+      const result = await removeTeamMember(teamId, member.id);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Removed ${member.fullName} from the roster.`);
+      router.refresh();
+    } finally {
+      setRemoving(false);
+    }
   }
 
   return (

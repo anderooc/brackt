@@ -866,13 +866,9 @@ function VerificationPanel({
           {blockedReason}
         </AppText>
       ) : null}
-      {canSubmit ? (
+      {canSubmit && school.verificationStatus !== "rejected" ? (
         <Button
-          label={
-            school.verificationStatus === "rejected"
-              ? "Resubmit for verification"
-              : "Submit for verification"
-          }
+          label="Submit for verification"
           size="sm"
           loading={busy}
           disabled={disabled}
