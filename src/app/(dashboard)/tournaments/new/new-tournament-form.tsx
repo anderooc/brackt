@@ -226,6 +226,7 @@ export function NewTournamentForm({
                 required
                 placement="top"
                 rangeFromDates={[date]}
+                minDate={todayISO()}
                 disabled={isPending}
               />
               <div className="space-y-2">

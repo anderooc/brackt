@@ -45,6 +45,8 @@ export type DatePickerCalendarProps = {
   markedDates?: Date[];
   month?: Date;
   onMonthChange?: (month: Date) => void;
+  /** Earliest selectable date (YYYY-MM-DD); earlier days are disabled. */
+  minDate?: string;
   className?: string;
   autoFocus?: boolean;
 };
@@ -57,6 +59,7 @@ export function DatePickerCalendar({
   markedDates,
   month: monthProp,
   onMonthChange,
+  minDate,
   className,
   autoFocus,
 }: DatePickerCalendarProps) {
@@ -114,6 +117,7 @@ export function DatePickerCalendar({
         onMonthChange={setMonth}
         selected={selected}
         onSelect={onSelect}
+        disabled={minDate ? { before: parseISODate(minDate) } : undefined}
         modifiers={
           markedDates?.length ? { marked: markedDates } : undefined
         }
@@ -140,6 +144,8 @@ type DatePickerFieldProps = {
   required?: boolean;
   markedDates?: Date[];
   rangeFromDates?: string[];
+  /** Earliest selectable date (YYYY-MM-DD). */
+  minDate?: string;
   className?: string;
   /** Where the calendar opens relative to the trigger. */
   placement?: "top" | "bottom" | "auto";
@@ -175,6 +181,7 @@ export function DatePickerField({
   required,
   markedDates,
   rangeFromDates = [],
+  minDate,
   className,
   placement = "auto",
 }: DatePickerFieldProps) {
@@ -288,6 +295,7 @@ export function DatePickerField({
               }
               month={month}
               onMonthChange={setMonth}
+              minDate={minDate}
             />
           </div>,
           document.body

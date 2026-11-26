@@ -28,6 +28,7 @@ import {
   parseJerseyNumber,
 } from "@/lib/profile/jersey-number";
 import { isCollegeEmail } from "@/lib/utils/college-email";
+import { todayISO } from "@/lib/tournament-status";
 
 export const signUpSchema = z.object({
   email: z
@@ -175,7 +176,10 @@ export const createTournamentSchema = z.object({
   hostSchoolId: z.string().uuid("Select the hosting school"),
   name: z.string().min(1, "Tournament name is required"),
   description: z.string().optional(),
-  date: z.string().min(1, "Date is required"),
+  date: z
+    .string()
+    .min(1, "Date is required")
+    .refine((value) => value >= todayISO(), "Pick today or a future date"),
   location: z.string().min(1, "Location is required"),
   address: z.string().optional(),
   playFormat: z.enum(PLAY_FORMATS, {
