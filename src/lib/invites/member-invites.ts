@@ -6,8 +6,12 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { memberInvites, schools, teams } from "@/lib/db/schema";
+import { memberInvites, schools, teams, users } from "@/lib/db/schema";
 import { sendMemberInviteEmail } from "@/lib/email/invite-email";
+import {
+  assignUserJerseyNumber,
+  jerseyTakenOnTeam,
+} from "@/lib/profile/jersey-number-store";
 
 const INVITE_TTL_DAYS = 14;
 
@@ -72,6 +76,7 @@ export async function createSchoolMemberInvite(input: {
 export async function createTeamMemberInvite(input: {
   teamId: string;
   email: string;
+  jerseyNumber?: number | null;
   invitedByUserId: string;
   teamName: string;
   inviterName: string;
@@ -84,6 +89,7 @@ export async function createTeamMemberInvite(input: {
       email,
       teamId: input.teamId,
       role: "player",
+      jerseyNumber: input.jerseyNumber ?? null,
       invitedByUserId: input.invitedByUserId,
       token,
       expiresAt: expiresAt(),
@@ -121,6 +127,7 @@ export type MemberInviteDetails = {
   teamName: string | null;
   role: string;
   title: string | null;
+  jerseyNumber: number | null;
   expiresAt: Date;
   isExpired: boolean;
 };
@@ -140,6 +147,7 @@ export async function loadMemberInviteByToken(
       teamName: teams.name,
       role: memberInvites.role,
       title: memberInvites.title,
+      jerseyNumber: memberInvites.jerseyNumber,
       expiresAt: memberInvites.expiresAt,
     })
     .from(memberInvites)
@@ -264,10 +272,36 @@ export async function acceptMemberInvite(input: {
       .limit(1);
 
     if (!existing) {
+      // A number taken since the invite was sent is dropped rather than
+      // blocking the join; the captain can set another one from the roster.
+      let jerseyNumber: number | null = null;
+      if (invite.jerseyNumber !== null) {
+        const assigned = await assignUserJerseyNumber(db, {
+          userId: input.userId,
+          jerseyNumber: invite.jerseyNumber,
+          extraTeamId: invite.teamId,
+        });
+        if (!("error" in assigned)) jerseyNumber = invite.jerseyNumber;
+      } else {
+        const [profile] = await db
+          .select({ jerseyNumber: users.jerseyNumber })
+          .from(users)
+          .where(eq(users.id, input.userId))
+          .limit(1);
+        const preferred = profile?.jerseyNumber ?? null;
+        if (
+          preferred !== null &&
+          !(await jerseyTakenOnTeam(db, invite.teamId, preferred, input.userId))
+        ) {
+          jerseyNumber = preferred;
+        }
+      }
+
       await db.insert(teamMembers).values({
         teamId: invite.teamId,
         userId: input.userId,
         role: "player",
+        jerseyNumber,
       });
     }
 

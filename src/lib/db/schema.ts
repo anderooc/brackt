@@ -934,6 +934,8 @@ export const memberInvites = pgTable(
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
     title: text("title"),
+    /** Team invites only. Applied to the roster row on accept. */
+    jerseyNumber: integer("jersey_number"),
     invitedByUserId: uuid("invited_by_user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),

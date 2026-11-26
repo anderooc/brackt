@@ -240,10 +240,32 @@ export async function addTeamMember(teamId: string, formData: FormData) {
     .where(eq(users.email, email))
     .limit(1);
 
+  const jerseyRaw = formData.get("jerseyNumber");
+  const parsedJersey = parseJerseyNumber(
+    typeof jerseyRaw === "string" ? jerseyRaw : ""
+  );
+  if (parsedJersey === "invalid") {
+    return { error: JERSEY_NUMBER_RANGE_ERROR };
+  }
+
   if (!targetUser) {
+    if (parsedJersey !== null) {
+      const [taken] = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.teamId, teamId),
+            eq(teamMembers.jerseyNumber, parsedJersey)
+          )
+        )
+        .limit(1);
+      if (taken) return { error: jerseyCollisionError("team", parsedJersey) };
+    }
     const invite = await createTeamMemberInvite({
       teamId,
       email,
+      jerseyNumber: parsedJersey,
       invitedByUserId: user.id,
       teamName: team.name,
       inviterName: user.fullName,
@@ -286,14 +308,6 @@ export async function addTeamMember(teamId: string, formData: FormData) {
 
   if (existing) {
     return { error: "User is already on this team" };
-  }
-
-  const jerseyRaw = formData.get("jerseyNumber");
-  const parsedJersey = parseJerseyNumber(
-    typeof jerseyRaw === "string" ? jerseyRaw : ""
-  );
-  if (parsedJersey === "invalid") {
-    return { error: JERSEY_NUMBER_RANGE_ERROR };
   }
 
   const hasExplicitJersey =
