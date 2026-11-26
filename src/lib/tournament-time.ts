@@ -21,11 +21,14 @@ export const TOURNAMENT_TIME_ZONES = [
 ] as const;
 
 const REGION_TIME_ZONES: Record<string, string> = {
-  west: "America/Los_Angeles",
-  northwest: "America/Los_Angeles",
-  north: "America/Chicago",
-  central: "America/Chicago",
-  south: "America/Chicago",
+  new_england: "America/New_York",
+  northeast: "America/New_York",
+  mid_atlantic: "America/New_York",
+  southeast: "America/New_York",
+  midwest: "America/Chicago",
+  south_central: "America/Chicago",
+  mountain: "America/Denver",
+  pacific: "America/Los_Angeles",
 };
 
 /** Best guess for a new event's zone; hosts can change it in listing details. */

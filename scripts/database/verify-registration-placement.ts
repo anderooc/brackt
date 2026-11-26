@@ -40,7 +40,7 @@ export async function seedPlacementTeams(
     )
     SELECT
       fixture.id::uuid, fixture.name, fixture.slug, 'Roster University',
-      ${schoolId}, 'mens', 'north', 'verified', now()
+      ${schoolId}, 'mens', 'midwest', 'verified', now()
     FROM (
       VALUES
         (${placementTeamIds[0]}, 'Accepted Fixture Team', 'accepted-fixture-team'),

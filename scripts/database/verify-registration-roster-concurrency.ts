@@ -181,7 +181,7 @@ async function seed(): Promise<void> {
       verification_status, verified_at
     ) VALUES (
       ${schoolId}, 'Roster Concurrency School', 'roster-concurrency-school',
-      'Roster University', 'mens', 'north', 'verified', now()
+      'Roster University', 'mens', 'midwest', 'verified', now()
     )
   `;
   await seedPlacementTeams(sql, schoolId);
@@ -190,7 +190,7 @@ async function seed(): Promise<void> {
       id, organizer_id, host_school_id, gender, region, name, slug,
       date, location, status
     ) VALUES (
-      ${tournamentId}, ${actorId}, ${schoolId}, 'mens', 'north',
+      ${tournamentId}, ${actorId}, ${schoolId}, 'mens', 'midwest',
       'Roster Concurrency', 'roster-concurrency', '2027-07-27',
       'Test Gym', 'registration_open'
     )

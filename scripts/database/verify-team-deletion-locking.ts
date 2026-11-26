@@ -46,14 +46,14 @@ async function seed(): Promise<void> {
   await sql`INSERT INTO public.schools
     (id, name, slug, university, gender, region, verification_status)
     VALUES (${schoolId}, 'Team Delete School', 'team-delete-school',
-      'Delete University', 'mens', 'north', 'verified')`;
+      'Delete University', 'mens', 'midwest', 'verified')`;
   await sql`INSERT INTO public.teams
     (id, name, slug, university, school_id, gender, region, verification_status)
     VALUES
       (${teamIds[0]}, 'Delete Team A', 'delete-team-a', 'Delete University',
-        ${schoolId}, 'mens', 'north', 'verified'),
+        ${schoolId}, 'mens', 'midwest', 'verified'),
       (${teamIds[1]}, 'Delete Team B', 'delete-team-b', 'Delete University',
-        ${schoolId}, 'mens', 'north', 'verified')`;
+        ${schoolId}, 'mens', 'midwest', 'verified')`;
   await sql`INSERT INTO public.team_members (team_id, user_id, role)
     VALUES (${teamIds[0]}, ${actorId}, 'captain'),
       (${teamIds[1]}, ${actorId}, 'captain')`;
@@ -62,9 +62,9 @@ async function seed(): Promise<void> {
   await sql`INSERT INTO public.tournaments
     (id, organizer_id, gender, region, name, slug, date, location, status)
     VALUES
-      (${tournamentIds[0]}, ${actorId}, 'mens', 'north', 'Delete Parent A',
+      (${tournamentIds[0]}, ${actorId}, 'mens', 'midwest', 'Delete Parent A',
         'delete-parent-a', '2027-08-01', 'Gym', 'draft'),
-      (${tournamentIds[1]}, ${actorId}, 'mens', 'north', 'Delete Parent B',
+      (${tournamentIds[1]}, ${actorId}, 'mens', 'midwest', 'Delete Parent B',
         'delete-parent-b', '2027-08-02', 'Gym', 'draft')`;
   await sql`UPDATE public.tournaments SET host_school_id = ${schoolId}
     WHERE id = ${tournamentIds[0]}`;
@@ -234,7 +234,7 @@ async function verifySchoolParentGrowthRetry(): Promise<void> {
     await sql`INSERT INTO public.tournaments
       (id, organizer_id, host_school_id, gender, region, name, slug,
         date, location, status)
-      VALUES (${tournamentIds[2]}, ${actorId}, ${schoolId}, 'mens', 'north',
+      VALUES (${tournamentIds[2]}, ${actorId}, ${schoolId}, 'mens', 'midwest',
         'Delete Parent C', 'delete-parent-c', '2027-08-03', 'Gym', 'draft')`;
   } finally {
     gate.release.resolve();
@@ -251,11 +251,11 @@ async function verifyTournamentCreationWaitsForSchoolDeletion(): Promise<void> {
   await sql`INSERT INTO public.schools
     (id, name, slug, university, gender, region, verification_status)
     VALUES (${creationSchoolId}, 'Creation School', 'creation-lock-school',
-      'Delete University', 'mens', 'north', 'verified')`;
+      'Delete University', 'mens', 'midwest', 'verified')`;
   await sql`INSERT INTO public.teams
     (id, name, slug, university, school_id, gender, region, verification_status)
     VALUES (${creationTeamId}, 'Creation Team', 'creation-lock-team',
-      'Delete University', ${creationSchoolId}, 'mens', 'north', 'verified')`;
+      'Delete University', ${creationSchoolId}, 'mens', 'midwest', 'verified')`;
   await sql`INSERT INTO public.school_members (school_id, user_id, role)
     VALUES (${creationSchoolId}, ${actorId}, 'officer')`;
   const started = deferred();

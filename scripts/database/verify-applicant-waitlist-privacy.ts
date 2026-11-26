@@ -62,7 +62,7 @@ async function seedUsersAndSchool(database: VerifierDatabase): Promise<void> {
     slug: "applicant-privacy-school",
     university: "Applicant University",
     gender: "mens",
-    region: "north",
+    region: "midwest",
     verificationStatus: "verified",
     verifiedAt: new Date(),
   });
@@ -84,7 +84,7 @@ async function seedTeams(database: VerifierDatabase): Promise<void> {
       university: "Applicant University",
       schoolId: ids.school,
       gender: "mens" as const,
-      region: "north" as const,
+      region: "midwest" as const,
       verificationStatus: "verified" as const,
       verifiedAt: new Date(),
     }))
@@ -103,7 +103,7 @@ async function seedTournaments(database: VerifierDatabase): Promise<void> {
       location: "Privacy Gym",
       status: "registration_open",
       gender: "mens",
-      region: "north",
+      region: "midwest",
     },
     {
       id: ids.otherTournament,
@@ -115,7 +115,7 @@ async function seedTournaments(database: VerifierDatabase): Promise<void> {
       location: "Other Gym",
       status: "registration_open",
       gender: "mens",
-      region: "north",
+      region: "midwest",
     },
   ]);
 }

@@ -80,7 +80,7 @@ async function seedUserAndSchool(): Promise<void> {
     )
     VALUES (
       ${schoolId}, 'Waitlist School', 'waitlist-school', 'Waitlist University',
-      'mens', 'north', 'verified', now()
+      'mens', 'midwest', 'verified', now()
     )
   `;
 }
@@ -93,11 +93,11 @@ async function seedTeams(): Promise<void> {
     )
     VALUES
       (${teamAId}, 'Waitlist Team A', 'waitlist-team-a',
-       'Waitlist University', ${schoolId}, 'mens', 'north', 'verified', now()),
+       'Waitlist University', ${schoolId}, 'mens', 'midwest', 'verified', now()),
       (${teamBId}, 'Waitlist Team B', 'waitlist-team-b',
-       'Waitlist University', ${schoolId}, 'mens', 'north', 'verified', now()),
+       'Waitlist University', ${schoolId}, 'mens', 'midwest', 'verified', now()),
       (${teamCId}, 'Waitlist Team C', 'waitlist-team-c',
-       'Waitlist University', ${schoolId}, 'mens', 'north', 'verified', now())
+       'Waitlist University', ${schoolId}, 'mens', 'midwest', 'verified', now())
   `;
 }
 
@@ -109,17 +109,17 @@ async function seedTournamentAndRegistration(): Promise<void> {
     )
     VALUES
       (
-        ${tournamentId}, ${actorId}, ${schoolId}, 'mens', 'north',
+        ${tournamentId}, ${actorId}, ${schoolId}, 'mens', 'midwest',
         'Waitlist Schema Tournament', 'waitlist-schema-tournament',
         '2027-07-30', 'Waitlist Gym', 'registration_open'
       ),
       (
-        ${otherTournamentId}, ${actorId}, ${schoolId}, 'mens', 'north',
+        ${otherTournamentId}, ${actorId}, ${schoolId}, 'mens', 'midwest',
         'Other Waitlist Schema Tournament', 'other-waitlist-schema-tournament',
         '2027-07-31', 'Other Waitlist Gym', 'registration_open'
       ),
       (
-        ${thirdTournamentId}, ${actorId}, ${schoolId}, 'mens', 'north',
+        ${thirdTournamentId}, ${actorId}, ${schoolId}, 'mens', 'midwest',
         'Third Waitlist Schema Tournament', 'third-waitlist-schema-tournament',
         '2027-08-01', 'Third Waitlist Gym', 'registration_open'
       )
