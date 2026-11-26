@@ -20,7 +20,7 @@ import { and, eq, ne } from "drizzle-orm";
 import type { AppUser } from "@/lib/auth";
 import { flagBlockedContent } from "@/lib/admin/content-flags";
 import { db } from "@/lib/db";
-import { schoolMembers, schools, users } from "@/lib/db/schema";
+import { schoolMembers, schools, teams, users } from "@/lib/db/schema";
 import {
   canManageSchool,
   canSubmitForVerification,
@@ -110,30 +110,53 @@ export async function updateSchoolForViewer(
   }
 
   const nextName = parsed.data.name ?? school.name;
+  const nextGender = parsed.data.gender ?? school.gender;
+  const nextRegion = parsed.data.region ?? school.region;
+  const nextUniversity = parsed.data.university ?? school.university;
+  const attributesChanged =
+    nextGender !== school.gender ||
+    nextRegion !== school.region ||
+    nextUniversity !== school.university;
 
-  await db
-    .update(schools)
-    .set({
-      name: nextName,
-      slug: nextSlug,
-      university: parsed.data.university ?? school.university,
-      gender: parsed.data.gender ?? school.gender,
-      region: parsed.data.region ?? school.region,
-      description:
-        parsed.data.description !== undefined
-          ? parsed.data.description ?? null
-          : school.description,
-      websiteUrl:
-        parsed.data.websiteUrl !== undefined
-          ? parsed.data.websiteUrl
-          : school.websiteUrl,
-      domainHint:
-        parsed.data.domainHint !== undefined
-          ? parsed.data.domainHint
-          : school.domainHint,
-      updatedAt: new Date(),
-    })
-    .where(eq(schools.id, school.id));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schools)
+      .set({
+        name: nextName,
+        slug: nextSlug,
+        university: nextUniversity,
+        gender: nextGender,
+        region: nextRegion,
+        description:
+          parsed.data.description !== undefined
+            ? parsed.data.description ?? null
+            : school.description,
+        websiteUrl:
+          parsed.data.websiteUrl !== undefined
+            ? parsed.data.websiteUrl
+            : school.websiteUrl,
+        domainHint:
+          parsed.data.domainHint !== undefined
+            ? parsed.data.domainHint
+            : school.domainHint,
+        updatedAt: new Date(),
+      })
+      .where(eq(schools.id, school.id));
+
+    // School-linked teams inherit school attributes at create time; keep them
+    // aligned when the school program changes gender, region, or university.
+    if (attributesChanged) {
+      await tx
+        .update(teams)
+        .set({
+          gender: nextGender,
+          region: nextRegion,
+          university: nextUniversity,
+          updatedAt: new Date(),
+        })
+        .where(eq(teams.schoolId, school.id));
+    }
+  });
 
   return { success: true, slug: nextSlug, name: nextName };
 }

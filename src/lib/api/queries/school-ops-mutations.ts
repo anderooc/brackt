@@ -39,6 +39,7 @@ import {
   canTransferPresidency,
   type CurrentSchoolMembership,
 } from "@/lib/schools/permissions";
+import { removeUserFromSchoolTeams } from "@/lib/schools/roster-cleanup";
 import { addSchoolMemberSchema } from "@/lib/validators";
 import type { SchoolMemberRole } from "@/types";
 import type { SchoolMutationResultContract } from "../contracts/school";
@@ -186,7 +187,10 @@ export async function removeSchoolMemberForViewer(
     );
   }
 
-  await db.delete(schoolMembers).where(eq(schoolMembers.id, membershipId));
+  await db.transaction(async (tx) => {
+    await removeUserFromSchoolTeams(school.id, target.userId, tx);
+    await tx.delete(schoolMembers).where(eq(schoolMembers.id, membershipId));
+  });
   return { success: true };
 }
 
@@ -354,14 +358,17 @@ export async function leaveSchoolForViewer(
     );
   }
 
-  await db
-    .delete(schoolMembers)
-    .where(
-      and(
-        eq(schoolMembers.schoolId, school.id),
-        eq(schoolMembers.userId, user.id)
-      )
-    );
+  await db.transaction(async (tx) => {
+    await removeUserFromSchoolTeams(school.id, user.id, tx);
+    await tx
+      .delete(schoolMembers)
+      .where(
+        and(
+          eq(schoolMembers.schoolId, school.id),
+          eq(schoolMembers.userId, user.id)
+        )
+      );
+  });
 
   return { success: true };
 }

@@ -60,6 +60,17 @@ export function createDrizzleSchoolDeletionStore(
       return publicTournamentIdsForSchool(schoolId, tx);
     },
     async deleteSchool(schoolId, tx) {
+      // FK sets school_id null; demote former school teams so they don't stay
+      // tournament-eligible as verified standalones without admin review.
+      await tx
+        .update(teams)
+        .set({
+          verificationStatus: "pending",
+          verifiedAt: null,
+          verifiedByUserId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(teams.schoolId, schoolId));
       await tx.delete(schools).where(eq(schools.id, schoolId));
     },
   };

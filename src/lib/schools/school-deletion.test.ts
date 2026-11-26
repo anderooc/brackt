@@ -8,6 +8,43 @@ import {
 type FakeTransaction = { attempt: number };
 const parent = { id: "tournament-1", slug: "tournament-one" };
 
+it("demotes school teams before deleting so they cannot stay verified standalones", async () => {
+  const events: string[] = [];
+  const store: SchoolDeletionStore<FakeTransaction> = {
+    async transaction(work) {
+      return work({ attempt: 1 });
+    },
+    async lockParents() {
+      return [parent];
+    },
+    async currentTeamIds() {
+      return ["team-1"];
+    },
+    async lockTeams() {},
+    async lockSchool() {},
+    async currentParentIds() {
+      return [parent.id];
+    },
+    async deleteSchool() {
+      events.push("demote-then-delete");
+    },
+  };
+
+  const result = await deleteSchoolWithEligibilityLocks(
+    {
+      schoolId: "school-1",
+      authorize: async () => null,
+      afterCommit: async () => {
+        events.push("after-commit");
+      },
+    },
+    store
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(events, ["demote-then-delete", "after-commit"]);
+});
+
 it("checks live authorization after parent, team, and school locks", async () => {
   const events: string[] = [];
   let deleted = false;

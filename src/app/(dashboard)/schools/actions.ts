@@ -26,7 +26,6 @@ import {
   schoolJoinRequests,
   schoolMembers,
   schools,
-  teams,
   users,
 } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -72,6 +71,7 @@ import {
   submitSchoolVerificationForViewer,
   updateSchoolForViewer,
 } from "@/lib/api/queries/school-update";
+import { removeUserFromSchoolTeams } from "@/lib/schools/roster-cleanup";
 
 const schoolSearchSchema = z.object({
   query: z.string().max(200).optional().default(""),
@@ -274,6 +274,7 @@ export async function updateSchool(
 
   revalidatePath("/schools");
   revalidatePath(`/schools/${school.slug}`);
+  revalidatePath("/teams");
   if (result.slug !== school.slug) {
     revalidatePath(`/schools/${result.slug}`);
   }
@@ -660,17 +661,23 @@ export async function leaveSchool(schoolId: string) {
     };
   }
 
-  await db
-    .delete(schoolMembers)
-    .where(
-      and(
-        eq(schoolMembers.schoolId, schoolId),
-        eq(schoolMembers.userId, user.id)
-      )
-    );
+  const teamSlugs = await db.transaction(async (tx) => {
+    const slugs = await removeUserFromSchoolTeams(schoolId, user.id, tx);
+    await tx
+      .delete(schoolMembers)
+      .where(
+        and(
+          eq(schoolMembers.schoolId, schoolId),
+          eq(schoolMembers.userId, user.id)
+        )
+      );
+    return slugs;
+  });
 
   revalidatePath("/schools");
   revalidatePath(`/schools/${school.slug}`);
+  revalidatePath("/teams");
+  for (const slug of teamSlugs) revalidatePath(`/teams/${slug}`);
   return { success: true as const };
 }
 
@@ -704,9 +711,15 @@ export async function removeSchoolMember(
     };
   }
 
-  await db.delete(schoolMembers).where(eq(schoolMembers.id, membershipId));
+  const teamSlugs = await db.transaction(async (tx) => {
+    const slugs = await removeUserFromSchoolTeams(schoolId, target.userId, tx);
+    await tx.delete(schoolMembers).where(eq(schoolMembers.id, membershipId));
+    return slugs;
+  });
 
   revalidatePath(`/schools/${school.slug}`);
+  revalidatePath("/teams");
+  for (const slug of teamSlugs) revalidatePath(`/teams/${slug}`);
   return { success: true as const };
 }
 
@@ -793,7 +806,7 @@ export async function updateSchoolMemberVolleyballPosition(
     .where(eq(users.id, target.userId));
 
   revalidatePath(`/schools/${school.slug}`);
-  revalidatePath("/teams/[slug]", "page");
+  revalidatePath("/teams");
   revalidatePath("/profile");
   revalidatePath("/dashboard");
   return { success: true as const };
@@ -894,79 +907,6 @@ export async function listManageableSchoolsForUser(userId: string) {
         ne(schoolMembers.role, "member")
       )
     );
-}
-
-export async function attachTeamToSchool(teamId: string, schoolId: string) {
-  const user = await requireUser();
-
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.id, teamId))
-    .limit(1);
-  if (!team) return { error: "Team not found" };
-
-  const school = await loadSchool(schoolId);
-  if (!school) return { error: "School not found" };
-
-  const membership = await loadMembership(schoolId, user.id);
-  if (!canManageSchoolRoster(membership, user)) {
-    return { error: "Only school officers can link teams to a school." };
-  }
-
-  await db
-    .update(teams)
-    .set({
-      schoolId,
-      verificationStatus: "verified",
-      verifiedAt: new Date(),
-      verifiedByUserId: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(teams.id, teamId));
-
-  revalidatePath(`/schools/${school.slug}`);
-  revalidatePath(`/teams/${team.slug}`);
-  revalidatePath("/teams");
-  return { success: true as const };
-}
-
-export async function detachTeamFromSchool(teamId: string) {
-  const user = await requireUser();
-
-  const [team] = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.id, teamId))
-    .limit(1);
-  if (!team) return { error: "Team not found" };
-  if (!team.schoolId) {
-    return { error: "Team is not part of a school." };
-  }
-
-  const school = await loadSchool(team.schoolId);
-  if (!school) return { error: "School not found" };
-
-  const membership = await loadMembership(team.schoolId, user.id);
-  if (!canManageSchoolRoster(membership, user)) {
-    return { error: "Only school officers can detach teams." };
-  }
-
-  await db
-    .update(teams)
-    .set({
-      schoolId: null,
-      verificationStatus: "pending",
-      verifiedAt: null,
-      verifiedByUserId: null,
-      updatedAt: new Date(),
-    })
-    .where(eq(teams.id, teamId));
-
-  revalidatePath(`/schools/${school.slug}`);
-  revalidatePath(`/teams/${team.slug}`);
-  revalidatePath("/teams");
-  return { success: true as const };
 }
 
 export async function bulkImportSchoolRosterAction(
