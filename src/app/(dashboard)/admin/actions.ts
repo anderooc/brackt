@@ -258,7 +258,8 @@ export async function adminRenameTeam(teamId: string, rawName: string) {
 
   revalidatePath("/admin");
   revalidatePath("/teams");
-  revalidatePath("/teams/[slug]", "page");
+  revalidatePath(`/teams/${newSlug}`);
+  if (team.slug !== newSlug) revalidatePath(`/teams/${team.slug}`);
   return { success: true as const, slug: newSlug };
 }
 

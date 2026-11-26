@@ -140,8 +140,10 @@ export async function updateProfile(formData: FormData) {
   }
 
   revalidateJerseyPaths(jerseyResult);
-  revalidatePath("/teams/[slug]", "page");
-  revalidatePath("/schools/[slug]", "page");
+  revalidatePath("/teams");
+  revalidatePath("/schools");
+  revalidatePath("/profile");
+  revalidatePath("/dashboard");
 
   return { success: true as const };
 }

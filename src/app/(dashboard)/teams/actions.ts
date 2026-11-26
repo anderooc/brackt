@@ -385,7 +385,16 @@ export async function removeTeamMember(teamId: string, memberId: string) {
 
   await db.delete(teamMembers).where(eq(teamMembers.id, memberId));
 
-  revalidatePath("/teams/[slug]", "page");
+  revalidatePath(`/teams/${team.slug}`);
+  revalidatePath("/teams");
+  if (team.schoolId) {
+    const [school] = await db
+      .select({ slug: schools.slug })
+      .from(schools)
+      .where(eq(schools.id, team.schoolId))
+      .limit(1);
+    if (school) revalidatePath(`/schools/${school.slug}`);
+  }
   return { success: true };
 }
 
