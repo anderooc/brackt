@@ -18,7 +18,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { format as formatDate } from "date-fns";
@@ -703,36 +703,73 @@ function Scorekeeper({
   const [b, setB] = useState(initialB);
   const [saving, setSaving] = useState(false);
   const dirtyRef = useRef(false);
+  const latest = useRef({ a: initialA, b: initialB });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Saves run one at a time so an older score can never land after a newer one.
+  const saveChain = useRef<Promise<void>>(Promise.resolve());
+  const mounted = useRef(true);
 
   useEffect(() => {
-    if (!dirtyRef.current) return;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      void (async () => {
-        setSaving(true);
+    latest.current = { a, b };
+  }, [a, b]);
+
+  const enqueueSave = useCallback(
+    (scoreA: number, scoreB: number) => {
+      const run = async () => {
+        if (mounted.current) setSaving(true);
         const fd = new FormData();
         fd.set("matchId", matchId);
         fd.set("setNumber", String(setNumber));
-        fd.set("teamAScore", String(a));
-        fd.set("teamBScore", String(b));
+        fd.set("teamAScore", String(scoreA));
+        fd.set("teamBScore", String(scoreB));
         const result = await saveSetScore(fd);
+        if (!mounted.current) return;
         setSaving(false);
         if (result?.error) {
           toast.error(result.error);
           return;
         }
-        dirtyRef.current = false;
+        if (latest.current.a === scoreA && latest.current.b === scoreB) {
+          dirtyRef.current = false;
+        }
         router.refresh();
-      })();
+      };
+      saveChain.current = saveChain.current.then(run, run);
+    },
+    [matchId, setNumber, router]
+  );
+
+  useEffect(() => {
+    // Server echoes must not overwrite points entered while a save was pending.
+    if (dirtyRef.current) return;
+    setA(initialA);
+    setB(initialB);
+  }, [initialA, initialB]);
+
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      enqueueSave(a, b);
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [a, b, matchId, setNumber, router]);
+  }, [a, b, enqueueSave]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      // Remounts (set changes) would otherwise drop the debounced save.
+      if (dirtyRef.current) {
+        enqueueSave(latest.current.a, latest.current.b);
+      }
+    };
+  }, [enqueueSave]);
 
   function bump(team: "a" | "b", delta: number) {
-    if (saving) return;
     dirtyRef.current = true;
     if (team === "a") setA((prev) => Math.max(0, prev + delta));
     else setB((prev) => Math.max(0, prev + delta));
@@ -805,7 +842,6 @@ function Scorekeeper({
               name={left.name}
               value={left.value}
               onBump={(d) => bump(left.team, d)}
-              disabled={saving}
             />
           </div>
           <div className="min-w-0">
@@ -813,7 +849,6 @@ function Scorekeeper({
               name={right.name}
               value={right.value}
               onBump={(d) => bump(right.team, d)}
-              disabled={saving}
             />
           </div>
         </div>
