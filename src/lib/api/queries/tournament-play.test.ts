@@ -120,6 +120,7 @@ describe("projectPlayContract", () => {
       status: "in_progress",
       phase: "bracket",
       scheduledTime: "2026-04-11T18:00:00.000Z",
+      timeZone: "America/New_York",
       courtName: "Court 1",
       divisionName: "Open",
       teamA: { slug: "north-a", name: "North A" },

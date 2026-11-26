@@ -87,6 +87,7 @@ export async function duplicateTournamentAsDraftWithDb(
         slug,
         description: source.description,
         date: source.date,
+        timeZone: source.timeZone,
         location: source.location,
         address: source.address,
         status: "draft",

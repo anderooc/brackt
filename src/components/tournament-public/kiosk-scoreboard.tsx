@@ -478,7 +478,7 @@ function KioskMatchCard({ match }: { match: TournamentMatchContract }) {
 
   const meta = [
     match.courtName,
-    match.scheduledTime && formatMatchTime(match.scheduledTime),
+    match.scheduledTime && formatMatchTime(match.scheduledTime, match.timeZone),
     match.divisionName,
   ]
     .filter(Boolean)

@@ -73,6 +73,7 @@ export function TournamentPageHeading({
   description,
   location,
   address,
+  timeZone,
   date,
   status,
   showRegisterLink = false,
@@ -83,6 +84,7 @@ export function TournamentPageHeading({
   description: string | null;
   location: string;
   address: string | null;
+  timeZone: string;
   date: string;
   status: string;
   showRegisterLink?: boolean;
@@ -437,7 +439,7 @@ export function TournamentPageHeading({
 
       <ListingDetailsDialog
         tournamentId={tournamentId}
-        details={{ description, location, address }}
+        details={{ description, location, address, timeZone }}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
       />

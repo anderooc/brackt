@@ -25,7 +25,9 @@ export function PublicMatchRow({
   const setLine = formatSetLine(match.sets);
   const isLive = match.status === "in_progress";
   const meta = [
-    match.scheduledTime ? formatMatchTime(match.scheduledTime) : null,
+    match.scheduledTime
+      ? formatMatchTime(match.scheduledTime, match.timeZone)
+      : null,
     match.courtName,
     compact ? null : match.phase === "bracket" ? "Bracket" : null,
   ]

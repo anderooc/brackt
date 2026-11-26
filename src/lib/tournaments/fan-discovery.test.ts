@@ -46,6 +46,7 @@ describe("Fan & Discovery Tournament Public Features", () => {
       status: "in_progress",
       phase: "pool",
       scheduledTime: "2026-10-15T14:00:00Z",
+      timeZone: "America/New_York",
       courtName: "Court 1",
       divisionName: "Men's Collegiate",
       teamA: { slug: "emory-a", name: "Emory A" },
@@ -67,6 +68,7 @@ describe("Fan & Discovery Tournament Public Features", () => {
     assert.match(html, /Emory A/);
     assert.match(html, /Georgia Tech A/);
     assert.match(html, /Court 1/);
+    assert.match(html, /10:00\sAM/);
     assert.match(html, /25-22, 18-25/);
     assert.match(html, /Live/);
   });

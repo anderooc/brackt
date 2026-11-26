@@ -374,6 +374,7 @@ export default async function TournamentDetailPage({
     description: tournament.description,
     location: tournament.location,
     address: tournament.address,
+    timeZone: tournament.timeZone,
     date: tournament.date,
     gender: tournament.gender,
     region: tournament.region,
@@ -392,6 +393,7 @@ export default async function TournamentDetailPage({
           description={tournament.description}
           location={tournament.location}
           address={tournament.address}
+          timeZone={tournament.timeZone}
           date={tournament.date}
           status={tournament.status}
           showRegisterLink={showRegisterLink}

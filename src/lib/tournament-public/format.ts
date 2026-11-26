@@ -12,6 +12,7 @@ import type {
   PublicMatchStatus,
   TournamentMatchSetContract,
 } from "@/lib/api/contracts/tournament";
+import { formatTimeInZone } from "@/lib/tournament-time";
 
 export const MATCH_STATUS_LABELS: Record<PublicMatchStatus, string> = {
   upcoming: "Upcoming",
@@ -19,12 +20,8 @@ export const MATCH_STATUS_LABELS: Record<PublicMatchStatus, string> = {
   completed: "Final",
 };
 
-export function formatMatchTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(new Date(iso));
+export function formatMatchTime(iso: string, timeZone: string): string {
+  return formatTimeInZone(iso, timeZone);
 }
 
 export function formatSetLine(sets: TournamentMatchSetContract[]): string | null {

@@ -356,11 +356,12 @@ type TimeSlotGroup = {
 };
 
 function groupPoolScheduleByTime(
-  rows: PacketPoolScheduleRow[]
+  rows: PacketPoolScheduleRow[],
+  timeZone: string
 ): TimeSlotGroup[] {
   const slotMap = new Map<string, PacketPoolScheduleRow[]>();
   for (const row of rows) {
-    const key = formatPacketTime(row.scheduledTime);
+    const key = formatPacketTime(row.scheduledTime, timeZone);
     const bucket = slotMap.get(key) ?? [];
     bucket.push(row);
     slotMap.set(key, bucket);
@@ -368,7 +369,7 @@ function groupPoolScheduleByTime(
 
   return Array.from(slotMap.entries()).map(([timeLabel, slotRows]) => {
     const times = new Set(
-      slotRows.map((r) => formatPacketTime(r.scheduledTime))
+      slotRows.map((r) => formatPacketTime(r.scheduledTime, timeZone))
     );
     return {
       timeLabel: times.size === 1 ? timeLabel : null,
@@ -399,11 +400,15 @@ function attachGlobalRowIndices(
 function PoolScheduleTable({
   rows,
   accent,
+  timeZone,
 }: {
   rows: PacketPoolScheduleRow[];
   accent: string;
+  timeZone: string;
 }) {
-  const groups = attachGlobalRowIndices(groupPoolScheduleByTime(rows));
+  const groups = attachGlobalRowIndices(
+    groupPoolScheduleByTime(rows, timeZone)
+  );
 
   return (
     <View style={S.table}>
@@ -430,7 +435,7 @@ function PoolScheduleTable({
             >
               <Text style={S.colTime}>
                 {group.showTimePerRow
-                  ? formatPacketTime(row.scheduledTime)
+                  ? formatPacketTime(row.scheduledTime, timeZone)
                   : ""}
               </Text>
               <Text style={S.colCourt}>{row.courtName ?? "—"}</Text>
@@ -449,9 +454,11 @@ function PoolScheduleTable({
 function BracketScheduleTable({
   rows,
   accent,
+  timeZone,
 }: {
   rows: PacketBracketScheduleRow[];
   accent: string;
+  timeZone: string;
 }) {
   return (
     <View style={S.table}>
@@ -466,7 +473,9 @@ function BracketScheduleTable({
           key={`${row.teamAName}-${row.teamBName}-${row.scheduledTime.toISOString()}`}
           style={[S.tableRow, i % 2 === 1 ? S.tableRowAlt : {}]}
         >
-          <Text style={S.colTime}>{formatPacketTime(row.scheduledTime)}</Text>
+          <Text style={S.colTime}>
+            {formatPacketTime(row.scheduledTime, timeZone)}
+          </Text>
           <Text style={S.colCourt}>{row.courtName ?? "—"}</Text>
           <Text style={S.colRound}>{row.roundLabel}</Text>
           <Text style={S.colMatch}>
@@ -515,7 +524,11 @@ function ScheduleSection({ data }: { data: PacketData }) {
                 >
                   {poolName}
                 </Text>
-                <PoolScheduleTable rows={rows} accent={accent} />
+                <PoolScheduleTable
+                  rows={rows}
+                  accent={accent}
+                  timeZone={data.timeZone}
+                />
               </View>
             );
           })}
@@ -524,7 +537,11 @@ function ScheduleSection({ data }: { data: PacketData }) {
       {hasBracket ? (
         <View>
           <Text style={S.subsectionTitle}>Bracket play</Text>
-          <BracketScheduleTable rows={data.bracketSchedule} accent={accent} />
+          <BracketScheduleTable
+            rows={data.bracketSchedule}
+            accent={accent}
+            timeZone={data.timeZone}
+          />
         </View>
       ) : null}
     </Section>
@@ -643,7 +660,7 @@ export function TournamentPacketDocument({ data }: { data: PacketData }) {
           <View>
             <Text style={[S.footerBrand, { color: accent }]}>brac-t.com</Text>
             <Text>
-              Generated {formatPacketGeneratedAt(data.generatedAt)} · Rules and
+              Generated {formatPacketGeneratedAt(data.generatedAt, data.timeZone)} · Rules and
               schedule reflect settings at generation time.
             </Text>
           </View>

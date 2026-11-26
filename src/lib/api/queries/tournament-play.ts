@@ -23,6 +23,7 @@ import { db } from "@/lib/db";
 import { teams, tournaments } from "@/lib/db/schema";
 import { bracketDisplayName } from "@/lib/tournaments/bracket-tiers";
 import { calculatePoolStandings } from "@/lib/utils/pool";
+import { DEFAULT_TOURNAMENT_TIME_ZONE } from "@/lib/tournament-time";
 import type {
   BracketMatchContract,
   PlayDivisionContract,
@@ -50,7 +51,10 @@ export async function loadPublicTournamentPlay(
 ): Promise<TournamentPlayContract> {
   const [tournament, play] = await Promise.all([
     db
-      .select({ poolTiebreakCriteria: tournaments.poolTiebreakCriteria })
+      .select({
+        poolTiebreakCriteria: tournaments.poolTiebreakCriteria,
+        timeZone: tournaments.timeZone,
+      })
       .from(tournaments)
       .where(eq(tournaments.id, tournamentId))
       .limit(1)
@@ -74,6 +78,7 @@ export async function loadPublicTournamentPlay(
     teams: teamRows,
     publicMatches,
     tiebreakCriteria: tournament?.poolTiebreakCriteria,
+    timeZone: tournament?.timeZone ?? DEFAULT_TOURNAMENT_TIME_ZONE,
   });
 }
 
@@ -107,15 +112,23 @@ export function projectPlayContract(input: {
   tiebreakCriteria?: Array<
     "match_record" | "set_record" | "point_diff" | "head_to_head"
   >;
+  timeZone?: string;
 }): TournamentPlayContract {
   const teamsById = new Map(input.teams.map((team) => [team.id, team]));
   const matchesBySlug = new Map(
     input.publicMatches.map((match) => [match.slug, match])
   );
+  const timeZone = input.timeZone ?? DEFAULT_TOURNAMENT_TIME_ZONE;
 
   return {
     divisions: input.divisions.map((division) =>
-      projectDivision(division, teamsById, matchesBySlug, input.tiebreakCriteria)
+      projectDivision(
+        division,
+        teamsById,
+        matchesBySlug,
+        timeZone,
+        input.tiebreakCriteria
+      )
     ),
   };
 }
@@ -124,6 +137,7 @@ function projectDivision(
   division: DivisionPlayData,
   teamsById: Map<string, { id: string; slug: string; name: string }>,
   matchesBySlug: Map<string, TournamentMatchContract>,
+  timeZone: string,
   tiebreakCriteria?: Array<
     "match_record" | "set_record" | "point_diff" | "head_to_head"
   >
@@ -165,7 +179,13 @@ function projectDivision(
           ];
         }),
         matches: pool.matches.map((match) =>
-          projectPoolMatch(match, division.name, teamsById, matchesBySlug)
+          projectPoolMatch(
+            match,
+            division.name,
+            teamsById,
+            matchesBySlug,
+            timeZone
+          )
         ),
       };
     }),
@@ -181,7 +201,7 @@ function projectDivision(
           return (a.bracketPosition ?? 0) - (b.bracketPosition ?? 0);
         })
         .map((match) =>
-          projectBracketMatch(match, teamsById, matchesBySlug)
+          projectBracketMatch(match, teamsById, matchesBySlug, timeZone)
         ),
     })),
   };
@@ -191,21 +211,29 @@ function projectPoolMatch(
   match: DivisionPlayData["pools"][number]["matches"][number],
   divisionName: string,
   teamsById: Map<string, { slug: string; name: string }>,
-  matchesBySlug: Map<string, TournamentMatchContract>
+  matchesBySlug: Map<string, TournamentMatchContract>,
+  timeZone: string
 ): TournamentMatchContract {
   return (
     matchesBySlug.get(match.slug) ??
-    buildMatchContract(match, "pool", divisionName, teamsById)
+    buildMatchContract(match, "pool", divisionName, teamsById, timeZone)
   );
 }
 
 function projectBracketMatch(
   match: DivisionPlayData["brackets"][number]["matches"][number],
   teamsById: Map<string, { slug: string; name: string }>,
-  matchesBySlug: Map<string, TournamentMatchContract>
+  matchesBySlug: Map<string, TournamentMatchContract>,
+  timeZone: string
 ): BracketMatchContract {
   const published = matchesBySlug.get(match.slug);
-  const fallback = buildMatchContract(match, "bracket", null, teamsById);
+  const fallback = buildMatchContract(
+    match,
+    "bracket",
+    null,
+    teamsById,
+    timeZone
+  );
   const base = published ?? fallback;
   return {
     slug: base.slug,
@@ -233,13 +261,15 @@ function buildMatchContract(
   },
   phase: TournamentMatchContract["phase"],
   divisionName: string | null,
-  teamsById: Map<string, { slug: string; name: string }>
+  teamsById: Map<string, { slug: string; name: string }>,
+  timeZone: string
 ): TournamentMatchContract {
   return {
     slug: match.slug,
     status: asMatchStatus(match.status),
     phase,
     scheduledTime: match.scheduledTime?.toISOString() ?? null,
+    timeZone,
     courtName: null,
     divisionName,
     teamA: resolveTeam(match.teamAId, teamsById),

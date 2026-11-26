@@ -68,7 +68,7 @@ export default async function ExploreMatchPage({ params }: Props) {
             {match.divisionName ?? "Match"}
             {match.courtName ? ` · ${match.courtName}` : ""}
             {match.scheduledTime
-              ? ` · ${formatMatchTime(match.scheduledTime)}`
+              ? ` · ${formatMatchTime(match.scheduledTime, match.timeZone)}`
               : ""}
           </p>
           <span

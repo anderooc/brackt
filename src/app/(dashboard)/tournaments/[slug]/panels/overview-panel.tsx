@@ -51,6 +51,7 @@ export type OverviewTournament = {
   description: string | null;
   location: string;
   address: string | null;
+  timeZone: string;
   date: string;
   gender: TeamGender;
   region: TeamRegion;

@@ -34,12 +34,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AddressMapPreview } from "@/components/address-map-preview";
+import { TOURNAMENT_TIME_ZONES } from "@/lib/tournament-time";
 import { cn } from "@/lib/utils";
+
+const selectClassName = cn(
+  "flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none",
+  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+  "disabled:pointer-events-none disabled:opacity-50"
+);
 
 type ListingDetails = {
   description: string | null;
   location: string;
   address: string | null;
+  timeZone: string;
 };
 
 export function ListingDetailsDialog({
@@ -59,6 +67,7 @@ export function ListingDetailsDialog({
   );
   const [draftLocation, setDraftLocation] = useState(details.location);
   const [draftAddress, setDraftAddress] = useState(details.address ?? "");
+  const [draftTimeZone, setDraftTimeZone] = useState(details.timeZone);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wasOpen, setWasOpen] = useState(open);
@@ -69,9 +78,16 @@ export function ListingDetailsDialog({
       setDraftDescription(details.description ?? "");
       setDraftLocation(details.location);
       setDraftAddress(details.address ?? "");
+      setDraftTimeZone(details.timeZone);
       setError(null);
     }
   }
+
+  const timeZoneOptions = TOURNAMENT_TIME_ZONES.some(
+    (zone) => zone.value === details.timeZone
+  )
+    ? TOURNAMENT_TIME_ZONES
+    : [...TOURNAMENT_TIME_ZONES, { value: details.timeZone, label: details.timeZone }];
 
   function handleOpenChange(next: boolean) {
     if (saving) return;
@@ -85,6 +101,7 @@ export function ListingDetailsDialog({
       description: draftDescription,
       location: draftLocation,
       address: draftAddress,
+      timeZone: draftTimeZone,
     });
     setSaving(false);
     if ("error" in result && result.error) {
@@ -146,6 +163,25 @@ export function ListingDetailsDialog({
                 height={160}
               />
             ) : null}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="listing-time-zone">Time zone</Label>
+            <select
+              id="listing-time-zone"
+              className={selectClassName}
+              value={draftTimeZone}
+              onChange={(e) => setDraftTimeZone(e.target.value)}
+              disabled={saving}
+            >
+              {timeZoneOptions.map((zone) => (
+                <option key={zone.value} value={zone.value}>
+                  {zone.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Match times on public pages and the packet are shown in this zone.
+            </p>
           </div>
         </div>
         {error && (

@@ -202,6 +202,7 @@ export async function updateTournamentListingDetails(
     description: string;
     location: string;
     address: string;
+    timeZone?: string;
   }
 ) {
   const user = await requireUser();

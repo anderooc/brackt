@@ -17,6 +17,14 @@
  */
 
 import { formatSnakeCaseLabel } from "@/lib/utils/format-label";
+import { dateISOInZone } from "@/lib/tournament-time";
+
+/**
+ * Westernmost US zone. Server code has no viewer zone, so it treats "today" as
+ * the date here: an event is never archived (and its scoring locked) while it
+ * is still that event's calendar day anywhere in the US.
+ */
+const SERVER_TODAY_TIME_ZONE = "Pacific/Honolulu";
 
 /**
  * Shared helpers for tournament status display. "Archived" is a pure
@@ -28,9 +36,13 @@ import { formatSnakeCaseLabel } from "@/lib/utils/format-label";
 
 /**
  * Today as YYYY-MM-DD in the user's local timezone. Matches date inputs
- * and `tournaments.date` (calendar dates, not UTC midnight).
+ * and `tournaments.date` (calendar dates, not UTC midnight). On the server,
+ * see `SERVER_TODAY_TIME_ZONE`.
  */
 export function todayISO(): string {
+  if (typeof window === "undefined") {
+    return dateISOInZone(SERVER_TODAY_TIME_ZONE);
+  }
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");

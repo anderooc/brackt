@@ -6,6 +6,7 @@ import {
   tournamentCreatorRoleUpdate,
 } from "@/lib/tournaments/permissions";
 import { registerHostSchoolTeamsOnCreate } from "@/lib/tournaments/registrations";
+import { defaultTimeZoneForRegion } from "@/lib/tournament-time";
 import {
   OperationConflictError,
   OperationValidationError,
@@ -78,6 +79,7 @@ async function insertTournamentAndRegistrations(
     gender: host.school.gender, region: host.school.region,
     name: input.name, slug: input.slug, description: input.description,
     date: input.date, location: input.location, address: input.address,
+    timeZone: defaultTimeZoneForRegion(host.school.region),
     playFormat: input.playFormat, status: "draft",
   }).returning();
   const roleUpdate = tournamentCreatorRoleUpdate(host.actorRole);

@@ -55,7 +55,7 @@ import {
   buildPacketBracketStructures,
   type PacketBracketStructure,
 } from "@/lib/tournaments/packet-bracket-tree";
-import { format } from "date-fns";
+import { formatTimeInZone } from "@/lib/tournament-time";
 
 export type PacketRegisteredTeam = {
   name: string;
@@ -89,6 +89,8 @@ export type PacketBracketScheduleRow = {
 
 export type PacketData = {
   generatedAt: Date;
+  /** IANA zone used for every time printed in the packet. */
+  timeZone: string;
   liveUrl: string;
   name: string;
   date: string;
@@ -472,6 +474,7 @@ export async function gatherPacketData(
 
   return {
     generatedAt: new Date(),
+    timeZone: tournament.timeZone,
     liveUrl: tournamentLiveUrl(tournament.slug),
     name: tournament.name,
     date: tournament.date,
@@ -515,11 +518,17 @@ export async function gatherPacketData(
 }
 
 /** Format a schedule row time for the PDF. */
-export function formatPacketTime(date: Date): string {
-  return format(date, "h:mm a");
+export function formatPacketTime(date: Date, timeZone: string): string {
+  return formatTimeInZone(date, timeZone);
 }
 
 /** Format generated timestamp for the PDF footer. */
-export function formatPacketGeneratedAt(date: Date): string {
-  return format(date, "MMM d, yyyy 'at' h:mm a");
+export function formatPacketGeneratedAt(date: Date, timeZone: string): string {
+  const day = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone,
+  }).format(date);
+  return `${day} at ${formatTimeInZone(date, timeZone)}`;
 }

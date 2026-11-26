@@ -40,6 +40,7 @@ import {
   resolveIsTournamentOrganizer,
 } from "@/lib/tournaments/permissions";
 import { slugify, uniqueSlug } from "@/lib/utils/slug";
+import { isSupportedTimeZone } from "@/lib/tournament-time";
 import { addTournamentStaffSchema, createTournamentSchema } from "@/lib/validators";
 import type { TournamentStaffRole } from "@/types";
 
@@ -109,7 +110,12 @@ export async function renameTournamentForUser(
 export async function updateTournamentListingForUser(
   user: AppUser,
   tournamentId: string,
-  input: { description: string; location: string; address: string }
+  input: {
+    description: string;
+    location: string;
+    address: string;
+    timeZone?: string;
+  }
 ): Promise<
   | Failure
   | Ok<{
@@ -128,6 +134,9 @@ export async function updateTournamentListingForUser(
     });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid listing details" };
+  }
+  if (input.timeZone !== undefined && !isSupportedTimeZone(input.timeZone)) {
+    return { error: "Choose a valid time zone" };
   }
 
   const contentError = await flagBlockedContent(user.id, [
@@ -148,7 +157,13 @@ export async function updateTournamentListingForUser(
 
   await db
     .update(tournaments)
-    .set({ description, location, address, updatedAt: new Date() })
+    .set({
+      description,
+      location,
+      address,
+      ...(input.timeZone !== undefined ? { timeZone: input.timeZone } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(tournaments.id, tournamentId));
 
   return { success: true, slug: tournament.slug, description, location, address };

@@ -430,6 +430,8 @@ export const tournaments = pgTable("tournaments", {
   slug: text("slug").notNull().unique(),
   description: text("description"),
   date: date("date").notNull(),
+  /** IANA zone the event is played in; match times render in this zone server-side. */
+  timeZone: text("time_zone").default("America/New_York").notNull(),
   location: text("location").notNull(),
   address: text("address"),
   status: tournamentStatusEnum("status").default("draft").notNull(),

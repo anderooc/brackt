@@ -121,6 +121,8 @@ export interface TournamentMatchContract {
   status: PublicMatchStatus;
   phase: PublicMatchPhase;
   scheduledTime: string | null;
+  /** IANA zone of the event, for rendering `scheduledTime`. */
+  timeZone: string;
   courtName: string | null;
   divisionName: string | null;
   teamA: TournamentMatchTeamContract | null;

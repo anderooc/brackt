@@ -188,6 +188,7 @@ export async function loadPublicTournamentMatches(
       slug: matches.slug,
       status: matches.status,
       scheduledTime: matches.scheduledTime,
+      timeZone: tournaments.timeZone,
       courtName: courts.name,
       teamASlug: teamA.slug,
       teamAName: teamA.name,
@@ -199,6 +200,7 @@ export async function loadPublicTournamentMatches(
       poolId: matches.poolId,
     })
     .from(matches)
+    .innerJoin(tournaments, eq(tournaments.id, matches.tournamentId))
     .leftJoin(courts, eq(courts.id, matches.courtId))
     .leftJoin(teamA, eq(teamA.id, matches.teamAId))
     .leftJoin(teamB, eq(teamB.id, matches.teamBId))
@@ -251,6 +253,7 @@ export async function loadPublicTournamentMatches(
         status: asMatchStatus(row.status),
         phase,
         scheduledTime: row.scheduledTime?.toISOString() ?? null,
+        timeZone: row.timeZone,
         courtName: row.courtName,
         divisionName: row.poolDivisionName ?? row.bracketDivisionName,
         teamA:
@@ -295,6 +298,7 @@ export async function loadPublicTournamentMatch(
       slug: matches.slug,
       status: matches.status,
       scheduledTime: matches.scheduledTime,
+      timeZone: tournaments.timeZone,
       courtName: courts.name,
       teamASlug: teamA.slug,
       teamAName: teamA.name,
@@ -309,6 +313,7 @@ export async function loadPublicTournamentMatch(
       bracketReleasedAt: divFromBracket.poolsReleasedAt,
     })
     .from(matches)
+    .innerJoin(tournaments, eq(tournaments.id, matches.tournamentId))
     .leftJoin(courts, eq(courts.id, matches.courtId))
     .leftJoin(teamA, eq(teamA.id, matches.teamAId))
     .leftJoin(teamB, eq(teamB.id, matches.teamBId))
@@ -343,6 +348,7 @@ export async function loadPublicTournamentMatch(
     status: asMatchStatus(row.status),
     phase: row.poolId ? "pool" : "bracket",
     scheduledTime: row.scheduledTime?.toISOString() ?? null,
+    timeZone: row.timeZone,
     courtName: row.courtName,
     divisionName: row.poolDivisionName ?? row.bracketDivisionName,
     teamA:
