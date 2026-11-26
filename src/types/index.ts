@@ -84,15 +84,14 @@ export type TeamVerificationStatus = SchoolVerificationStatus;
 export type TeamGender = "mens" | "womens";
 
 export type TeamRegion =
-  | "north"
+  | "new_england"
   | "northeast"
-  | "east"
-  | "east_central"
-  | "central"
-  | "south"
+  | "mid_atlantic"
   | "southeast"
-  | "west"
-  | "northwest";
+  | "midwest"
+  | "south_central"
+  | "mountain"
+  | "pacific";
 
 export type UserPlayerGender = "male" | "female";
 

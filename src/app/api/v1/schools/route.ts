@@ -22,8 +22,9 @@ import { apiHandler } from "@/lib/api/handler";
 import { loadSchoolListForViewer } from "@/lib/api/queries/schools";
 import { createSchoolForViewer } from "@/lib/api/queries/school-create";
 import { jsonSuccess } from "@/lib/api/response";
+import { TEAM_REGIONS } from "@/lib/constants/team";
 import { createSchoolSchema } from "@/lib/validators";
-import type { SchoolVerificationStatus, TeamRegion } from "@/types";
+import type { SchoolVerificationStatus } from "@/types";
 
 function parseListParam<T extends string>(
   value: string | null,
@@ -48,17 +49,7 @@ export const GET = apiHandler(async (request: Request) => {
     await loadSchoolListForViewer(user, {
       query: params.get("q") ?? undefined,
       genders: parseListParam(params.get("gender"), ["mens", "womens"] as const),
-      regions: parseListParam(params.get("region"), [
-        "north",
-        "northeast",
-        "east",
-        "east_central",
-        "central",
-        "south",
-        "southeast",
-        "west",
-        "northwest",
-      ] as const satisfies readonly TeamRegion[]),
+      regions: parseListParam(params.get("region"), TEAM_REGIONS),
       verificationStatuses: parseListParam(params.get("verification"), [
         "pending",
         "verified",

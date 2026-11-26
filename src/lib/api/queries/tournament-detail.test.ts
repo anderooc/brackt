@@ -32,7 +32,7 @@ function tournament(
     date: "2026-04-11",
     status: "registration_open",
     gender: "mens",
-    region: "north",
+    region: "midwest",
     registrationAvailability: {
       capacity: 24,
       deadline: null,

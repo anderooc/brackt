@@ -23,7 +23,7 @@ import { defaultPostingAnnouncement } from "@/lib/tournaments/posting-announceme
 
 describe("uniqueRegions", () => {
   it("dedupes while preserving first-seen order", () => {
-    assert.deepEqual(uniqueRegions(["east", "west", "east"]), ["east", "west"]);
+    assert.deepEqual(uniqueRegions(["northeast", "pacific", "northeast"]), ["northeast", "pacific"]);
   });
 });
 
@@ -34,12 +34,12 @@ describe("defaultPostingAnnouncement", () => {
       dateDisplay: "April 4, 2026",
       location: "Atlanta, GA",
       gender: "womens",
-      regions: ["southeast", "south"],
+      regions: ["southeast", "south_central"],
     });
     assert.match(message.subject, /Women's/);
     assert.match(message.subject, /Spring Invite/);
     assert.match(message.body, /Southeast/);
-    assert.match(message.body, /South/);
+    assert.match(message.body, /South Central/);
     assert.match(message.body, /{{captainName}}/);
   });
 });

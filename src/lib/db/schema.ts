@@ -205,15 +205,14 @@ export const volleyballPositionEnum = pgEnum("volleyball_position", [
 ]);
 
 export const teamRegionEnum = pgEnum("team_region", [
-  "north",
+  "new_england",
   "northeast",
-  "east",
-  "east_central",
-  "central",
-  "south",
+  "mid_atlantic",
   "southeast",
-  "west",
-  "northwest",
+  "midwest",
+  "south_central",
+  "mountain",
+  "pacific",
 ]);
 
 // ── Tables ──────────────────────────────────────────────────────────────────

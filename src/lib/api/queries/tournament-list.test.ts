@@ -42,7 +42,7 @@ function tournament(
     date: "2026-04-11",
     status: "registration_open",
     gender: "mens",
-    region: "north",
+    region: "midwest",
     registrationAvailability: {
       capacity: 24,
       deadline: null,
@@ -70,11 +70,11 @@ describe("parseTournamentListQuery", () => {
 
   it("reads filters and coerces numbers", () => {
     const parsed = parseTournamentListQuery(
-      query("status=in_progress&gender=womens&region=east&limit=5&offset=10")
+      query("status=in_progress&gender=womens&region=midwest&limit=5&offset=10")
     );
     assert.equal(parsed.status, "in_progress");
     assert.equal(parsed.gender, "womens");
-    assert.equal(parsed.region, "east");
+    assert.equal(parsed.region, "midwest");
     assert.equal(parsed.limit, 5);
     assert.equal(parsed.offset, 10);
   });
@@ -118,7 +118,7 @@ describe("parseTournamentListQuery", () => {
 
 describe("applyTournamentListQuery", () => {
   const items = [
-    tournament({ slug: "a", name: "Ann Arbor Open", region: "north" }),
+    tournament({ slug: "a", name: "Ann Arbor Open", region: "midwest" }),
     tournament({
       slug: "b",
       name: "Boston Invite",
@@ -191,7 +191,7 @@ describe("applyTournamentListQuery", () => {
   it("combines filters conjunctively", () => {
     const page = applyTournamentListQuery(
       items,
-      parseTournamentListQuery(query("gender=womens&region=north"))
+      parseTournamentListQuery(query("gender=womens&region=midwest"))
     );
     assert.equal(page.items.length, 0);
     assert.equal(page.total, 0);

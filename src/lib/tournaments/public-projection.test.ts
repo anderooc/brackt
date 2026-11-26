@@ -26,7 +26,7 @@ describe("buildPublicTournamentListProjection", () => {
         date: "2027-02-13",
         status: "registration_open",
         gender: "mens",
-        region: "central",
+        region: "midwest",
         registrationAvailability: Object.assign(
           {
             capacity: 24,
@@ -59,7 +59,7 @@ describe("buildPublicTournamentListProjection", () => {
         date: "2027-02-13",
         status: "registration_open",
         gender: "mens",
-        region: "central",
+        region: "midwest",
         registrationAvailability: {
           capacity: 24,
           deadline: "2027-03-01T17:00:00.000Z",
@@ -118,7 +118,7 @@ describe("buildPublicTournamentListProjection", () => {
           date: "2027-02-13",
           status: "registration_open",
           gender: "mens",
-          region: "central",
+          region: "midwest",
           hostSchoolId: null,
           registrationCapacity: 24,
           registrationDeadline: new Date("2027-03-01T17:00:00.000Z"),
@@ -132,7 +132,7 @@ describe("buildPublicTournamentListProjection", () => {
           date: "2027-03-20",
           status: "registration_open",
           gender: "womens",
-          region: "north",
+          region: "midwest",
           hostSchoolId: null,
           registrationCapacity: null,
           registrationDeadline: null,
@@ -187,7 +187,7 @@ describe("buildPublicTournamentListProjection", () => {
         date: "2027-02-13",
         status: "registration_open",
         gender: "mens",
-        region: "central",
+        region: "midwest",
         registrationAvailability: {
           capacity: 24,
           deadline: "2027-03-01T17:00:00.000Z",
@@ -204,7 +204,7 @@ describe("buildPublicTournamentListProjection", () => {
         date: "2027-03-20",
         status: "registration_open",
         gender: "womens",
-        region: "north",
+        region: "midwest",
         registrationAvailability: {
           capacity: null,
           deadline: null,
@@ -255,7 +255,7 @@ describe("buildPublicTournamentListProjection", () => {
             date: "2027-03-02",
             status: "registration_open",
             gender: "mens",
-            region: "west",
+            region: "pacific",
             registrationCapacity: 24,
             registrationDeadline: new Date("2027-03-01T17:00:00.000Z"),
           }]);
@@ -296,7 +296,7 @@ describe("buildPublicTournamentListProjection", () => {
       date: "2027-03-02",
       status: "registration_open",
       gender: "mens",
-      region: "west",
+      region: "pacific",
       registrationCapacity: 24,
       registrationDeadline: new Date("2027-03-01T17:00:00.000Z"),
       registrationAvailability: {

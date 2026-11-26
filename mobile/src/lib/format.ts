@@ -40,15 +40,14 @@ export const REGISTRATION_STATUS_LABELS: Record<string, string> = {
 
 export const TEAM_GENDER_VALUES = ["mens", "womens"] as const;
 export const TEAM_REGION_VALUES = [
-  "north",
+  "new_england",
   "northeast",
-  "east",
-  "east_central",
-  "central",
-  "south",
+  "mid_atlantic",
   "southeast",
-  "west",
-  "northwest",
+  "midwest",
+  "south_central",
+  "mountain",
+  "pacific",
 ] as const;
 
 export const GENDER_LABELS: Record<string, string> = {
@@ -117,15 +116,14 @@ export const VOLLEYBALL_POSITION_LABELS: Record<string, string> = {
 };
 
 export const REGION_LABELS: Record<string, string> = {
-  north: "North",
+  new_england: "New England",
   northeast: "Northeast",
-  east: "East",
-  east_central: "East Central",
-  central: "Central/Midwest",
-  south: "South",
+  mid_atlantic: "Mid-Atlantic",
   southeast: "Southeast",
-  west: "West",
-  northwest: "Northwest",
+  midwest: "Midwest",
+  south_central: "South Central",
+  mountain: "Mountain",
+  pacific: "Pacific",
 };
 
 export const MATCH_PHASE_LABELS: Record<string, string> = {

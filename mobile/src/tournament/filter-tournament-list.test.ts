@@ -56,15 +56,14 @@ const baseFilters = {
   query: "",
   genderFilter: new Set<"mens" | "womens">(),
   regionFilter: new Set<
-    | "north"
+    | "new_england"
     | "northeast"
-    | "east"
-    | "east_central"
-    | "central"
-    | "south"
+    | "mid_atlantic"
     | "southeast"
-    | "west"
-    | "northwest"
+    | "midwest"
+    | "south_central"
+    | "mountain"
+    | "pacific"
   >(),
   hideArchived: false,
   registrationOpenOnly: false,
@@ -125,7 +124,11 @@ describe("filterTournamentList", () => {
   it("filters gender and region as unions", () => {
     const list = [
       item(),
-      item({ slug: "womens-south", gender: "womens", region: "south" }),
+      item({
+        slug: "womens-south",
+        gender: "womens",
+        region: "south_central",
+      }),
     ];
     assert.equal(
       filterTournamentList(list, {
@@ -137,7 +140,7 @@ describe("filterTournamentList", () => {
     assert.equal(
       filterTournamentList(list, {
         ...baseFilters,
-        regionFilter: new Set(["south"]),
+        regionFilter: new Set(["south_central"]),
       })[0]?.slug,
       "womens-south"
     );
