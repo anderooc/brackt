@@ -159,193 +159,215 @@ export function BulkOpsBar({
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 w-[min(95vw,56rem)] animate-in fade-in slide-in-from-bottom-4 duration-200">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-            {count} selected
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClearSelection}
-            disabled={pending}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Clear
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {courts.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Select
-                value={targetCourtId}
-                onValueChange={(v) => {
-                  if (v) setTargetCourtId(v);
-                }}
-                disabled={pending}
-              >
-                <SelectTrigger size="sm" className="h-8 min-w-[7.5rem] text-xs">
-                  <MapPin className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
-                  <SelectValue placeholder="Court" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNASSIGN_COURT_VAL}>Unassign</SelectItem>
-                  {courts.map((court) => (
-                    <SelectItem key={court.id} value={court.id}>
-                      {court.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleReassignCourt}
-                disabled={pending}
-                className="h-8 text-xs font-medium"
-              >
-                {pending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  "Move"
-                )}
-              </Button>
-            </div>
-          )}
-
-          {refTeams.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <Select
-                value={targetRefTeamId}
-                onValueChange={(v) => {
-                  if (v) setTargetRefTeamId(v);
-                }}
-                disabled={pending}
-              >
-                <SelectTrigger size="sm" className="h-8 min-w-[8rem] text-xs">
-                  <Users className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
-                  <SelectValue placeholder="Working team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={UNASSIGN_REF_VAL}>Clear ref</SelectItem>
-                  {refTeams.map((team) => (
-                    <SelectItem key={team.id} value={team.id}>
-                      {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleReassignRef}
-                disabled={pending}
-                className="h-8 text-xs font-medium"
-              >
-                {pending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  "Assign ref"
-                )}
-              </Button>
-            </div>
-          )}
-
-          <div className="flex items-center gap-1.5">
-            <Select
-              value={String(shiftMinutes)}
-              onValueChange={(v) => {
-                if (v) setShiftMinutes(parseInt(v, 10));
-              }}
-              disabled={pending}
-            >
-              <SelectTrigger size="sm" className="h-8 w-24 text-xs tabular-nums">
-                <Clock className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="15">+15 min</SelectItem>
-                <SelectItem value="30">+30 min</SelectItem>
-                <SelectItem value="45">+45 min</SelectItem>
-                <SelectItem value="60">+60 min</SelectItem>
-                <SelectItem value="-15">-15 min</SelectItem>
-                <SelectItem value="-30">-30 min</SelectItem>
-              </SelectContent>
-            </Select>
+    <>
+      {/* Lets the page scroll past the fixed bar so it never hides the last cards. */}
+      <div aria-hidden className="h-40 sm:h-24" />
+      <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 w-[min(95vw,56rem)] animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
+              {count} selected
+            </span>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              onClick={() => handleShiftTimes(shiftMinutes)}
+              onClick={onClearSelection}
               disabled={pending}
-              className="h-8 text-xs font-medium"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              {pending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <>
-                  <FastForward className="mr-1 h-3 w-3" />
-                  Shift
-                </>
-              )}
+              Clear
             </Button>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
+          <div className="flex flex-wrap items-center gap-2">
+            {courts.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Select
+                  value={targetCourtId}
+                  onValueChange={(v) => {
+                    if (v) setTargetCourtId(v);
+                  }}
+                  disabled={pending}
+                >
+                  <SelectTrigger size="sm" className="h-8 min-w-[7.5rem] text-xs">
+                    <MapPin className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Court">
+                      {(v) =>
+                        v === UNASSIGN_COURT_VAL
+                          ? "Unassign"
+                          : (courts.find((court) => court.id === v)?.name ?? "Court")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGN_COURT_VAL}>Unassign</SelectItem>
+                    {courts.map((court) => (
+                      <SelectItem key={court.id} value={court.id}>
+                        {court.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  onClick={handleReassignCourt}
                   disabled={pending}
-                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-8 text-xs font-medium"
                 >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Clear...
+                  {pending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Move"
+                  )}
                 </Button>
-              }
-            />
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => handleClear({ clearTime: true })}
-                disabled={pending}
-              >
-                Clear start times
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleClear({ clearCourt: true })}
-                disabled={pending}
-              >
-                Clear court assignments
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleClear({ clearTime: true, clearCourt: true })}
-                disabled={pending}
-                className="text-destructive focus:text-destructive"
-              >
-                Clear times and courts
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </div>
+            )}
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onExitBulkMode}
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            aria-label="Exit bulk mode"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+            {refTeams.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Select
+                  value={targetRefTeamId}
+                  onValueChange={(v) => {
+                    if (v) setTargetRefTeamId(v);
+                  }}
+                  disabled={pending}
+                >
+                  <SelectTrigger size="sm" className="h-8 min-w-[8rem] text-xs">
+                    <Users className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Working team">
+                      {(v) =>
+                        v === UNASSIGN_REF_VAL
+                          ? "Clear ref"
+                          : (refTeams.find((team) => team.id === v)?.name ??
+                            "Working team")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={UNASSIGN_REF_VAL}>Clear ref</SelectItem>
+                    {refTeams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReassignRef}
+                  disabled={pending}
+                  className="h-8 text-xs font-medium"
+                >
+                  {pending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Assign ref"
+                  )}
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={String(shiftMinutes)}
+                onValueChange={(v) => {
+                  if (v) setShiftMinutes(parseInt(v, 10));
+                }}
+                disabled={pending}
+              >
+                <SelectTrigger size="sm" className="h-8 min-w-[7rem] text-xs tabular-nums">
+                  <Clock className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                  <SelectValue>
+                    {(v) => {
+                      const minutes = Number(v);
+                      return `${minutes > 0 ? "+" : ""}${minutes} min`;
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15">+15 min</SelectItem>
+                  <SelectItem value="30">+30 min</SelectItem>
+                  <SelectItem value="45">+45 min</SelectItem>
+                  <SelectItem value="60">+60 min</SelectItem>
+                  <SelectItem value="-15">-15 min</SelectItem>
+                  <SelectItem value="-30">-30 min</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleShiftTimes(shiftMinutes)}
+                disabled={pending}
+                className="h-8 text-xs font-medium"
+              >
+                {pending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <FastForward className="mr-1 h-3 w-3" />
+                    Shift
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Trash2 className="mr-1 h-3.5 w-3.5" />
+                    Clear...
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleClear({ clearTime: true })}
+                  disabled={pending}
+                >
+                  Clear start times
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleClear({ clearCourt: true })}
+                  disabled={pending}
+                >
+                  Clear court assignments
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleClear({ clearTime: true, clearCourt: true })}
+                  disabled={pending}
+                  className="text-destructive focus:text-destructive"
+                >
+                  Clear times and courts
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onExitBulkMode}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Exit bulk mode"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

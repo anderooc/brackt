@@ -140,7 +140,9 @@ export async function TournamentPoolPlayPanel({
       {isOrganizer && (
         <div
           className={
-            scheduleGroups.length > 0 ? "grid gap-3 lg:grid-cols-2" : undefined
+            scheduleGroups.length > 0
+              ? "grid grid-cols-1 gap-3 lg:grid-cols-2"
+              : undefined
           }
         >
           <PoolMatchFormatPanel

@@ -304,7 +304,12 @@ function MatchCard({
   if (bulkMode) {
     return (
       <div
-        onClick={() => !isCompleted && onToggleSelect?.(match.id)}
+        onClick={(e) => {
+          // The checkbox's hidden input re-dispatches the click, and the
+          // checkbox already toggles via onCheckedChange.
+          if ((e.target as HTMLElement).closest("input")) return;
+          if (!isCompleted) onToggleSelect?.(match.id);
+        }}
         className={cn(
           "block h-full outline-none",
           !isCompleted && "cursor-pointer"

@@ -494,7 +494,11 @@ export function RegistrationList({
               href={tournamentTabUrl(tournamentSlug, "payment")}
               className="text-xs font-medium text-primary underline-offset-4 hover:underline"
             >
-              {payment?.status === "unpaid" ? "Submit payment" : "View payment"}
+              {canManageRegistrations
+                ? "Review payment"
+                : payment?.status === "unpaid"
+                  ? "Submit payment"
+                  : "View payment"}
             </Link>
           ) : null}
           {showDivisionAssignment && (
@@ -579,13 +583,11 @@ export function RegistrationList({
               {canManageRegistrations ? "Delete" : "Withdraw"}
             </Button>
           )}
-          {rowError && applicantView && (
-            <p className="w-full text-right text-xs text-destructive">
-              {rowError}
-            </p>
-          )}
-          {showDivisionAssignment && rowError && (
-            <p className="w-full basis-full text-right text-xs text-destructive">
+          {rowError && (
+            <p
+              role="alert"
+              className="w-full basis-full text-right text-xs text-destructive"
+            >
               {rowError}
             </p>
           )}
